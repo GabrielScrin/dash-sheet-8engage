@@ -1,146 +1,148 @@
 
 
-## Plataforma de Dashboards de Leitura - Google Sheets
+## Plano: Integração Funcional com Google Sheets
 
-Uma aplicação web de dashboards de visualização que conecta nativamente a planilhas Google do usuário, permitindo que Admins configurem relatórios visuais e Clientes acessem via links compartilhados.
+### Diagnóstico dos Problemas
 
----
-
-### Fase 1: Fundação e Autenticação
-
-**Configuração do Supabase e Estrutura Base**
-- Ativar Lovable Cloud com Supabase para banco de dados, autenticação e edge functions
-- Criar schema do banco: tabelas `projects`, `column_mappings`, `share_tokens`, `access_logs`
-- Implementar tema claro/escuro com paleta Meta-like (azul #1877F2) e tipografia Inter
-- Configurar variáveis CSS para design system consistente
-
-**Autenticação Google para Admin**
-- Login OAuth2 via Supabase Auth com Google
-- Armazenar refresh tokens criptografados para acesso às planilhas
-- Página de login elegante com botão "Entrar com Google"
-- Proteção de rotas para área administrativa
+1. **Seleção de planilhas não funciona** - Falta uma edge function para chamar a Google Sheets API usando o access_token do usuário logado
+2. **Provider token não capturado** - O AuthContext não está salvando o `provider_token` que o Google retorna após o login OAuth
+3. **Tabela de criativos sem thumbnails** - O componente `CreativePerformanceTable` não tem suporte para exibir imagens de thumbnail nem links
+4. **Dados mockados** - Todo o dashboard usa dados estáticos de demonstração
 
 ---
 
-### Fase 2: Integração Google Sheets
+### Fase 1: Captura e Armazenamento do Token Google
 
-**Edge Function para Google Sheets API**
-- Criar edge function para listar planilhas do usuário
-- Endpoint para ler cabeçalhos e preview de abas (10 primeiras linhas)
-- Endpoint para leitura de ranges específicos com cache
-- Sistema de cache com TTL configurável (5 min padrão)
+**Atualizar AuthContext.tsx**
+- Capturar `provider_token` e `provider_refresh_token` do callback OAuth
+- Salvar na tabela `profiles.google_refresh_token` (já existe)
+- Expor método para obter token atualizado
 
-**Seletor de Planilha e Aba**
-- Interface visual para listar planilhas disponíveis (nome, data modificação)
-- Busca e filtro de planilhas
-- Preview dos cabeçalhos ao selecionar uma aba
-- Feedback visual de carregamento e estados de erro
+**Lógica de refresh de tokens**
+- Criar edge function `google-auth` para renovar access_token usando refresh_token quando expirar
 
 ---
 
-### Fase 3: Configuração de Dashboard (Admin)
+### Fase 2: Edge Function para Google Sheets API
 
-**Interface de Mapeamento de Colunas**
-- Wizard em 5 passos com stepper vertical
-- Drag-and-drop para mapear colunas → métricas (usando dnd-kit)
-- Validação de tipos (número, moeda, data, texto)
-- Preview dinâmico do dashboard em tempo real
+**Criar `supabase/functions/google-sheets/index.ts`**
 
-**Configuração de KPIs e Métricas**
-- Seleção de até 12 big numbers para exibição
-- Configuração de etapas do funil (impressões → vendas)
-- Definição de período padrão (últimos 7/14/28 dias)
-- Salvamento das configurações no banco
+A edge function terá 3 endpoints:
 
----
-
-### Fase 4: Dashboard de Visualização
-
-**Layout Principal com Duas Abas**
-- Tabs animadas: "Perpétua" e "Distribuição de Conteúdos" (Framer Motion)
-- Header fixo minimalista com nome do projeto e toggle de tema
-- Filtros sticky: date range picker, seletor de criativo, visão semanal
-
-**Big Numbers (KPIs)**
-- Cards horizontais responsivos (3-6 por linha)
-- Contadores animados com easing (react-countup)
-- Variação percentual com cores (verde/vermelho) e setas
-- Tooltips explicativos e aria-live para acessibilidade
-
-**Tabela de Comparação Semanal**
-- Tabela compacta com últimas 4-5 semanas
-- Colunas: Semana, Vendas, Investimento, Faturamento, ROAS, Taxa de Conversão
-- Ordenação por coluna e virtualização para performance
-- Hover effects sutis com transform e shadow
-
-**Performance por Criativo**
-- Tabela com métricas por criativo (impressões, cliques, CTR, vendas)
-- Clique na linha aplica filtro por criativo
-- Paginação e ordenação avançada
-
-**Funil de Conversão**
-- Visualização SVG animada (GSAP timeline)
-- Etapas: Impressões → Cliques → Landing Page → Checkout → Vendas
-- Taxas percentuais entre etapas
-- Animação sequencial de expansão ao carregar
-
----
-
-### Fase 5: Compartilhamento e Acesso
-
-**Geração de Links de Visualização**
-- JWT assinado com projectId, expiração e filtros permitidos
-- Modal de compartilhamento com opções de expiração
-- Animação de copy-to-clipboard com checkmark
-- Filtros persistidos na URL (query params)
-
-**Página de Dashboard Público (/view/:token)**
-- Acesso sem autenticação via token JWT
-- Validação e decodificação do token
-- Renderização do dashboard com dados cacheados
-- Versão embedável para iframes (/embed/:token)
-
----
-
-### Fase 6: Logs, Auditoria e Refinamentos
-
-**Sistema de Logs de Acesso**
-- Registro de visualizações (quem, quando, qual dashboard)
-- Tabela de auditoria para Admins
-- Timestamp de última atualização visível no dashboard
-
-**Otimizações e Polish**
-- Responsividade completa (desktop, tablet)
-- Animações de transição refinadas
-- Estados de loading, empty e erro elegantes
-- Acessibilidade (atalhos de teclado, labels semânticos, WCAG)
-
----
-
-### Componentes Principais a Criar
-
-| Componente | Descrição |
-|------------|-----------|
-| `BigNumberCard` | Card de métrica com contador animado |
-| `WeeklyComparisonTable` | Tabela de semanas com ordenação |
-| `CreativePerformanceTable` | Tabela de criativos com métricas |
-| `FunnelVisualization` | Funil SVG animado com GSAP |
-| `SheetSelector` | Seletor visual de planilhas |
-| `ColumnMapper` | Interface drag-and-drop de mapeamento |
-| `DateRangePicker` | Picker de período com presets |
-| `ShareModal` | Modal de geração de link |
-| `ThemeToggle` | Switch claro/escuro |
-
----
-
-### Páginas da Aplicação
-
-| Rota | Descrição |
+| Ação | Descrição |
 |------|-----------|
-| `/login` | Autenticação Google |
-| `/app/projects` | Lista de dashboards do Admin |
-| `/app/projects/:id/config` | Wizard de configuração |
-| `/app/projects/:id/preview` | Preview para Admin |
-| `/view/:token` | Dashboard público |
-| `/embed/:token` | Versão embedável |
+| `list-spreadsheets` | Lista planilhas do Drive do usuário |
+| `get-sheets` | Lista abas de uma planilha específica |
+| `read-data` | Lê dados de um range específico |
+
+**Fluxo de dados:**
+```
+Frontend → Edge Function → Google Sheets API v4
+         ↓
+    Supabase (cache opcional)
+```
+
+**Headers e autenticação:**
+- Recebe JWT do usuário autenticado
+- Busca `google_refresh_token` do profile
+- Gera novo access_token via OAuth refresh
+- Chama Google Sheets API com Bearer token
+
+---
+
+### Fase 3: Interface de Seleção de Planilhas
+
+**Criar `src/components/sheets/SheetSelector.tsx`**
+
+Componentes:
+- Modal/Dialog para listar planilhas
+- Busca e filtro por nome
+- Preview das primeiras linhas ao selecionar aba
+- Indicador de loading e tratamento de erros
+
+**Atualizar `ProjectConfig.tsx`**
+- Conectar botão "Selecionar Planilha" ao SheetSelector
+- Salvar `spreadsheet_id` e `spreadsheet_name` no projeto
+- Avançar automaticamente para Step 2 (seleção de aba)
+
+---
+
+### Fase 4: Performance por Criativo com Thumbnails
+
+**Atualizar interface `CreativeData`**
+
+Adicionar campos opcionais:
+```typescript
+interface CreativeData {
+  id: string;
+  name: string;
+  thumbnail?: string;  // URL da imagem
+  link?: string;       // Link do criativo
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  landingViews: number;
+  checkoutViews: number;
+  sales: number;
+}
+```
+
+**Atualizar `CreativePerformanceTable.tsx`**
+- Coluna com thumbnail clicável (abre link do criativo)
+- Fallback para ícone caso não tenha imagem
+- Tooltip com nome completo ao passar mouse
+- Link externo abre em nova aba
+
+---
+
+### Fase 5: Conexão de Dados Reais
+
+**Criar hook `useSheetData.ts`**
+- Chama edge function para buscar dados da planilha
+- Aplica mapeamento de colunas configurado
+- Transforma dados para formato do dashboard
+- Cache local com React Query (5 min TTL)
+
+**Atualizar `DashboardView.tsx`**
+- Substituir mock data por dados reais via hook
+- Estados de loading e empty
+- Mensagens de erro amigáveis
+
+---
+
+### Estrutura de Arquivos a Criar/Modificar
+
+| Arquivo | Ação |
+|---------|------|
+| `supabase/functions/google-sheets/index.ts` | Criar |
+| `src/contexts/AuthContext.tsx` | Modificar (capturar provider_token) |
+| `src/components/sheets/SheetSelector.tsx` | Criar |
+| `src/components/sheets/SheetPreview.tsx` | Criar |
+| `src/pages/app/ProjectConfig.tsx` | Modificar (integrar selector) |
+| `src/components/dashboard/CreativePerformanceTable.tsx` | Modificar (thumbnails) |
+| `src/hooks/useSheetData.ts` | Criar |
+| `src/components/dashboard/DashboardView.tsx` | Modificar (dados reais) |
+
+---
+
+### Secrets Necessários
+
+Para a edge function funcionar, serão necessárias as credenciais do Google Cloud:
+
+| Secret | Descrição |
+|--------|-----------|
+| `GOOGLE_CLIENT_ID` | Client ID do OAuth |
+| `GOOGLE_CLIENT_SECRET` | Client Secret do OAuth |
+
+---
+
+### Resultado Esperado
+
+Após implementação:
+
+1. **Login funcional** - Usuário loga com Google e autoriza acesso às planilhas
+2. **Listar planilhas** - Modal mostra todas as planilhas do Drive do usuário
+3. **Selecionar aba** - Preview dos dados antes de confirmar
+4. **Dashboard com dados reais** - Big numbers, tabelas e funil mostram dados da planilha
+5. **Thumbnails de criativos** - Tabela exibe imagens e links dos criativos (se existirem na planilha)
 
