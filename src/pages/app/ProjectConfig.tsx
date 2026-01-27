@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Header } from '@/components/layout/Header';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { SheetSelector } from '@/components/sheets/SheetSelector';
+import { SheetTabSelector } from '@/components/sheets/SheetTabSelector';
 
 interface Project {
   id: string;
@@ -33,6 +35,7 @@ export default function ProjectConfig() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
+  const [sheetSelectorOpen, setSheetSelectorOpen] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -71,40 +74,139 @@ export default function ProjectConfig() {
     }
   };
 
+  const handleSpreadsheetSelect = async (spreadsheet: { id: string; name: string }) => {
+    if (!project) return;
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          spreadsheet_id: spreadsheet.id,
+          spreadsheet_name: spreadsheet.name,
+          sheet_name: null, // Reset sheet name when changing spreadsheet
+        })
+        .eq('id', project.id);
+
+      if (error) throw error;
+
+      setProject({
+        ...project,
+        spreadsheet_id: spreadsheet.id,
+        spreadsheet_name: spreadsheet.name,
+        sheet_name: null,
+      });
+      setSheetSelectorOpen(false);
+      setCurrentStep(2);
+
+      toast({
+        title: 'Planilha conectada!',
+        description: `${spreadsheet.name} foi vinculada ao projeto.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao salvar planilha',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleTabSelect = async (tab: { sheetId: number; title: string }) => {
+    if (!project) return;
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ sheet_name: tab.title })
+        .eq('id', project.id);
+
+      if (error) throw error;
+
+      setProject({ ...project, sheet_name: tab.title });
+      setCurrentStep(3);
+
+      toast({
+        title: 'Aba selecionada!',
+        description: `Aba "${tab.title}" foi configurada.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao salvar aba',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
           <div className="space-y-6">
-            <div className="rounded-lg border-2 border-dashed p-8 text-center">
-              <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Conectar Planilha Google</h3>
-              <p className="text-muted-foreground mb-4">
-                Selecione uma planilha do seu Google Drive para conectar ao dashboard.
-              </p>
-              <Button size="lg" className="gap-2">
-                <FileSpreadsheet className="h-5 w-5" />
-                Selecionar Planilha
-              </Button>
-              <p className="mt-4 text-xs text-muted-foreground">
-                O acesso é somente leitura. Nenhuma modificação será feita na sua planilha.
-              </p>
-            </div>
+            {project?.spreadsheet_name ? (
+              <div className="rounded-lg border p-6">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
+                    <FileSpreadsheet className="h-6 w-6 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">{project.spreadsheet_name}</p>
+                    <p className="text-sm text-muted-foreground">Planilha conectada</p>
+                  </div>
+                  <Button variant="outline" onClick={() => setSheetSelectorOpen(true)}>
+                    Alterar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border-2 border-dashed p-8 text-center">
+                <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Conectar Planilha Google</h3>
+                <p className="text-muted-foreground mb-4">
+                  Selecione uma planilha do seu Google Drive para conectar ao dashboard.
+                </p>
+                <Button size="lg" className="gap-2" onClick={() => setSheetSelectorOpen(true)}>
+                  <FileSpreadsheet className="h-5 w-5" />
+                  Selecionar Planilha
+                </Button>
+                <p className="mt-4 text-xs text-muted-foreground">
+                  O acesso é somente leitura. Nenhuma modificação será feita na sua planilha.
+                </p>
+              </div>
+            )}
           </div>
         );
       case 2:
-        return (
-          <div className="space-y-6">
-            <div className="rounded-lg border p-6 text-center">
-              <p className="text-muted-foreground">
-                Selecione uma aba da planilha conectada.
-              </p>
-            </div>
+        return project?.spreadsheet_id && project?.spreadsheet_name ? (
+          <SheetTabSelector
+            spreadsheetId={project.spreadsheet_id}
+            spreadsheetName={project.spreadsheet_name}
+            onSelect={handleTabSelect}
+            onBack={() => setCurrentStep(1)}
+          />
+        ) : (
+          <div className="rounded-lg border p-6 text-center">
+            <p className="text-muted-foreground">
+              Primeiro, selecione uma planilha na etapa anterior.
+            </p>
+            <Button className="mt-4" onClick={() => setCurrentStep(1)}>
+              Ir para Etapa 1
+            </Button>
           </div>
         );
       case 3:
         return (
           <div className="space-y-6">
+            {project?.sheet_name && (
+              <div className="rounded-lg border p-4 bg-muted/50 mb-4">
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Planilha:</span>{' '}
+                  <span className="font-medium">{project.spreadsheet_name}</span>
+                  <span className="mx-2 text-muted-foreground">→</span>
+                  <span className="font-medium">{project.sheet_name}</span>
+                </p>
+              </div>
+            )}
             <div className="rounded-lg border p-6 text-center">
               <Columns className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">Mapear Colunas</h3>
@@ -177,8 +279,10 @@ export default function ProjectConfig() {
             </CardHeader>
             <CardContent className="p-0">
               <nav className="space-y-1 px-4 pb-4">
-                {steps.map((step, index) => {
-                  const isComplete = step.id < currentStep;
+                {steps.map((step) => {
+                  const isComplete = step.id < currentStep || 
+                    (step.id === 1 && !!project?.spreadsheet_id) ||
+                    (step.id === 2 && !!project?.sheet_name);
                   const isCurrent = step.id === currentStep;
                   
                   return (
@@ -200,7 +304,7 @@ export default function ProjectConfig() {
                             ? 'border-primary bg-primary text-primary-foreground' 
                             : 'border-current'
                       }`}>
-                        {isComplete ? (
+                        {isComplete && !isCurrent ? (
                           <Check className="h-4 w-4" />
                         ) : (
                           <span className="text-sm font-medium">{step.id}</span>
@@ -286,6 +390,13 @@ export default function ProjectConfig() {
           </div>
         </div>
       </main>
+
+      {/* Sheet Selector Modal */}
+      <SheetSelector
+        open={sheetSelectorOpen}
+        onOpenChange={setSheetSelectorOpen}
+        onSelect={handleSpreadsheetSelect}
+      />
     </div>
   );
 }
