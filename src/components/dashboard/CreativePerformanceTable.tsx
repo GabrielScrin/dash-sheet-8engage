@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowUpDown, ArrowUp, ArrowDown, Filter } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, Filter, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface CreativeData {
   id: string;
   name: string;
+  thumbnail?: string;
+  link?: string;
   impressions: number;
   clicks: number;
   ctr: number;
@@ -107,8 +110,62 @@ export function CreativePerformanceTable({
                   }`}
                   onClick={() => onCreativeSelect(selectedCreative === row.id ? null : row.id)}
                 >
-                  <TableCell className="font-medium max-w-[200px] truncate" title={row.name}>
-                    {row.name}
+                  <TableCell className="font-medium">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-3">
+                            {/* Thumbnail */}
+                            {row.thumbnail ? (
+                              <a 
+                                href={row.link || row.thumbnail} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="shrink-0"
+                              >
+                                <img 
+                                  src={row.thumbnail} 
+                                  alt={row.name}
+                                  className="h-10 w-10 rounded-md object-cover border hover:opacity-80 transition-opacity"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                  }}
+                                />
+                                <div className="hidden h-10 w-10 rounded-md bg-muted flex items-center justify-center">
+                                  <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                                </div>
+                              </a>
+                            ) : (
+                              <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center shrink-0">
+                                <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                              </div>
+                            )}
+                            
+                            {/* Name and link */}
+                            <div className="min-w-0 flex-1">
+                              <span className="block truncate max-w-[180px]">{row.name}</span>
+                              {row.link && (
+                                <a
+                                  href={row.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Ver criativo
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-xs">
+                          <p className="break-words">{row.name}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableCell>
                   <TableCell>{row.impressions.toLocaleString('pt-BR')}</TableCell>
                   <TableCell>{row.clicks.toLocaleString('pt-BR')}</TableCell>

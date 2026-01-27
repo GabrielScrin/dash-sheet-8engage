@@ -20,10 +20,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
+        console.log('Auth state change:', event, session?.user?.email);
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+
+        // Capture provider tokens on sign in
+        if (event === 'SIGNED_IN' && session?.provider_refresh_token) {
+          console.log('Saving Google refresh token...');
+          // Use setTimeout to avoid blocking the auth flow
+          setTimeout(async () => {
+            try {
+              const { error } = await supabase
+                .from('profiles')
+                .update({ google_refresh_token: session.provider_refresh_token })
+                .eq('user_id', session.user.id);
+              
+              if (error) {
+                console.error('Failed to save Google refresh token:', error);
+              } else {
+                console.log('Google refresh token saved successfully');
+              }
+            } catch (err) {
+              console.error('Error saving refresh token:', err);
+            }
+          }, 0);
+        }
       }
     );
 
