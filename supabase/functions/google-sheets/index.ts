@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version, x-google-token',
 };
 
 interface TokenResponse {
@@ -114,40 +114,56 @@ serve(async (req) => {
       });
     }
 
-    // Create Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Check for Google token passed directly via header
+    const googleToken = req.headers.get("x-google-token");
+    let accessToken: string;
 
-    // Get user from JWT
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (googleToken) {
+      // Use token passed directly from frontend
+      console.log("Using Google token from header");
+      accessToken = googleToken;
+    } else {
+      // Fallback: try to get refresh token from profiles
+      console.log("No Google token in header, trying refresh token from profiles");
+      
+      // Create Supabase client
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
-    if (userError || !user) {
-      console.error("Auth error:", userError);
-      return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      // Get user from JWT
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+      if (userError || !user) {
+        console.error("Auth error:", userError);
+        return new Response(JSON.stringify({ error: "Invalid token" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Get user's refresh token from profiles
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("google_refresh_token")
+        .eq("user_id", user.id)
+        .single();
+
+      if (profileError || !profile?.google_refresh_token) {
+        console.error("No refresh token available");
+        return new Response(JSON.stringify({ 
+          error: "Google account not connected. Please log out and log in again with Google.",
+          code: "GOOGLE_RECONNECT_REQUIRED"
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Get fresh access token
+      accessToken = await refreshAccessToken(profile.google_refresh_token);
     }
-
-    // Get user's refresh token from profiles
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("google_refresh_token")
-      .eq("user_id", user.id)
-      .single();
-
-    if (profileError || !profile?.google_refresh_token) {
-      console.error("Profile error:", profileError);
-      return new Response(JSON.stringify({ error: "Google account not connected" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Get fresh access token
-    const accessToken = await refreshAccessToken(profile.google_refresh_token);
 
     // Parse request body
     const { action, spreadsheetId, range } = await req.json();
@@ -173,7 +189,7 @@ serve(async (req) => {
         throw new Error(`Unknown action: ${action}`);
     }
 
-    console.log(`Action ${action} completed successfully for user ${user.id}`);
+    console.log(`Action ${action} completed successfully`);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
