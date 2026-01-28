@@ -1,148 +1,130 @@
 
 
-## Plano: Integração Funcional com Google Sheets
+## Plano: Corrigir Integração Google Sheets
 
-### Diagnóstico dos Problemas
+### Problema Identificado
 
-1. **Seleção de planilhas não funciona** - Falta uma edge function para chamar a Google Sheets API usando o access_token do usuário logado
-2. **Provider token não capturado** - O AuthContext não está salvando o `provider_token` que o Google retorna após o login OAuth
-3. **Tabela de criativos sem thumbnails** - O componente `CreativePerformanceTable` não tem suporte para exibir imagens de thumbnail nem links
-4. **Dados mockados** - Todo o dashboard usa dados estáticos de demonstração
+O sistema não está conseguindo acessar as planilhas do Google porque:
 
----
+1. **O `google_refresh_token` está vazio** no banco de dados para todos os usuários
+2. **O Supabase Auth não expõe o `provider_refresh_token`** na sessão após o redirect OAuth por questões de segurança
+3. A edge function depende desse refresh token que nunca é salvo
 
-### Fase 1: Captura e Armazenamento do Token Google
+### Solução Proposta
 
-**Atualizar AuthContext.tsx**
-- Capturar `provider_token` e `provider_refresh_token` do callback OAuth
-- Salvar na tabela `profiles.google_refresh_token` (já existe)
-- Expor método para obter token atualizado
-
-**Lógica de refresh de tokens**
-- Criar edge function `google-auth` para renovar access_token usando refresh_token quando expirar
+Usar o **`provider_token`** (access token) que está disponível na sessão do Supabase, ao invés de tentar usar o refresh token.
 
 ---
 
-### Fase 2: Edge Function para Google Sheets API
+### Mudanças Necessárias
 
-**Criar `supabase/functions/google-sheets/index.ts`**
+**1. AuthContext.tsx**
+- Adicionar método para obter o `provider_token` da sessão atual
+- Expor um método `getGoogleAccessToken()` que retorna o token atual
+- Salvar o `provider_token` quando disponível
 
-A edge function terá 3 endpoints:
+**2. Componentes SheetSelector.tsx e SheetTabSelector.tsx**
+- Passar o access token diretamente para a edge function
+- Adicionar tratamento de erro quando token não disponível
 
-| Ação | Descrição |
-|------|-----------|
-| `list-spreadsheets` | Lista planilhas do Drive do usuário |
-| `get-sheets` | Lista abas de uma planilha específica |
-| `read-data` | Lê dados de um range específico |
+**3. Edge Function google-sheets/index.ts**
+- Aceitar o access token diretamente no request (opção A)
+- OU usar o provider_token da sessão Supabase (opção B - preferida)
+- Manter lógica de refresh como fallback
 
-**Fluxo de dados:**
+**4. Hook useSheetData.ts**
+- Ajustar para passar token quando necessário
+
+---
+
+### Fluxo Corrigido
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  1. Usuário faz login com Google                            │
+│     → Supabase Auth retorna session com provider_token      │
+├─────────────────────────────────────────────────────────────┤
+│  2. AuthContext detecta provider_token na sessão            │
+│     → Salva no profiles.google_refresh_token (se disponível)│
+├─────────────────────────────────────────────────────────────┤
+│  3. Usuário clica "Selecionar Planilha"                     │
+│     → SheetSelector obtém provider_token da sessão          │
+│     → Passa token para edge function via header             │
+├─────────────────────────────────────────────────────────────┤
+│  4. Edge function recebe token                              │
+│     → Usa token direto OU busca do profiles                 │
+│     → Chama Google Sheets API                               │
+│     → Retorna lista de planilhas                            │
+└─────────────────────────────────────────────────────────────┘
 ```
-Frontend → Edge Function → Google Sheets API v4
-         ↓
-    Supabase (cache opcional)
-```
-
-**Headers e autenticação:**
-- Recebe JWT do usuário autenticado
-- Busca `google_refresh_token` do profile
-- Gera novo access_token via OAuth refresh
-- Chama Google Sheets API com Bearer token
 
 ---
 
-### Fase 3: Interface de Seleção de Planilhas
+### Arquivos a Modificar
 
-**Criar `src/components/sheets/SheetSelector.tsx`**
-
-Componentes:
-- Modal/Dialog para listar planilhas
-- Busca e filtro por nome
-- Preview das primeiras linhas ao selecionar aba
-- Indicador de loading e tratamento de erros
-
-**Atualizar `ProjectConfig.tsx`**
-- Conectar botão "Selecionar Planilha" ao SheetSelector
-- Salvar `spreadsheet_id` e `spreadsheet_name` no projeto
-- Avançar automaticamente para Step 2 (seleção de aba)
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/contexts/AuthContext.tsx` | Adicionar captura do `provider_token` e método para obtê-lo |
+| `src/components/sheets/SheetSelector.tsx` | Passar provider_token via header customizado |
+| `src/components/sheets/SheetTabSelector.tsx` | Passar provider_token via header |
+| `src/hooks/useSheetData.ts` | Passar provider_token nas chamadas |
+| `supabase/functions/google-sheets/index.ts` | Aceitar token via header `x-google-token`, usar direto sem refresh |
 
 ---
 
-### Fase 4: Performance por Criativo com Thumbnails
+### Detalhes Técnicos
 
-**Atualizar interface `CreativeData`**
-
-Adicionar campos opcionais:
+**AuthContext - Novo método:**
 ```typescript
-interface CreativeData {
-  id: string;
-  name: string;
-  thumbnail?: string;  // URL da imagem
-  link?: string;       // Link do criativo
-  impressions: number;
-  clicks: number;
-  ctr: number;
-  landingViews: number;
-  checkoutViews: number;
-  sales: number;
+// Adicionar ao contexto
+const getGoogleAccessToken = async (): Promise<string | null> => {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.provider_token ?? null;
+};
+```
+
+**Edge Function - Nova lógica:**
+```typescript
+// Verificar se token foi passado diretamente
+const googleToken = req.headers.get("x-google-token");
+if (googleToken) {
+  // Usar token direto
+  accessToken = googleToken;
+} else {
+  // Fallback: buscar do profiles e fazer refresh
+  const refreshToken = profile.google_refresh_token;
+  accessToken = await refreshAccessToken(refreshToken);
 }
 ```
 
-**Atualizar `CreativePerformanceTable.tsx`**
-- Coluna com thumbnail clicável (abre link do criativo)
-- Fallback para ícone caso não tenha imagem
-- Tooltip com nome completo ao passar mouse
-- Link externo abre em nova aba
+**SheetSelector - Chamada com token:**
+```typescript
+const { data: { session } } = await supabase.auth.getSession();
+const providerToken = session?.provider_token;
+
+const { data, error } = await supabase.functions.invoke('google-sheets', {
+  body: { action: 'list-spreadsheets' },
+  headers: providerToken ? { 'x-google-token': providerToken } : undefined,
+});
+```
 
 ---
 
-### Fase 5: Conexão de Dados Reais
+### Tratamento de Erros
 
-**Criar hook `useSheetData.ts`**
-- Chama edge function para buscar dados da planilha
-- Aplica mapeamento de colunas configurado
-- Transforma dados para formato do dashboard
-- Cache local com React Query (5 min TTL)
-
-**Atualizar `DashboardView.tsx`**
-- Substituir mock data por dados reais via hook
-- Estados de loading e empty
-- Mensagens de erro amigáveis
-
----
-
-### Estrutura de Arquivos a Criar/Modificar
-
-| Arquivo | Ação |
-|---------|------|
-| `supabase/functions/google-sheets/index.ts` | Criar |
-| `src/contexts/AuthContext.tsx` | Modificar (capturar provider_token) |
-| `src/components/sheets/SheetSelector.tsx` | Criar |
-| `src/components/sheets/SheetPreview.tsx` | Criar |
-| `src/pages/app/ProjectConfig.tsx` | Modificar (integrar selector) |
-| `src/components/dashboard/CreativePerformanceTable.tsx` | Modificar (thumbnails) |
-| `src/hooks/useSheetData.ts` | Criar |
-| `src/components/dashboard/DashboardView.tsx` | Modificar (dados reais) |
-
----
-
-### Secrets Necessários
-
-Para a edge function funcionar, serão necessárias as credenciais do Google Cloud:
-
-| Secret | Descrição |
-|--------|-----------|
-| `GOOGLE_CLIENT_ID` | Client ID do OAuth |
-| `GOOGLE_CLIENT_SECRET` | Client Secret do OAuth |
+- Se o `provider_token` expirou (erro 401 do Google):
+  - Mostrar mensagem pedindo para fazer logout e login novamente
+  - Adicionar botão "Reconectar Google" que força novo fluxo OAuth
 
 ---
 
 ### Resultado Esperado
 
-Após implementação:
+Após as correções:
 
-1. **Login funcional** - Usuário loga com Google e autoriza acesso às planilhas
-2. **Listar planilhas** - Modal mostra todas as planilhas do Drive do usuário
-3. **Selecionar aba** - Preview dos dados antes de confirmar
-4. **Dashboard com dados reais** - Big numbers, tabelas e funil mostram dados da planilha
-5. **Thumbnails de criativos** - Tabela exibe imagens e links dos criativos (se existirem na planilha)
+1. ✅ Login com Google funciona normalmente
+2. ✅ Seletor de planilhas abre e mostra planilhas do Drive
+3. ✅ Seleção de aba funciona
+4. ✅ Dados da planilha são carregados no dashboard
+5. ✅ Se token expirar, mensagem clara pede re-autenticação
 
