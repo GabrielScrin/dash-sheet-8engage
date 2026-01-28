@@ -8,6 +8,7 @@ interface AuthContextType {
   loading: boolean;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  getGoogleAccessToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -84,8 +85,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
   };
 
+  const getGoogleAccessToken = async (): Promise<string | null> => {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.provider_token ?? null;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signInWithGoogle, signOut, getGoogleAccessToken }}>
       {children}
     </AuthContext.Provider>
   );

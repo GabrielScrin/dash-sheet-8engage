@@ -13,12 +13,16 @@ export function useSheetData({ spreadsheetId, sheetName, enabled = true }: Sheet
     queryFn: async () => {
       const range = `${sheetName}!A:Z`;
       
+      const { data: sessionData } = await supabase.auth.getSession();
+      const providerToken = sessionData.session?.provider_token;
+      
       const { data, error } = await supabase.functions.invoke('google-sheets', {
         body: { 
           action: 'read-data', 
           spreadsheetId, 
           range 
         },
+        headers: providerToken ? { 'x-google-token': providerToken } : undefined,
       });
 
       if (error) throw error;
@@ -50,8 +54,12 @@ export function useSpreadsheets() {
   return useQuery({
     queryKey: ['spreadsheets'],
     queryFn: async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const providerToken = sessionData.session?.provider_token;
+      
       const { data, error } = await supabase.functions.invoke('google-sheets', {
         body: { action: 'list-spreadsheets' },
+        headers: providerToken ? { 'x-google-token': providerToken } : undefined,
       });
 
       if (error) throw error;
@@ -65,8 +73,12 @@ export function useSheetTabs(spreadsheetId: string, enabled = true) {
   return useQuery({
     queryKey: ['sheet-tabs', spreadsheetId],
     queryFn: async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const providerToken = sessionData.session?.provider_token;
+      
       const { data, error } = await supabase.functions.invoke('google-sheets', {
         body: { action: 'get-sheets', spreadsheetId },
+        headers: providerToken ? { 'x-google-token': providerToken } : undefined,
       });
 
       if (error) throw error;

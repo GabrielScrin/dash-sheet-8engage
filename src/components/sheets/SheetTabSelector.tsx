@@ -26,8 +26,12 @@ export function SheetTabSelector({ spreadsheetId, spreadsheetName, onSelect, onB
   useEffect(() => {
     const fetchTabs = async () => {
       try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const providerToken = sessionData.session?.provider_token;
+
         const { data, error } = await supabase.functions.invoke('google-sheets', {
           body: { action: 'get-sheets', spreadsheetId },
+          headers: providerToken ? { 'x-google-token': providerToken } : undefined,
         });
 
         if (error) throw error;
