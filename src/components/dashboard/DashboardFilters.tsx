@@ -19,6 +19,8 @@ import { DateRange } from 'react-day-picker';
 interface DashboardFiltersProps {
   selectedCreative: string | null;
   onCreativeChange: (id: string | null) => void;
+  dateRange: DateRange | undefined;
+  onDateRangeChange: (range: DateRange | undefined) => void;
 }
 
 const presets = [
@@ -29,31 +31,41 @@ const presets = [
   { label: 'Personalizado', value: 'custom', days: 0 },
 ];
 
-export function DashboardFilters({ selectedCreative, onCreativeChange }: DashboardFiltersProps) {
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 7),
-    to: new Date(),
-  });
+export function DashboardFilters({
+  selectedCreative,
+  onCreativeChange,
+  dateRange,
+  onDateRangeChange
+}: DashboardFiltersProps) {
   const [preset, setPreset] = useState('last_7_days');
   const [viewMode, setViewMode] = useState('week');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [internalDateRange, setInternalDateRange] = useState<DateRange | undefined>(dateRange);
 
   const handlePresetChange = (value: string) => {
     setPreset(value);
     const selectedPreset = presets.find(p => p.value === value);
-    
+
+    let newRange: DateRange | undefined;
+
     if (value === 'this_week') {
-      setDateRange({
+      newRange = {
         from: startOfWeek(new Date(), { weekStartsOn: 0 }),
         to: endOfWeek(new Date(), { weekStartsOn: 0 }),
-      });
+      };
     } else if (selectedPreset && selectedPreset.days > 0) {
-      setDateRange({
+      newRange = {
         from: subDays(new Date(), selectedPreset.days),
         to: new Date(),
-      });
+      };
     } else if (value === 'custom') {
       setIsCalendarOpen(true);
+      return;
+    }
+
+    if (newRange) {
+      onDateRangeChange(newRange);
+      setInternalDateRange(newRange);
     }
   };
 
@@ -107,7 +119,8 @@ export function DashboardFilters({ selectedCreative, onCreativeChange }: Dashboa
                 defaultMonth={dateRange?.from}
                 selected={dateRange}
                 onSelect={(range) => {
-                  setDateRange(range);
+                  onDateRangeChange(range);
+                  setInternalDateRange(range);
                   setPreset('custom');
                 }}
                 numberOfMonths={2}
@@ -143,8 +156,8 @@ export function DashboardFilters({ selectedCreative, onCreativeChange }: Dashboa
         )}
 
         <div className="ml-auto">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             size="sm"
             onClick={() => {
               handlePresetChange('last_7_days');

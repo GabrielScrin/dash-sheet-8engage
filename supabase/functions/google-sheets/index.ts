@@ -80,7 +80,30 @@ async function getSheetTabs(accessToken: string, spreadsheetId: string) {
   }));
 }
 
+import { Redis } from "https://esm.sh/@upstash/redis@1.25.0";
+
+const redisUrl = Deno.env.get("UPSTASH_REDIS_REST_URL");
+const redisToken = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
+
+const redis = redisUrl && redisToken
+  ? new Redis({ url: redisUrl, token: redisToken })
+  : null;
+
 async function readSheetData(accessToken: string, spreadsheetId: string, range: string) {
+  const cacheKey = `sheet_data:${spreadsheetId}:${range}`;
+
+  if (redis) {
+    try {
+      const cachedData = await redis.get(cacheKey);
+      if (cachedData) {
+        console.log("Serving from cache:", cacheKey);
+        return cachedData;
+      }
+    } catch (e) {
+      console.error("Redis get error:", e);
+    }
+  }
+
   const encodedRange = encodeURIComponent(range);
   const response = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodedRange}`,
@@ -95,7 +118,19 @@ async function readSheetData(accessToken: string, spreadsheetId: string, range: 
     throw new Error("Failed to read sheet data");
   }
 
-  return await response.json();
+  const data = await response.json();
+
+  if (redis) {
+    try {
+      // Cache for 5 minutes (300 seconds)
+      await redis.set(cacheKey, data, { ex: 300 });
+      console.log("Cached data for:", cacheKey);
+    } catch (e) {
+      console.error("Redis set error:", e);
+    }
+  }
+
+  return data;
 }
 
 serve(async (req) => {
@@ -116,6 +151,7 @@ serve(async (req) => {
 
     // Check for Google token passed directly via header
     const googleToken = req.headers.get("x-google-token");
+    const shareToken = req.headers.get("x-share-token");
     let accessToken: string;
 
     if (googleToken) {
@@ -123,37 +159,78 @@ serve(async (req) => {
       console.log("Using Google token from header");
       accessToken = googleToken;
     } else {
-      // Fallback: try to get refresh token from profiles
-      console.log("No Google token in header, trying refresh token from profiles");
-      
       // Create Supabase client
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      // Get user from JWT
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+      let ownerUserId: string | null = null;
 
-      if (userError || !user) {
-        console.error("Auth error:", userError);
-        return new Response(JSON.stringify({ error: "Invalid token" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (shareToken) {
+        console.log("Using share token for authentication");
+        const { data: tokenData, error: tokenError } = await supabase
+          .from("share_tokens")
+          .select("project_id, is_active, expires_at")
+          .eq("token", shareToken)
+          .single();
+
+        if (tokenError || !tokenData || !tokenData.is_active) {
+          console.error("Invalid or inactive share token");
+          return new Response(JSON.stringify({ error: "Invalid share token" }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // Check expiry
+        if (tokenData.expires_at && new Date(tokenData.expires_at) < new Date()) {
+          return new Response(JSON.stringify({ error: "Share token expired" }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // Get project owner
+        const { data: project, error: projectError } = await supabase
+          .from("projects")
+          .select("user_id")
+          .eq("id", tokenData.project_id)
+          .single();
+
+        if (projectError || !project) {
+          throw new Error("Project owner not found");
+        }
+        ownerUserId = project.user_id;
+
+      } else {
+        // Fallback: try to get refresh token from profiles for the logged in user
+        console.log("No Google token or share token, trying refresh token from profiles");
+
+        // Get user from JWT
+        const token = authHeader.replace("Bearer ", "");
+        const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+        if (userError || !user) {
+          console.error("Auth error:", userError);
+          return new Response(JSON.stringify({ error: "Invalid token" }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        ownerUserId = user.id;
       }
 
       // Get user's refresh token from profiles
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("google_refresh_token")
-        .eq("user_id", user.id)
+        .eq("user_id", ownerUserId)
         .single();
 
       if (profileError || !profile?.google_refresh_token) {
         console.error("No refresh token available");
-        return new Response(JSON.stringify({ 
-          error: "Google account not connected. Please log out and log in again with Google.",
+        return new Response(JSON.stringify({
+          error: "Google account not connected or refresh token missing.",
           code: "GOOGLE_RECONNECT_REQUIRED"
         }), {
           status: 400,
@@ -164,6 +241,7 @@ serve(async (req) => {
       // Get fresh access token
       accessToken = await refreshAccessToken(profile.google_refresh_token);
     }
+
 
     // Parse request body
     const { action, spreadsheetId, range } = await req.json();

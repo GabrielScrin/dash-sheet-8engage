@@ -20,7 +20,7 @@ interface ValidationResult {
 
 export default function PublicDashboard() {
   const { token } = useParams<{ token: string }>();
-  
+
   const [status, setStatus] = useState<'loading' | 'password' | 'validated' | 'error'>('loading');
   const [projectId, setProjectId] = useState<string | null>(null);
   const [tokenName, setTokenName] = useState<string>('Dashboard');
@@ -38,7 +38,7 @@ export default function PublicDashboard() {
 
     try {
       setIsSubmitting(true);
-      
+
       const { data, error: fnError } = await supabase.functions.invoke<ValidationResult>(
         'validate-share-token',
         {
@@ -75,7 +75,7 @@ export default function PublicDashboard() {
       // Handle specific errors
       setStatus('error');
       setError(data.error || 'Token inválido');
-      
+
     } catch (err) {
       console.error('Validation error:', err);
       setStatus('error');
@@ -149,7 +149,7 @@ export default function PublicDashboard() {
                   </Button>
                 </div>
               </div>
-              
+
               {error && (
                 <div className="flex items-center gap-2 text-sm text-destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -157,9 +157,9 @@ export default function PublicDashboard() {
                 </div>
               )}
 
-              <Button 
-                type="submit" 
-                className="w-full" 
+              <Button
+                type="submit"
+                className="w-full"
                 disabled={isSubmitting || !password.trim()}
               >
                 {isSubmitting ? (
@@ -214,7 +214,10 @@ export default function PublicDashboard() {
       </header>
 
       <main>
-        <DashboardView projectId={projectId || ''} />
+        <DashboardView
+          projectId={projectId || ''}
+          shareToken={token}
+        />
       </main>
     </div>
   );

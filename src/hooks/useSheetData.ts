@@ -5,28 +5,33 @@ interface SheetDataOptions {
   spreadsheetId: string;
   sheetName: string;
   enabled?: boolean;
+  shareToken?: string;
 }
 
-export function useSheetData({ spreadsheetId, sheetName, enabled = true }: SheetDataOptions) {
+export function useSheetData({ spreadsheetId, sheetName, enabled = true, shareToken }: SheetDataOptions) {
   return useQuery({
-    queryKey: ['sheet-data', spreadsheetId, sheetName],
+    queryKey: ['sheet-data', spreadsheetId, sheetName, shareToken],
     queryFn: async () => {
       const range = `${sheetName}!A:Z`;
-      
+
       const { data: sessionData } = await supabase.auth.getSession();
       const providerToken = sessionData.session?.provider_token;
-      
+
+      const invokeHeaders: Record<string, string> = {};
+      if (providerToken) invokeHeaders['x-google-token'] = providerToken;
+      if (shareToken) invokeHeaders['x-share-token'] = shareToken;
+
       const { data, error } = await supabase.functions.invoke('google-sheets', {
-        body: { 
-          action: 'read-data', 
-          spreadsheetId, 
-          range 
+        body: {
+          action: 'read-data',
+          spreadsheetId,
+          range
         },
-        headers: providerToken ? { 'x-google-token': providerToken } : undefined,
+        headers: invokeHeaders,
       });
 
       if (error) throw error;
-      
+
       // Transform sheet data to rows with headers
       const rows = data.values || [];
       if (rows.length < 2) {
@@ -56,7 +61,7 @@ export function useSpreadsheets() {
     queryFn: async () => {
       const { data: sessionData } = await supabase.auth.getSession();
       const providerToken = sessionData.session?.provider_token;
-      
+
       const { data, error } = await supabase.functions.invoke('google-sheets', {
         body: { action: 'list-spreadsheets' },
         headers: providerToken ? { 'x-google-token': providerToken } : undefined,
@@ -75,7 +80,7 @@ export function useSheetTabs(spreadsheetId: string, enabled = true) {
     queryFn: async () => {
       const { data: sessionData } = await supabase.auth.getSession();
       const providerToken = sessionData.session?.provider_token;
-      
+
       const { data, error } = await supabase.functions.invoke('google-sheets', {
         body: { action: 'get-sheets', spreadsheetId },
         headers: providerToken ? { 'x-google-token': providerToken } : undefined,

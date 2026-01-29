@@ -1,57 +1,110 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BigNumberCard } from '@/components/dashboard/BigNumberCard';
 import { WeeklyComparisonTable } from '@/components/dashboard/WeeklyComparisonTable';
 import { CreativePerformanceTable } from '@/components/dashboard/CreativePerformanceTable';
 import { FunnelVisualization } from '@/components/dashboard/FunnelVisualization';
 import { DashboardFilters } from '@/components/dashboard/DashboardFilters';
+import { useSheetData } from '@/hooks/useSheetData';
+import { useColumnMappings } from '@/hooks/useColumnMappings';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { processDashboardData } from '@/lib/dashboard-utils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface DashboardViewProps {
   projectId: string;
   isPreview?: boolean;
+  shareToken?: string;
 }
 
-// Mock data for demonstration
-const mockBigNumbers = [
-  { label: 'Vendas Totais', value: 1234, previousValue: 1100, format: 'number' as const },
-  { label: 'Faturamento', value: 156789.50, previousValue: 142000, format: 'currency' as const },
-  { label: 'Investimento', value: 45000, previousValue: 42000, format: 'currency' as const },
-  { label: 'ROAS', value: 3.48, previousValue: 3.38, format: 'decimal' as const },
-  { label: 'Taxa de Conversão', value: 4.2, previousValue: 3.9, format: 'percentage' as const },
-  { label: 'CTR', value: 2.8, previousValue: 2.5, format: 'percentage' as const },
-];
-
-const mockWeeklyData = [
-  { week: 'Sem 4 - Jan', sales: 312, investment: 11200, revenue: 39480, roas: 3.52, conversion: 4.1 },
-  { week: 'Sem 3 - Jan', sales: 298, investment: 10800, revenue: 37150, roas: 3.44, conversion: 3.9 },
-  { week: 'Sem 2 - Jan', sales: 325, investment: 11500, revenue: 41250, roas: 3.59, conversion: 4.3 },
-  { week: 'Sem 1 - Jan', sales: 299, investment: 11500, revenue: 38909, roas: 3.38, conversion: 4.2 },
-];
-
-const mockCreativeData = [
-  { id: '1', name: 'Video_Produto_A_V1', impressions: 125000, clicks: 3750, ctr: 3.0, landingViews: 3200, checkoutViews: 450, sales: 89 },
-  { id: '2', name: 'Carrossel_Oferta_Black', impressions: 98000, clicks: 2940, ctr: 3.0, landingViews: 2500, checkoutViews: 380, sales: 76 },
-  { id: '3', name: 'Static_Depoimento_01', impressions: 85000, clicks: 2125, ctr: 2.5, landingViews: 1800, checkoutViews: 290, sales: 58 },
-  { id: '4', name: 'Video_UGC_Review', impressions: 72000, clicks: 2160, ctr: 3.0, landingViews: 1850, checkoutViews: 310, sales: 62 },
-];
-
-const mockFunnelData = [
-  { label: 'Impressões', value: 380000 },
-  { label: 'Cliques', value: 10975 },
-  { label: 'Landing Page', value: 9350 },
-  { label: 'Checkout', value: 1430 },
-  { label: 'Vendas', value: 285 },
-];
-
-export function DashboardView({ projectId, isPreview = false }: DashboardViewProps) {
+export function DashboardView({ projectId, isPreview = false, shareToken }: DashboardViewProps) {
   const [activeTab, setActiveTab] = useState('perpetua');
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 7),
+    to: new Date(),
+  });
+
+  // 1. Fetch Project Details
+  const { data: project, isLoading: loadingProject } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: async () => {
+      // If we have a shareToken, we might need a public endpoint or bypass RLS
+      // For now, let's assume the user has access or we use the supabase service role indirectly
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!projectId,
+  });
+
+  // 2. Fetch Column Mappings
+  const { mappings, isLoading: loadingMappings } = useColumnMappings(projectId);
+
+  // 3. Fetch Sheet Data
+  // Note: For now we fetch from the first sheet name. 
+  // In a full implementation, we would aggregate multiple sheets.
+  const sheetName = project?.sheet_names?.[0] || project?.sheet_name || '';
+  const { data: sheetData, isLoading: loadingData, error: dataError } = useSheetData({
+    spreadsheetId: project?.spreadsheet_id || '',
+    sheetName: sheetName,
+    enabled: !!project?.spreadsheet_id && !!sheetName,
+    shareToken: shareToken,
+  });
+
+  // 4. Process Data
+  const processedData = useMemo(() => {
+    if (!sheetData?.rows || !mappings) return null;
+    return processDashboardData(sheetData.rows, mappings);
+  }, [sheetData, mappings]);
+
+  const isLoading = loadingProject || loadingMappings || loadingData;
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[60vh] flex-col items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Carregando dados do dashboard...</p>
+      </div>
+    );
+  }
+
+  if (dataError) {
+    return (
+      <div className="container py-12">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Erro ao carregar dados</AlertTitle>
+          <AlertDescription>
+            Não foi possível acessar a planilha do Google. Verifique a conexão ou as permissões.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  if (!processedData) {
+    return (
+      <div className="container py-12 text-center">
+        <h3 className="text-lg font-semibold mb-2">Configuração Incompleta</h3>
+        <p className="text-muted-foreground">
+          Mapeie as colunas da planilha para visualizar os dados aqui.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="container py-6">
       {/* Filters */}
-      <DashboardFilters 
+      <DashboardFilters
         selectedCreative={selectedCreative}
         onCreativeChange={setSelectedCreative}
       />
@@ -73,40 +126,54 @@ export function DashboardView({ projectId, isPreview = false }: DashboardViewPro
               className="space-y-8"
             >
               {/* Big Numbers */}
-              <section>
-                <h3 className="mb-4 text-lg font-semibold">Indicadores Principais</h3>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                  {mockBigNumbers.map((kpi, index) => (
-                    <BigNumberCard
-                      key={kpi.label}
-                      {...kpi}
-                      delay={index * 0.1}
-                    />
-                  ))}
-                </div>
-              </section>
+              {processedData.bigNumbers.length > 0 && (
+                <section>
+                  <h3 className="mb-4 text-lg font-semibold">Indicadores Principais</h3>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                    {processedData.bigNumbers.map((kpi, index) => (
+                      <BigNumberCard
+                        key={kpi.label}
+                        {...kpi}
+                        delay={index * 0.1}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {/* Weekly Comparison */}
-              <section>
-                <h3 className="mb-4 text-lg font-semibold">Visão Semanal</h3>
-                <WeeklyComparisonTable data={mockWeeklyData} />
-              </section>
+              {processedData.weeklyData.length > 0 && (
+                <section>
+                  <h3 className="mb-4 text-lg font-semibold">Visão Semanal</h3>
+                  <WeeklyComparisonTable data={processedData.weeklyData} />
+                </section>
+              )}
 
               {/* Creative Performance */}
-              <section>
-                <h3 className="mb-4 text-lg font-semibold">Performance por Criativo</h3>
-                <CreativePerformanceTable 
-                  data={mockCreativeData}
-                  selectedCreative={selectedCreative}
-                  onCreativeSelect={setSelectedCreative}
-                />
-              </section>
+              {processedData.creativeData.length > 0 && (
+                <section>
+                  <h3 className="mb-4 text-lg font-semibold">Performance por Criativo</h3>
+                  <CreativePerformanceTable
+                    data={processedData.creativeData}
+                    selectedCreative={selectedCreative}
+                    onCreativeSelect={setSelectedCreative}
+                  />
+                </section>
+              )}
 
               {/* Funnel */}
-              <section>
-                <h3 className="mb-4 text-lg font-semibold">Funil de Conversão</h3>
-                <FunnelVisualization data={mockFunnelData} />
-              </section>
+              {processedData.funnelData.length > 0 && (
+                <section>
+                  <h3 className="mb-4 text-lg font-semibold">Funil de Conversão</h3>
+                  <FunnelVisualization data={processedData.funnelData} />
+                </section>
+              )}
+
+              {processedData.bigNumbers.length === 0 && !dataError && (
+                <div className="rounded-lg border border-dashed p-12 text-center">
+                  <p className="text-muted-foreground">Nenhuma métrica configurada para esta aba.</p>
+                </div>
+              )}
             </motion.div>
           </TabsContent>
 
@@ -135,7 +202,7 @@ export function DashboardView({ projectId, isPreview = false }: DashboardViewPro
       {/* Footer */}
       <footer className="mt-12 border-t pt-6">
         <p className="text-center text-sm text-muted-foreground">
-          Última atualização: Agora • Dados atualizados a cada 5 minutos
+          Última atualização: {new Date().toLocaleTimeString('pt-BR')} • Dados sincronizados com Google Sheets
         </p>
       </footer>
     </div>
