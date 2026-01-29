@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -203,7 +204,9 @@ export default function ProjectConfig() {
                 <p className="text-sm text-muted-foreground mb-2">Abas selecionadas:</p>
                 <div className="flex flex-wrap gap-2">
                   {project.sheet_names.map((name) => (
-                    <Badge key={name} variant="secondary">{name}</Badge>
+                    <Badge key={name} variant="secondary">
+                      {name}
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -281,6 +284,30 @@ export default function ProjectConfig() {
     }
   };
 
+  const handlePublish = async () => {
+    if (!project) return;
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ status: 'published' })
+        .eq('id', project.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Dashboard Publicado!',
+        description: 'Seu dashboard já pode ser compartilhado.',
+      });
+      navigate('/app/projects');
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao publicar',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -326,17 +353,17 @@ export default function ProjectConfig() {
                       key={step.id}
                       onClick={() => setCurrentStep(step.id)}
                       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${isCurrent
-                          ? 'bg-primary text-primary-foreground'
-                          : isComplete
-                            ? 'text-foreground hover:bg-muted'
-                            : 'text-muted-foreground hover:bg-muted'
+                        ? 'bg-primary text-primary-foreground'
+                        : isComplete
+                          ? 'text-foreground hover:bg-muted'
+                          : 'text-muted-foreground hover:bg-muted'
                         }`}
                     >
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${isCurrent
-                          ? 'border-primary-foreground bg-primary-foreground text-primary'
-                          : isComplete
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-current'
+                        ? 'border-primary-foreground bg-primary-foreground text-primary'
+                        : isComplete
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-current'
                         }`}>
                         {isComplete && !isCurrent ? (
                           <Check className="h-4 w-4" />
@@ -414,7 +441,7 @@ export default function ProjectConfig() {
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 ) : (
-                  <Button className="gap-2">
+                  <Button onClick={handlePublish} className="gap-2">
                     <Check className="h-4 w-4" />
                     Publicar
                   </Button>

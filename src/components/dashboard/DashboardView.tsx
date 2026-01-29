@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Button } from '@/components/ui/button';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BigNumberCard } from '@/components/dashboard/BigNumberCard';
@@ -155,8 +156,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   // 5. Process Data
   const processedData = useMemo(() => {
-    if (!filteredRows.length || !mappings) return null;
-    return processDashboardData(filteredRows, mappings);
+    return processDashboardData(filteredRows, mappings || []);
   }, [filteredRows, mappings]);
 
   const isLoading = loadingProject || loadingMappings || allSheetsQuery.isLoading;
@@ -188,9 +188,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   if (!mappings || mappings.length === 0) {
     return (
       <div className="container py-12 text-center">
+        <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
+          <AlertCircle className="h-6 w-6 text-muted-foreground" />
+        </div>
         <h3 className="text-lg font-semibold mb-2">Configuração Incompleta</h3>
-        <p className="text-muted-foreground">
-          Mapeie as colunas da planilha na etapa anterior para visualizar os dados aqui.
+        <p className="text-muted-foreground max-w-sm mx-auto">
+          Você ainda não mapeou as colunas da sua planilha. Vá para a etapa "Colunas" para configurar quais dados quer ver.
         </p>
       </div>
     );
@@ -203,8 +206,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           <AlertCircle className="h-6 w-6 text-muted-foreground" />
         </div>
         <h3 className="text-lg font-semibold mb-2">Nenhum dado encontrado</h3>
-        <p className="text-muted-foreground">
-          As abas selecionadas parecem estar vazias ou sem dados válidos.
+        <p className="text-muted-foreground max-w-sm mx-auto">
+          As abas selecionadas ({sheetNames.join(', ')}) parecem estar vazias ou não contêm dados no formato esperado.
         </p>
       </div>
     );
@@ -241,16 +244,19 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Indicadores Principais</h3>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                    {processedData.bigNumbers.map((kpi, index) => (
-                      <BigNumberCard
-                        key={kpi.label}
-                        label={kpi.label}
-                        value={kpi.value}
-                        previousValue={kpi.previousValue}
-                        format={kpi.format}
-                        delay={index * 0.1}
-                      />
-                    ))}
+                    {processedData.bigNumbers.map((kpi, index) => {
+                      const { label, value, previousValue, format } = kpi;
+                      return (
+                        <BigNumberCard
+                          key={label}
+                          label={label}
+                          value={value}
+                          previousValue={previousValue}
+                          format={format}
+                          delay={index * 0.1}
+                        />
+                      );
+                    })}
                   </div>
                 </section>
               )}
@@ -285,11 +291,23 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
               {processedData.bigNumbers.length === 0 && !allSheetsQuery.error && (
                 <div className="rounded-lg border border-dashed p-12 text-center">
-                  <p className="text-muted-foreground">
+                  <p className="text-muted-foreground mb-4">
                     {filteredRows.length === 0
                       ? 'Nenhum dado encontrado para os filtros selecionados.'
                       : 'Nenhuma métrica configurada para esta aba.'}
                   </p>
+                  {filteredRows.length === 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setDateRange(undefined);
+                        setSelectedCreative(null);
+                      }}
+                    >
+                      Limpar Filtros
+                    </Button>
+                  )}
                 </div>
               )}
             </motion.div>
