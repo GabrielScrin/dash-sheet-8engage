@@ -3,6 +3,7 @@ import { Loader2, GripVertical, Trash2, Plus, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSheetData } from '@/hooks/useSheetData';
@@ -37,12 +38,44 @@ export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMap
   const [localMappings, setLocalMappings] = useState<LocalMapping[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<MappingCategory>('big_number');
 
-  // Fetch data from first sheet to get headers
-  const { data: sheetData, isLoading: loadingData } = useSheetData({
-    spreadsheetId,
-    sheetName: sheetNames[0] || '',
-    enabled: sheetNames.length > 0,
-  });
+  // Fetch headers from all selected sheets and merge them
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [loadingHeaders, setLoadingHeaders] = useState(false);
+
+  useEffect(() => {
+    const fetchAllHeaders = async () => {
+      if (sheetNames.length === 0) return;
+      setLoadingHeaders(true);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const providerToken = sessionData.session?.provider_token;
+
+        const headerPromises = sheetNames.map(async (name) => {
+          const { data, error } = await supabase.functions.invoke('google-sheets', {
+            body: { action: 'read-data', spreadsheetId, sheetName: name, range: 'A1:Z1' },
+            headers: providerToken ? { 'x-google-token': providerToken } : undefined,
+          });
+          if (error) throw error;
+          return data?.headers || [];
+        });
+
+        const allHeadersArrays = await Promise.all(headerPromises);
+        const uniqueHeaders = Array.from(new Set(allHeadersArrays.flat()));
+        setHeaders(uniqueHeaders);
+      } catch (error: any) {
+        console.error('Error fetching headers:', error);
+        toast({
+          title: 'Erro ao carregar colunas',
+          description: error.message,
+          variant: 'destructive',
+        });
+      } finally {
+        setLoadingHeaders(false);
+      }
+    };
+
+    fetchAllHeaders();
+  }, [spreadsheetId, JSON.stringify(sheetNames)]);
 
   const { mappings, isLoading: loadingMappings, saveMappings } = useColumnMappings(projectId);
 
@@ -59,7 +92,6 @@ export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMap
     }
   }, [mappings]);
 
-  const headers = sheetData?.headers || [];
   const usedColumns = new Set(localMappings.map(m => m.source_column));
   const availableColumns = headers.filter(h => !usedColumns.has(h));
 
@@ -70,8 +102,8 @@ export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMap
         source_column: column,
         category: selectedCategory,
         display_name: column,
-        funnel_order: selectedCategory === 'funnel' 
-          ? prev.filter(m => m.category === 'funnel').length + 1 
+        funnel_order: selectedCategory === 'funnel'
+          ? prev.filter(m => m.category === 'funnel').length + 1
           : undefined,
       },
     ]);
@@ -99,7 +131,7 @@ export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMap
     return localMappings.filter(m => m.category === category);
   };
 
-  if (loadingData || loadingMappings) {
+  if (loadingHeaders || loadingMappings) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -192,7 +224,7 @@ export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMap
                 {Object.entries(CATEGORY_LABELS).map(([category, label]) => {
                   const categoryMappings = getMappingsByCategory(category as MappingCategory);
                   if (categoryMappings.length === 0) return null;
-                  
+
                   return (
                     <div key={category}>
                       <h4 className="text-sm font-medium text-muted-foreground mb-2">{label}</h4>

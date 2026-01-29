@@ -6,12 +6,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 import { useColumnMappings } from '@/hooks/useColumnMappings';
+import { useSheetData } from '@/hooks/useSheetData';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 interface KPIConfiguratorProps {
   projectId: string;
+  spreadsheetId: string;
+  sheetNames: string[];
 }
 
 type FormatType = 'number' | 'currency' | 'percent' | 'text';
@@ -32,11 +36,20 @@ const FORMAT_ICONS: Record<FormatType, React.ReactNode> = {
   text: <Type className="h-4 w-4" />,
 };
 
-export function KPIConfigurator({ projectId }: KPIConfiguratorProps) {
+export function KPIConfigurator({ projectId, spreadsheetId, sheetNames }: KPIConfiguratorProps) {
   const { toast } = useToast();
   const { mappings, isLoading, saveMappings } = useColumnMappings(projectId);
   const [kpis, setKpis] = useState<KPIConfig[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Fetch sample row from first sheet for preview
+  const { data: sheetData, isLoading: loadingData } = useSheetData({
+    spreadsheetId,
+    sheetName: sheetNames[0] || '',
+    enabled: sheetNames.length > 0,
+  });
+
+  const sampleRow = sheetData?.rows?.[0] || {};
 
   // Filter only big_number mappings
   const bigNumberMappings = mappings.filter(m => m.is_big_number);
@@ -56,7 +69,7 @@ export function KPIConfigurator({ projectId }: KPIConfiguratorProps) {
   }, [mappings]);
 
   const updateKPI = (id: string, updates: Partial<KPIConfig>) => {
-    setKpis(prev => prev.map(kpi => 
+    setKpis(prev => prev.map(kpi =>
       kpi.id === id ? { ...kpi, ...updates } : kpi
     ));
   };
@@ -127,11 +140,18 @@ export function KPIConfigurator({ projectId }: KPIConfiguratorProps) {
               <div className="space-y-4 pr-4">
                 {kpis.map((kpi) => (
                   <div key={kpi.id} className="rounded-lg border p-4 space-y-4">
-                    <div className="flex items-center gap-2">
-                      <GripVertical className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-muted-foreground">
-                        Coluna: {kpi.source_column}
-                      </span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <GripVertical className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium text-muted-foreground">
+                          Coluna: {kpi.source_column}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="bg-primary/5 border-primary/20">
+                          Valor Atual: {sampleRow[kpi.source_column] !== undefined ? String(sampleRow[kpi.source_column]) : '-'}
+                        </Badge>
+                      </div>
                     </div>
 
                     <div className="grid gap-4 sm:grid-cols-2">

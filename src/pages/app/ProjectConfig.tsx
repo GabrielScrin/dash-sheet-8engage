@@ -57,14 +57,14 @@ export default function ProjectConfig() {
         .single();
 
       if (error) throw error;
-      
+
       // Parse sheet_names from JSONB
       const projectData: Project = {
         ...data,
         sheet_names: Array.isArray(data.sheet_names) ? data.sheet_names as string[] : [],
       };
       setProject(projectData);
-      
+
       // Determine current step based on project state
       if (!data.spreadsheet_id) {
         setCurrentStep(1);
@@ -129,7 +129,7 @@ export default function ProjectConfig() {
       const sheetNames = tabs.map(t => t.title);
       const { error } = await supabase
         .from('projects')
-        .update({ 
+        .update({
           sheet_name: sheetNames[0], // Keep backward compatibility
           sheet_names: sheetNames,
         })
@@ -137,8 +137,8 @@ export default function ProjectConfig() {
 
       if (error) throw error;
 
-      setProject({ 
-        ...project, 
+      setProject({
+        ...project,
         sheet_name: sheetNames[0],
         sheet_names: sheetNames,
       });
@@ -246,8 +246,12 @@ export default function ProjectConfig() {
           </div>
         );
       case 4:
-        return project?.id ? (
-          <KPIConfigurator projectId={project.id} />
+        return project?.id && project?.spreadsheet_id && project?.sheet_names ? (
+          <KPIConfigurator
+            projectId={project.id}
+            spreadsheetId={project.spreadsheet_id}
+            sheetNames={project.sheet_names}
+          />
         ) : (
           <div className="rounded-lg border p-6 text-center">
             <BarChart3 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
@@ -294,7 +298,7 @@ export default function ProjectConfig() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container py-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight">{project?.name}</h1>
@@ -312,30 +316,28 @@ export default function ProjectConfig() {
             <CardContent className="p-0">
               <nav className="space-y-1 px-4 pb-4">
                 {steps.map((step) => {
-                  const isComplete = step.id < currentStep || 
+                  const isComplete = step.id < currentStep ||
                     (step.id === 1 && !!project?.spreadsheet_id) ||
                     (step.id === 2 && !!project?.sheet_name);
                   const isCurrent = step.id === currentStep;
-                  
+
                   return (
                     <button
                       key={step.id}
                       onClick={() => setCurrentStep(step.id)}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                        isCurrent 
-                          ? 'bg-primary text-primary-foreground' 
-                          : isComplete 
-                            ? 'text-foreground hover:bg-muted' 
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${isCurrent
+                          ? 'bg-primary text-primary-foreground'
+                          : isComplete
+                            ? 'text-foreground hover:bg-muted'
                             : 'text-muted-foreground hover:bg-muted'
-                      }`}
+                        }`}
                     >
-                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${
-                        isCurrent 
-                          ? 'border-primary-foreground bg-primary-foreground text-primary' 
-                          : isComplete 
-                            ? 'border-primary bg-primary text-primary-foreground' 
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${isCurrent
+                          ? 'border-primary-foreground bg-primary-foreground text-primary'
+                          : isComplete
+                            ? 'border-primary bg-primary text-primary-foreground'
                             : 'border-current'
-                      }`}>
+                        }`}>
                         {isComplete && !isCurrent ? (
                           <Check className="h-4 w-4" />
                         ) : (
@@ -404,7 +406,7 @@ export default function ProjectConfig() {
                   Preview
                 </Button>
                 {currentStep < steps.length ? (
-                  <Button 
+                  <Button
                     onClick={() => setCurrentStep(Math.min(steps.length, currentStep + 1))}
                     className="gap-2"
                   >

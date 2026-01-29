@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -21,12 +22,12 @@ interface SheetTabSelectorProps {
   onBack: () => void;
 }
 
-export function SheetTabSelector({ 
-  spreadsheetId, 
-  spreadsheetName, 
+export function SheetTabSelector({
+  spreadsheetId,
+  spreadsheetName,
   selectedTabs = [],
-  onSelect, 
-  onBack 
+  onSelect,
+  onBack
 }: SheetTabSelectorProps) {
   const { toast } = useToast();
   const [tabs, setTabs] = useState<SheetTab[]>([]);
@@ -109,11 +110,29 @@ export function SheetTabSelector({
         <p className="text-sm text-muted-foreground">
           Selecione as abas que contêm os dados do dashboard:
         </p>
-        {selected.size > 0 && (
-          <Badge variant="secondary">
-            {selected.size} aba{selected.size > 1 ? 's' : ''} selecionada{selected.size > 1 ? 's' : ''}
-          </Badge>
-        )}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="select-all"
+              checked={tabs.length > 0 && selected.size === tabs.length}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  setSelected(new Set(tabs.map(t => t.title)));
+                } else {
+                  setSelected(new Set());
+                }
+              }}
+            />
+            <Label htmlFor="select-all" className="text-sm cursor-pointer whitespace-nowrap">
+              Selecionar Todas
+            </Label>
+          </div>
+          {selected.size > 0 && (
+            <Badge variant="secondary">
+              {selected.size} aba{selected.size > 1 ? 's' : ''} selecionada{selected.size > 1 ? 's' : ''}
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-2">
@@ -122,9 +141,8 @@ export function SheetTabSelector({
           return (
             <Card
               key={tab.sheetId}
-              className={`cursor-pointer transition-colors hover:bg-muted ${
-                isSelected ? 'border-primary bg-primary/5' : ''
-              }`}
+              className={`cursor-pointer transition-colors hover:bg-muted ${isSelected ? 'border-primary bg-primary/5' : ''
+                }`}
               onClick={() => toggleTab(tab)}
             >
               <CardContent className="flex items-center gap-3 p-4">

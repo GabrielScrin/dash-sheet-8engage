@@ -3,7 +3,7 @@ import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 interface CreateTokenRequest {
@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
+
     // Get auth header to verify user
     const authHeader = req.headers.get('authorization');
     if (!authHeader) {
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     });
 
     const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
-    
+
     if (userError || !user) {
       return new Response(
         JSON.stringify({ error: 'Invalid authentication' }),
@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     }
 
     const body: CreateTokenRequest = await req.json();
-    
+
     // Input validation
     if (!body.project_id || typeof body.project_id !== 'string') {
       return new Response(
@@ -171,9 +171,12 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Create token error:', error);
+    console.error('Fatal create-share-token error:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : String(error)
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
