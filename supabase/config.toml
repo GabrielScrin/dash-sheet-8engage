@@ -1,4 +1,13 @@
 project_id = "ufksgrounhmfafdajbrr"
 
+[functions.validate-share-token]
+verify_jwt = false
+
+[functions.create-share-token]
+verify_jwt = false
+
+[functions.google-sheets]
+verify_jwt = false
+
 [functions.google-sheets]
 verify_jwt = false
