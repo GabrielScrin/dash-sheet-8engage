@@ -150,6 +150,7 @@ export type Database = {
           id: string
           name: string
           sheet_name: string | null
+          sheet_names: Json | null
           spreadsheet_id: string | null
           spreadsheet_name: string | null
           status: string | null
@@ -164,6 +165,7 @@ export type Database = {
           id?: string
           name: string
           sheet_name?: string | null
+          sheet_names?: Json | null
           spreadsheet_id?: string | null
           spreadsheet_name?: string | null
           status?: string | null
@@ -178,6 +180,7 @@ export type Database = {
           id?: string
           name?: string
           sheet_name?: string | null
+          sheet_names?: Json | null
           spreadsheet_id?: string | null
           spreadsheet_name?: string | null
           status?: string | null

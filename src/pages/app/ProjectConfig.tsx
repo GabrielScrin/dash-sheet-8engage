@@ -4,11 +4,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Check, ChevronRight, FileSpreadsheet, Columns, BarChart3, Share2, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Header } from '@/components/layout/Header';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SheetSelector } from '@/components/sheets/SheetSelector';
 import { SheetTabSelector } from '@/components/sheets/SheetTabSelector';
+import { ColumnMapper } from '@/components/config/ColumnMapper';
+import { KPIConfigurator } from '@/components/config/KPIConfigurator';
+import { ShareManager } from '@/components/config/ShareManager';
 
 interface Project {
   id: string;
@@ -17,6 +21,7 @@ interface Project {
   spreadsheet_id: string | null;
   spreadsheet_name: string | null;
   sheet_name: string | null;
+  sheet_names: string[] | null;
   status: string;
 }
 
@@ -52,7 +57,13 @@ export default function ProjectConfig() {
         .single();
 
       if (error) throw error;
-      setProject(data);
+      
+      // Parse sheet_names from JSONB
+      const projectData: Project = {
+        ...data,
+        sheet_names: Array.isArray(data.sheet_names) ? data.sheet_names as string[] : [],
+      };
+      setProject(projectData);
       
       // Determine current step based on project state
       if (!data.spreadsheet_id) {
@@ -111,27 +122,35 @@ export default function ProjectConfig() {
     }
   };
 
-  const handleTabSelect = async (tab: { sheetId: number; title: string }) => {
+  const handleTabsSelect = async (tabs: { sheetId: number; title: string }[]) => {
     if (!project) return;
 
     try {
+      const sheetNames = tabs.map(t => t.title);
       const { error } = await supabase
         .from('projects')
-        .update({ sheet_name: tab.title })
+        .update({ 
+          sheet_name: sheetNames[0], // Keep backward compatibility
+          sheet_names: sheetNames,
+        })
         .eq('id', project.id);
 
       if (error) throw error;
 
-      setProject({ ...project, sheet_name: tab.title });
+      setProject({ 
+        ...project, 
+        sheet_name: sheetNames[0],
+        sheet_names: sheetNames,
+      });
       setCurrentStep(3);
 
       toast({
-        title: 'Aba selecionada!',
-        description: `Aba "${tab.title}" foi configurada.`,
+        title: 'Abas selecionadas!',
+        description: `${sheetNames.length} aba${sheetNames.length > 1 ? 's' : ''} configurada${sheetNames.length > 1 ? 's' : ''}.`,
       });
     } catch (error: any) {
       toast({
-        title: 'Erro ao salvar aba',
+        title: 'Erro ao salvar abas',
         description: error.message,
         variant: 'destructive',
       });
@@ -178,12 +197,25 @@ export default function ProjectConfig() {
         );
       case 2:
         return project?.spreadsheet_id && project?.spreadsheet_name ? (
-          <SheetTabSelector
-            spreadsheetId={project.spreadsheet_id}
-            spreadsheetName={project.spreadsheet_name}
-            onSelect={handleTabSelect}
-            onBack={() => setCurrentStep(1)}
-          />
+          <div className="space-y-4">
+            {project.sheet_names && project.sheet_names.length > 0 && (
+              <div className="rounded-lg border p-4 bg-muted/50">
+                <p className="text-sm text-muted-foreground mb-2">Abas selecionadas:</p>
+                <div className="flex flex-wrap gap-2">
+                  {project.sheet_names.map((name) => (
+                    <Badge key={name} variant="secondary">{name}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            <SheetTabSelector
+              spreadsheetId={project.spreadsheet_id}
+              spreadsheetName={project.spreadsheet_name}
+              selectedTabs={project.sheet_names || []}
+              onSelect={handleTabsSelect}
+              onBack={() => setCurrentStep(1)}
+            />
+          </div>
         ) : (
           <div className="rounded-lg border p-6 text-center">
             <p className="text-muted-foreground">
@@ -195,49 +227,49 @@ export default function ProjectConfig() {
           </div>
         );
       case 3:
-        return (
-          <div className="space-y-6">
-            {project?.sheet_name && (
-              <div className="rounded-lg border p-4 bg-muted/50 mb-4">
-                <p className="text-sm">
-                  <span className="text-muted-foreground">Planilha:</span>{' '}
-                  <span className="font-medium">{project.spreadsheet_name}</span>
-                  <span className="mx-2 text-muted-foreground">→</span>
-                  <span className="font-medium">{project.sheet_name}</span>
-                </p>
-              </div>
-            )}
-            <div className="rounded-lg border p-6 text-center">
-              <Columns className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Mapear Colunas</h3>
-              <p className="text-muted-foreground">
-                Arraste as colunas da planilha para definir quais métricas exibir no dashboard.
-              </p>
-            </div>
+        return project?.spreadsheet_id && project?.sheet_names && project.sheet_names.length > 0 ? (
+          <ColumnMapper
+            projectId={project.id}
+            spreadsheetId={project.spreadsheet_id}
+            sheetNames={project.sheet_names}
+          />
+        ) : (
+          <div className="rounded-lg border p-6 text-center">
+            <Columns className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Mapear Colunas</h3>
+            <p className="text-muted-foreground">
+              Primeiro, selecione as abas da planilha na etapa anterior.
+            </p>
+            <Button className="mt-4" onClick={() => setCurrentStep(2)}>
+              Ir para Etapa 2
+            </Button>
           </div>
         );
       case 4:
-        return (
-          <div className="space-y-6">
-            <div className="rounded-lg border p-6 text-center">
-              <BarChart3 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Configurar KPIs</h3>
-              <p className="text-muted-foreground">
-                Escolha até 12 métricas para exibir como Big Numbers e configure o funil.
-              </p>
-            </div>
+        return project?.id ? (
+          <KPIConfigurator projectId={project.id} />
+        ) : (
+          <div className="rounded-lg border p-6 text-center">
+            <BarChart3 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Configurar KPIs</h3>
+            <p className="text-muted-foreground">
+              Primeiro, mapeie as colunas na etapa anterior.
+            </p>
+            <Button className="mt-4" onClick={() => setCurrentStep(3)}>
+              Ir para Etapa 3
+            </Button>
           </div>
         );
       case 5:
-        return (
-          <div className="space-y-6">
-            <div className="rounded-lg border p-6 text-center">
-              <Share2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Compartilhar Dashboard</h3>
-              <p className="text-muted-foreground">
-                Gere links de visualização para compartilhar com seus clientes.
-              </p>
-            </div>
+        return project?.id ? (
+          <ShareManager projectId={project.id} />
+        ) : (
+          <div className="rounded-lg border p-6 text-center">
+            <Share2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Compartilhar Dashboard</h3>
+            <p className="text-muted-foreground">
+              Carregando...
+            </p>
           </div>
         );
       default:
