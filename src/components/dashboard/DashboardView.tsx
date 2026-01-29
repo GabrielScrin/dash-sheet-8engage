@@ -51,7 +51,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const { mappings, isLoading: loadingMappings } = useColumnMappings(projectId);
 
   // 3. Fetch Sheet Data from all configured sheets
-  const sheetNames = project?.sheet_names || (project?.sheet_name ? [project.sheet_name] : []);
+  const sheetNames: string[] = Array.isArray(project?.sheet_names) 
+    ? (project.sheet_names as string[]) 
+    : (project?.sheet_name ? [project.sheet_name] : []);
 
   // We'll use a custom query to fetch all sheets in parallel
   const allSheetsQuery = useQuery({
@@ -206,7 +208,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                     {processedData.bigNumbers.map((kpi, index) => (
                       <BigNumberCard
                         key={kpi.label}
-                        {...kpi}
+                        label={kpi.label}
+                        value={typeof kpi.value === 'number' ? kpi.value : parseFloat(String(kpi.value)) || 0}
+                        previousValue={typeof kpi.previousValue === 'number' ? kpi.previousValue : (kpi.previousValue ? parseFloat(String(kpi.previousValue)) : undefined)}
+                        format={kpi.format}
                         delay={index * 0.1}
                       />
                     ))}
