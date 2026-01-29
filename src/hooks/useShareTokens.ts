@@ -11,7 +11,7 @@ export interface ShareToken {
   password_hash: string | null;
   expires_at: string | null;
   is_active: boolean;
-  allowed_filters: Record<string, any> | null;
+  allowed_filters: Record<string, unknown> | null;
   created_at: string;
   created_by: string | null;
 }
@@ -21,27 +21,13 @@ export interface CreateTokenInput {
   name?: string;
   password?: string;
   expires_at?: string | null;
-  allowed_filters?: Record<string, any>;
-}
-
-function generateToken(): string {
-  const array = new Uint8Array(24);
-  crypto.getRandomValues(array);
-  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
-}
-
-async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
+  allowed_filters?: Record<string, unknown>;
 }
 
 export function useShareTokens(projectId: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { session } = useAuth();
 
   const query = useQuery({
     queryKey: ['share-tokens', projectId],
@@ -60,26 +46,21 @@ export function useShareTokens(projectId: string) {
 
   const createToken = useMutation({
     mutationFn: async (input: CreateTokenInput) => {
-      const token = generateToken();
-      const passwordHash = input.password ? await hashPassword(input.password) : null;
-
-      const { data, error } = await supabase
-        .from('share_tokens')
-        .insert({
+      // Use edge function for secure token creation with bcrypt hashing
+      const { data, error } = await supabase.functions.invoke('create-share-token', {
+        body: {
           project_id: input.project_id,
-          token,
-          name: input.name || 'Link de Acesso',
-          password_hash: passwordHash,
+          name: input.name,
+          password: input.password,
           expires_at: input.expires_at,
-          allowed_filters: input.allowed_filters || {},
-          is_active: true,
-          created_by: user?.id,
-        })
-        .select()
-        .single();
+          allowed_filters: input.allowed_filters,
+        },
+      });
 
       if (error) throw error;
-      return data as ShareToken;
+      if (data.error) throw new Error(data.error);
+      
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['share-tokens', projectId] });
@@ -88,7 +69,7 @@ export function useShareTokens(projectId: string) {
         description: 'O link de compartilhamento foi gerado.',
       });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: 'Erro ao criar link',
         description: error.message,
@@ -113,7 +94,7 @@ export function useShareTokens(projectId: string) {
         description: 'O acesso foi desativado.',
       });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: 'Erro ao revogar link',
         description: error.message,
@@ -138,7 +119,7 @@ export function useShareTokens(projectId: string) {
         description: 'O link foi excluído permanentemente.',
       });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: 'Erro ao remover link',
         description: error.message,
