@@ -26,7 +26,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const [activeTab, setActiveTab] = useState('perpetua');
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 7),
+    from: subDays(new Date(), 30),
     to: new Date(),
   });
 
@@ -61,36 +61,50 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     queryFn: async () => {
       const results = await Promise.all(
         sheetNames.map(async (name: string) => {
-          const range = `${name}!A:Z`;
-          const { data: sessionData } = await supabase.auth.getSession();
-          const providerToken = sessionData.session?.provider_token;
+          try {
+            const range = `'${name}'!A:Z`;
+            const { data: sessionData } = await supabase.auth.getSession();
+            const providerToken = sessionData.session?.provider_token;
 
-          const invokeHeaders: Record<string, string> = {};
-          if (providerToken) invokeHeaders['x-google-token'] = providerToken;
-          if (shareToken) invokeHeaders['x-share-token'] = shareToken;
+            const invokeHeaders: Record<string, string> = {};
+            if (providerToken) invokeHeaders['x-google-token'] = providerToken;
+            if (shareToken) invokeHeaders['x-share-token'] = shareToken;
 
-          const { data, error } = await supabase.functions.invoke('google-sheets', {
-            body: {
-              action: 'read-data',
-              spreadsheetId: project?.spreadsheet_id,
-              range
-            },
-            headers: invokeHeaders,
-          });
-          if (error) throw error;
+            console.log(`Fetching sheet: ${name}, Range: ${range}`);
+            const { data, error } = await supabase.functions.invoke('google-sheets', {
+              body: {
+                action: 'read-data',
+                spreadsheetId: project?.spreadsheet_id,
+                range
+              },
+              headers: invokeHeaders,
+            });
 
-          // Basic row transformation (similar to useSheetData)
-          const rows = data.values || [];
-          if (rows.length < 2) return [];
-          const headers = rows[0] as string[];
-          return rows.slice(1).map((row: any[]) => {
-            const obj: Record<string, any> = {};
-            headers.forEach((h, i) => { obj[h] = row[i] || ''; });
-            return obj;
-          });
+            if (error) {
+              console.error(`Error fetching sheet ${name}:`, error);
+              return [];
+            }
+
+            // Basic row transformation (similar to useSheetData)
+            const rows = data.values || [];
+            console.log(`Sheet ${name} returned ${rows.length} rows`);
+
+            if (rows.length < 2) return [];
+            const headers = rows[0] as string[];
+            return rows.slice(1).map((row: any[]) => {
+              const obj: Record<string, any> = {};
+              headers.forEach((h, i) => { obj[h] = row[i] || ''; });
+              return obj;
+            });
+          } catch (err) {
+            console.error(`Unexpected error fetching sheet ${name}:`, err);
+            return [];
+          }
         })
       );
-      return results.flat(); // Aggregate all rows from all sheets
+      const flattened = results.flat();
+      console.log(`Total rows aggregated: ${flattened.length}`);
+      return flattened;
     },
     enabled: !!project?.spreadsheet_id && sheetNames.length > 0,
   });
@@ -108,11 +122,18 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         const dateKey = Object.keys(row).find(k =>
           k.toLowerCase().includes('data') || k.toLowerCase().includes('date')
         );
-        if (dateKey) {
+        if (dateKey && row[dateKey]) {
           const rowDate = new Date(row[dateKey]);
           if (!isNaN(rowDate.getTime())) {
-            if (rowDate < dateRange.from) return false;
-            if (dateRange.to && rowDate > dateRange.to) return false;
+            // Normalize dates to start of day for inclusive comparison
+            const from = new Date(dateRange.from!);
+            from.setHours(0, 0, 0, 0);
+
+            const to = dateRange.to ? new Date(dateRange.to) : new Date();
+            to.setHours(23, 59, 59, 999);
+
+            if (rowDate < from) return false;
+            if (rowDate > to) return false;
           }
         }
       }

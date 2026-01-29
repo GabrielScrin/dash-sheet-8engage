@@ -154,9 +154,28 @@ export function processDashboardData(
 }
 
 function parseValue(val: any): number {
-    if (typeof val === 'number') return val;
-    if (!val) return 0;
-    const cleaned = String(val).replace(/[R$\s%]/g, '').replace(/\./g, '').replace(',', '.');
+    if (typeof val === 'number') return isFinite(val) ? val : 0;
+    if (!val || val === '-') return 0;
+
+    let cleaned = String(val).replace(/[R$\s%]/g, '');
+
+    // Detect if it uses comma as decimal separator (BR format: 1.234,56)
+    // or if it uses dot as decimal separator (US format: 1,234.56)
+    if (cleaned.includes(',') && cleaned.includes('.')) {
+        // Mixed separators
+        if (cleaned.lastIndexOf('.') > cleaned.lastIndexOf(',')) {
+            // US format: dots is last (decimal), remove comma (thousand)
+            cleaned = cleaned.replace(/,/g, '');
+        } else {
+            // BR format: comma is last (decimal), remove dot (thousand), then comma to dot
+            cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+        }
+    } else if (cleaned.includes(',')) {
+        // Only comma: assume decimal if it's the only one, or thousand if it's high?
+        // Usually safer to assume decimal in Portuguese context.
+        cleaned = cleaned.replace(',', '.');
+    }
+
     const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? 0 : parsed;
+    return isNaN(parsed) || !isFinite(parsed) ? 0 : parsed;
 }
