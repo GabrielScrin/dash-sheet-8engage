@@ -70,6 +70,7 @@ export type Database = {
           is_big_number: boolean | null
           is_funnel_step: boolean | null
           mapped_to: string
+          mapped_to_key: string | null
           project_id: string
           source_column: string
         }
@@ -83,6 +84,7 @@ export type Database = {
           is_big_number?: boolean | null
           is_funnel_step?: boolean | null
           mapped_to: string
+          mapped_to_key?: string | null
           project_id: string
           source_column: string
         }
@@ -96,6 +98,7 @@ export type Database = {
           is_big_number?: boolean | null
           is_funnel_step?: boolean | null
           mapped_to?: string
+          mapped_to_key?: string | null
           project_id?: string
           source_column?: string
         }
