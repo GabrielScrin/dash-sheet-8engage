@@ -13,6 +13,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { processDashboardData } from '@/lib/dashboard-utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { subDays } from 'date-fns';
+import { DateRange } from 'react-day-picker';
 
 interface DashboardViewProps {
   projectId: string;
@@ -48,24 +50,92 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   // 2. Fetch Column Mappings
   const { mappings, isLoading: loadingMappings } = useColumnMappings(projectId);
 
-  // 3. Fetch Sheet Data
-  // Note: For now we fetch from the first sheet name. 
-  // In a full implementation, we would aggregate multiple sheets.
-  const sheetName = project?.sheet_names?.[0] || project?.sheet_name || '';
-  const { data: sheetData, isLoading: loadingData, error: dataError } = useSheetData({
-    spreadsheetId: project?.spreadsheet_id || '',
-    sheetName: sheetName,
-    enabled: !!project?.spreadsheet_id && !!sheetName,
-    shareToken: shareToken,
+  // 3. Fetch Sheet Data from all configured sheets
+  const sheetNames = project?.sheet_names || (project?.sheet_name ? [project.sheet_name] : []);
+
+  // We'll use a custom query to fetch all sheets in parallel
+  const allSheetsQuery = useQuery({
+    queryKey: ['all-sheets-data', project?.spreadsheet_id, sheetNames, shareToken],
+    queryFn: async () => {
+      const results = await Promise.all(
+        sheetNames.map(async (name: string) => {
+          const range = `${name}!A:Z`;
+          const { data: sessionData } = await supabase.auth.getSession();
+          const providerToken = sessionData.session?.provider_token;
+
+          const invokeHeaders: Record<string, string> = {};
+          if (providerToken) invokeHeaders['x-google-token'] = providerToken;
+          if (shareToken) invokeHeaders['x-share-token'] = shareToken;
+
+          const { data, error } = await supabase.functions.invoke('google-sheets', {
+            body: {
+              action: 'read-data',
+              spreadsheetId: project?.spreadsheet_id,
+              range
+            },
+            headers: invokeHeaders,
+          });
+          if (error) throw error;
+
+          // Basic row transformation (similar to useSheetData)
+          const rows = data.values || [];
+          if (rows.length < 2) return [];
+          const headers = rows[0] as string[];
+          return rows.slice(1).map((row: any[]) => {
+            const obj: Record<string, any> = {};
+            headers.forEach((h, i) => { obj[h] = row[i] || ''; });
+            return obj;
+          });
+        })
+      );
+      return results.flat(); // Aggregate all rows from all sheets
+    },
+    enabled: !!project?.spreadsheet_id && sheetNames.length > 0,
   });
 
-  // 4. Process Data
-  const processedData = useMemo(() => {
-    if (!sheetData?.rows || !mappings) return null;
-    return processDashboardData(sheetData.rows, mappings);
-  }, [sheetData, mappings]);
+  const allRows = allSheetsQuery.data || [];
 
-  const isLoading = loadingProject || loadingMappings || loadingData;
+  // 4. Apply Filters
+  const filteredRows = useMemo(() => {
+    if (!allRows.length) return [];
+
+    return allRows.filter(row => {
+      // Date Filter
+      if (dateRange?.from) {
+        // Try to find a date column
+        const dateKey = Object.keys(row).find(k =>
+          k.toLowerCase().includes('data') || k.toLowerCase().includes('date')
+        );
+        if (dateKey) {
+          const rowDate = new Date(row[dateKey]);
+          if (!isNaN(rowDate.getTime())) {
+            if (rowDate < dateRange.from) return false;
+            if (dateRange.to && rowDate > dateRange.to) return false;
+          }
+        }
+      }
+
+      // Creative Filter
+      if (selectedCreative) {
+        const creativeKey = Object.keys(row).find(k =>
+          k.toLowerCase().includes('criativo') || k.toLowerCase().includes('creative')
+        );
+        if (creativeKey && row[creativeKey] !== selectedCreative) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [allRows, dateRange, selectedCreative]);
+
+  // 5. Process Data
+  const processedData = useMemo(() => {
+    if (!filteredRows.length || !mappings) return null;
+    return processDashboardData(filteredRows, mappings);
+  }, [filteredRows, mappings]);
+
+  const isLoading = loadingProject || loadingMappings || allSheetsQuery.isLoading;
 
   if (isLoading) {
     return (
@@ -76,19 +146,20 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     );
   }
 
-  if (dataError) {
+  if (allSheetsQuery.error) {
     return (
       <div className="container py-12">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Erro ao carregar dados</AlertTitle>
           <AlertDescription>
-            Não foi possível acessar a planilha do Google. Verifique a conexão ou as permissões.
+            Não foi possível acessar as planilhas do Google. Verique as permissões.
           </AlertDescription>
         </Alert>
       </div>
     );
   }
+
 
   if (!processedData) {
     return (
@@ -107,6 +178,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       <DashboardFilters
         selectedCreative={selectedCreative}
         onCreativeChange={setSelectedCreative}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
       />
 
       {/* Tabs */}
@@ -169,7 +242,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                 </section>
               )}
 
-              {processedData.bigNumbers.length === 0 && !dataError && (
+              {processedData.bigNumbers.length === 0 && !allSheetsQuery.error && (
                 <div className="rounded-lg border border-dashed p-12 text-center">
                   <p className="text-muted-foreground">Nenhuma métrica configurada para esta aba.</p>
                 </div>
@@ -183,17 +256,63 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="flex flex-col items-center justify-center py-16 text-center"
+              className="space-y-8"
             >
-              <div className="rounded-full bg-muted p-4 mb-4">
-                <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Distribuição de Conteúdos</h3>
-              <p className="text-muted-foreground max-w-md">
-                Esta aba mostrará métricas específicas de distribuição de conteúdo quando configurada.
-              </p>
+              <section>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                  <BigNumberCard
+                    label="Alcance Total"
+                    value={processedData.distributionData.totalReach}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Impressões"
+                    value={processedData.distributionData.totalImpressions}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Engajamento Médio"
+                    value={processedData.distributionData.avgEngagement}
+                    format="percentage"
+                  />
+                  <BigNumberCard
+                    label="Views de Vídeo"
+                    value={processedData.distributionData.videoViews}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Novos Seguidores"
+                    value={processedData.distributionData.followersGained}
+                    format="number"
+                  />
+                </div>
+              </section>
+
+              {processedData.distributionData.platformBreakdown.length > 0 && (
+                <section>
+                  <h3 className="mb-4 text-lg font-semibold">Breakdown por Plataforma</h3>
+                  <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium">Plataforma</th>
+                          <th className="px-4 py-3 text-right font-medium">Alcance</th>
+                          <th className="px-4 py-3 text-right font-medium">Engajamento</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {processedData.distributionData.platformBreakdown.map((item) => (
+                          <tr key={item.platform} className="hover:bg-muted/30">
+                            <td className="px-4 py-3 font-medium capitalize">{item.platform}</td>
+                            <td className="px-4 py-3 text-right">{item.reach.toLocaleString('pt-BR')}</td>
+                            <td className="px-4 py-3 text-right">{(item.engagement * 100).toFixed(2)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
             </motion.div>
           </TabsContent>
         </AnimatePresence>

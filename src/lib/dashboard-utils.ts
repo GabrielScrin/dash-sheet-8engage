@@ -10,6 +10,14 @@ export interface DashboardData {
     weeklyData: any[];
     creativeData: any[];
     funnelData: { label: string; value: number }[];
+    distributionData: {
+        totalReach: number;
+        totalImpressions: number;
+        avgEngagement: number;
+        videoViews: number;
+        followersGained: number;
+        platformBreakdown: { platform: string; reach: number; engagement: number }[];
+    };
 }
 
 export function processDashboardData(
@@ -21,12 +29,20 @@ export function processDashboardData(
         weeklyData: [],
         creativeData: [],
         funnelData: [],
+        distributionData: {
+            totalReach: 0,
+            totalImpressions: 0,
+            avgEngagement: 0,
+            videoViews: 0,
+            followersGained: 0,
+            platformBreakdown: [],
+        },
     };
 
     if (!allRows || allRows.length === 0) return data;
 
     // 1. Process Big Numbers
-    const bigNumberMappings = mappings.filter(m => m.is_big_number);
+    const bigNumberMappings = mappings.filter(m => m.is_big_number && m.mapped_to !== 'distribution');
     data.bigNumbers = bigNumberMappings.map(m => {
         const lastRow = allRows[allRows.length - 1];
         const prevRow = allRows.length > 1 ? allRows[allRows.length - 2] : null;
@@ -53,7 +69,6 @@ export function processDashboardData(
         .sort((a, b) => (a.funnel_order || 0) - (b.funnel_order || 0));
 
     data.funnelData = funnelMappings.map(m => {
-        // Summing all values for the funnel
         const total = allRows.reduce((sum, row) => sum + (parseValue(row[m.source_column]) || 0), 0);
         return {
             label: m.display_name || m.source_column,
@@ -62,10 +77,8 @@ export function processDashboardData(
     });
 
     // 3. Process Weekly Data
-    // (Simple implementation: group by a 'date' column if mapped, or just last N rows)
     const weeklyMappings = mappings.filter(m => m.mapped_to === 'weekly');
     if (allRows.length > 0) {
-        // For now, let's take the last 4-5 rows as "weeks" if no better grouping is available
         const relevantRows = allRows.slice(-5);
         data.weeklyData = relevantRows.map((row, i) => {
             const weekData: any = { week: `Sem ${i + 1}` };
@@ -73,7 +86,6 @@ export function processDashboardData(
                 const key = (m as any).mapped_to_key || m.source_column;
                 weekData[key] = parseValue(row[m.source_column]);
             });
-            // Fallback: if we don't have explicit weekly mappings but have standard metrics, use them
             if (Object.keys(weekData).length === 1) {
                 weekData.sales = parseValue(row['vendas'] || row['Sales'] || 0);
                 weekData.investment = parseValue(row['investimento'] || row['Investment'] || 0);
@@ -86,7 +98,6 @@ export function processDashboardData(
     // 4. Process Creative Data
     const creativeMappings = mappings.filter(m => m.mapped_to === 'creative');
     if (allRows.length > 0) {
-        // Group by creative name if possible
         const creativeGroups: Record<string, any> = {};
         allRows.forEach(row => {
             const name = row['criativo'] || row['Creative'] || row['Nome do Criativo'] || 'Desconhecido';
@@ -100,13 +111,51 @@ export function processDashboardData(
         data.creativeData = Object.values(creativeGroups);
     }
 
+    // 5. Process Distribution Data
+    const distMappings = mappings.filter(m => m.mapped_to === 'distribution');
+    if (allRows.length > 0) {
+        let totalEng = 0;
+        let engCount = 0;
+        const platformMap: Record<string, { reach: number; eng: number; count: number }> = {};
+
+        allRows.forEach(row => {
+            const reach = parseValue(row[distMappings.find(m => m.mapped_to_key === 'reach')?.source_column || 'alcance' || 'Reach']);
+            const impressions = parseValue(row[distMappings.find(m => m.mapped_to_key === 'impressions')?.source_column || 'impressoes' || 'Impressions']);
+            const engagement = parseValue(row[distMappings.find(m => m.mapped_to_key === 'engagement')?.source_column || 'engajamento' || 'Engagement']);
+            const views = parseValue(row[distMappings.find(m => m.mapped_to_key === 'video_views')?.source_column || 'visualizacoes' || 'Views']);
+            const followers = parseValue(row[distMappings.find(m => m.mapped_to_key === 'followers')?.source_column || 'seguidores' || 'Followers']);
+            const platform = (row['plataforma'] || row['Platform'] || 'Outros').toString();
+
+            data.distributionData.totalReach += reach;
+            data.distributionData.totalImpressions += impressions;
+            data.distributionData.videoViews += views;
+            data.distributionData.followersGained += followers;
+
+            if (engagement > 0) {
+                totalEng += engagement;
+                engCount++;
+            }
+
+            if (!platformMap[platform]) platformMap[platform] = { reach: 0, eng: 0, count: 0 };
+            platformMap[platform].reach += reach;
+            platformMap[platform].eng += engagement;
+            platformMap[platform].count += (engagement > 0 ? 1 : 0);
+        });
+
+        data.distributionData.avgEngagement = engCount > 0 ? totalEng / engCount : 0;
+        data.distributionData.platformBreakdown = Object.entries(platformMap).map(([platform, stats]) => ({
+            platform,
+            reach: stats.reach,
+            engagement: stats.count > 0 ? stats.eng / stats.count : 0
+        }));
+    }
+
     return data;
 }
 
 function parseValue(val: any): number {
     if (typeof val === 'number') return val;
     if (!val) return 0;
-    // Remove currency symbols and common separators
     const cleaned = String(val).replace(/[R$\s%]/g, '').replace(/\./g, '').replace(',', '.');
     const parsed = parseFloat(cleaned);
     return isNaN(parsed) ? 0 : parsed;

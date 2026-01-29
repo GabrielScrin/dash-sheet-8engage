@@ -7,6 +7,7 @@ export interface ColumnMapping {
   project_id: string;
   source_column: string;
   mapped_to: string;
+  mapped_to_key: string | null;
   display_name: string | null;
   data_type: string | null;
   is_big_number: boolean;
@@ -20,6 +21,7 @@ export interface CreateMappingInput {
   project_id: string;
   source_column: string;
   mapped_to: string;
+  mapped_to_key?: string;
   display_name?: string;
   data_type?: string;
   is_big_number?: boolean;
@@ -55,6 +57,7 @@ export function useColumnMappings(projectId: string) {
           project_id: input.project_id,
           source_column: input.source_column,
           mapped_to: input.mapped_to,
+          mapped_to_key: input.mapped_to_key,
           display_name: input.display_name || input.source_column,
           data_type: input.data_type || 'text',
           is_big_number: input.is_big_number || false,
@@ -143,6 +146,7 @@ export function useColumnMappings(projectId: string) {
             project_id: m.project_id,
             source_column: m.source_column,
             mapped_to: m.mapped_to,
+            mapped_to_key: m.mapped_to_key,
             display_name: m.display_name || m.source_column,
             data_type: m.data_type || 'text',
             is_big_number: m.is_big_number || false,
