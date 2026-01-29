@@ -16,7 +16,7 @@ interface ColumnMapperProps {
   sheetNames: string[];
 }
 
-type MappingCategory = 'big_number' | 'funnel' | 'creative' | 'weekly';
+type MappingCategory = 'big_number' | 'funnel' | 'creative' | 'weekly' | 'distribution';
 
 interface LocalMapping {
   id?: string;
@@ -31,6 +31,7 @@ const CATEGORY_LABELS: Record<MappingCategory, string> = {
   funnel: 'Etapas do Funil',
   creative: 'Dados de Criativos',
   weekly: 'Comparação Semanal',
+  distribution: 'Distribuição de Conteúdo',
 };
 
 export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMapperProps) {

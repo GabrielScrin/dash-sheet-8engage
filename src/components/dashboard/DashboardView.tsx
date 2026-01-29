@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import * as React from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -184,12 +185,26 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   }
 
 
-  if (!processedData) {
+  if (!mappings || mappings.length === 0) {
     return (
       <div className="container py-12 text-center">
         <h3 className="text-lg font-semibold mb-2">Configuração Incompleta</h3>
         <p className="text-muted-foreground">
-          Mapeie as colunas da planilha para visualizar os dados aqui.
+          Mapeie as colunas da planilha na etapa anterior para visualizar os dados aqui.
+        </p>
+      </div>
+    );
+  }
+
+  if (allRows.length === 0 && !allSheetsQuery.isLoading) {
+    return (
+      <div className="container py-12 text-center">
+        <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
+          <AlertCircle className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <h3 className="text-lg font-semibold mb-2">Nenhum dado encontrado</h3>
+        <p className="text-muted-foreground">
+          As abas selecionadas parecem estar vazias ou sem dados válidos.
         </p>
       </div>
     );
@@ -270,7 +285,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
               {processedData.bigNumbers.length === 0 && !allSheetsQuery.error && (
                 <div className="rounded-lg border border-dashed p-12 text-center">
-                  <p className="text-muted-foreground">Nenhuma métrica configurada para esta aba.</p>
+                  <p className="text-muted-foreground">
+                    {filteredRows.length === 0
+                      ? 'Nenhum dado encontrado para os filtros selecionados.'
+                      : 'Nenhuma métrica configurada para esta aba.'}
+                  </p>
                 </div>
               )}
             </motion.div>

@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { Loader2, GripVertical, Save, Hash, DollarSign, Percent, Type } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,8 @@ interface KPIConfig {
   id: string;
   source_column: string;
   display_name: string;
+  category: string;
+  mapped_to_key: string | null;
   format_type: FormatType;
   decimal_places: number;
   currency_symbol: string;
@@ -36,14 +39,45 @@ const FORMAT_ICONS: Record<FormatType, React.ReactNode> = {
   text: <Type className="h-4 w-4" />,
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  big_number: 'Big Numbers',
+  funnel: 'Etapas do Funil',
+  creative: 'Dados de Criativos',
+  weekly: 'Comparação Semanal',
+  distribution: 'Distribuição de Conteúdo',
+};
+
+const CATEGORY_KEYS: Record<string, { label: string; value: string }[]> = {
+  weekly: [
+    { label: 'Vendas', value: 'sales' },
+    { label: 'Investimento', value: 'investment' },
+    { label: 'Faturamento', value: 'revenue' },
+    { label: 'ROAS', value: 'roas' },
+    { label: 'Conversão', value: 'conversion' },
+  ],
+  distribution: [
+    { label: 'Alcance', value: 'reach' },
+    { label: 'Impressões', value: 'impressions' },
+    { label: 'Engajamento', value: 'engagement' },
+    { label: 'Vídeo Views', value: 'video_views' },
+    { label: 'Seguidores Ganhos', value: 'followers' },
+  ],
+  creative: [
+    { label: 'Cliques', value: 'clicks' },
+    { label: 'Impressões', value: 'impressions' },
+    { label: 'Vendas', value: 'sales' },
+    { label: 'Faturamento', value: 'revenue' },
+  ],
+};
+
 export function KPIConfigurator({ projectId, spreadsheetId, sheetNames }: KPIConfiguratorProps) {
   const { toast } = useToast();
-  const { mappings, isLoading, saveMappings } = useColumnMappings(projectId);
+  const { mappings, isLoading } = useColumnMappings(projectId);
   const [kpis, setKpis] = useState<KPIConfig[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Fetch sample row from first sheet for preview
-  const { data: sheetData, isLoading: loadingData } = useSheetData({
+  const { data: sheetData } = useSheetData({
     spreadsheetId,
     sheetName: sheetNames[0] || '',
     enabled: sheetNames.length > 0,
@@ -51,15 +85,14 @@ export function KPIConfigurator({ projectId, spreadsheetId, sheetNames }: KPICon
 
   const sampleRow = sheetData?.rows?.[0] || {};
 
-  // Filter only big_number mappings
-  const bigNumberMappings = mappings.filter(m => m.is_big_number);
-  const funnelMappings = mappings.filter(m => m.is_funnel_step);
-
   useEffect(() => {
-    if (bigNumberMappings.length > 0) {
-      setKpis(bigNumberMappings.map(m => ({
+    if (mappings && mappings.length > 0) {
+      console.log('Mapping KPI configs from:', mappings);
+      setKpis(mappings.map(m => ({
         id: m.id,
         source_column: m.source_column,
+        category: m.is_big_number ? 'big_number' : m.is_funnel_step ? 'funnel' : (m.mapped_to || 'big_number'),
+        mapped_to_key: (m as any).mapped_to_key || null,
         display_name: m.display_name || m.source_column,
         format_type: (m.format_options as any)?.format_type || 'number',
         decimal_places: (m.format_options as any)?.decimal_places || 0,
@@ -77,11 +110,13 @@ export function KPIConfigurator({ projectId, spreadsheetId, sheetNames }: KPICon
   const handleSave = async () => {
     setSaving(true);
     try {
+      console.log('Saving KPI configs:', kpis);
       for (const kpi of kpis) {
         const { error } = await supabase
           .from('column_mappings')
           .update({
             display_name: kpi.display_name,
+            mapped_to_key: kpi.mapped_to_key,
             format_options: {
               format_type: kpi.format_type,
               decimal_places: kpi.decimal_places,
@@ -95,9 +130,10 @@ export function KPIConfigurator({ projectId, spreadsheetId, sheetNames }: KPICon
 
       toast({
         title: 'Configurações salvas!',
-        description: 'Os KPIs foram atualizados.',
+        description: 'As configurações de KPIs e colunas foram atualizadas.',
       });
     } catch (error: any) {
+      console.error('Error saving KPI configs:', error);
       toast({
         title: 'Erro ao salvar',
         description: error.message,
@@ -117,157 +153,163 @@ export function KPIConfigurator({ projectId, spreadsheetId, sheetNames }: KPICon
     );
   }
 
-  if (bigNumberMappings.length === 0 && funnelMappings.length === 0) {
+  if (kpis.length === 0) {
     return (
       <div className="rounded-lg border p-6 text-center">
         <p className="text-muted-foreground">
-          Primeiro, mapeie as colunas na etapa anterior para definir os KPIs.
+          Primeiro, mapeie as colunas na etapa anterior para definir os KPIs e métricas.
         </p>
       </div>
     );
   }
 
+  const groupedKpis = kpis.reduce((acc, kpi) => {
+    if (!acc[kpi.category]) acc[kpi.category] = [];
+    acc[kpi.category].push(kpi);
+    return acc;
+  }, {} as Record<string, KPIConfig[]>);
+
   return (
     <div className="space-y-6">
-      {/* Big Numbers Configuration */}
-      {kpis.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Big Numbers ({kpis.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[400px]">
-              <div className="space-y-4 pr-4">
-                {kpis.map((kpi) => (
-                  <div key={kpi.id} className="rounded-lg border p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <GripVertical className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium text-muted-foreground">
-                          Coluna: {kpi.source_column}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="bg-primary/5 border-primary/20">
-                          Valor Atual: {sampleRow[kpi.source_column] !== undefined ? String(sampleRow[kpi.source_column]) : '-'}
-                        </Badge>
-                      </div>
-                    </div>
+      <ScrollArea className="h-[600px] pr-4">
+        <div className="space-y-8">
+          {Object.entries(CATEGORY_LABELS).map(([category, label]) => {
+            const categoryKpis = groupedKpis[category];
+            if (!categoryKpis || categoryKpis.length === 0) return null;
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Nome de Exibição</Label>
-                        <Input
-                          value={kpi.display_name}
-                          onChange={(e) => updateKPI(kpi.id, { display_name: e.target.value })}
-                          placeholder="Nome no dashboard"
-                        />
-                      </div>
+            // Sort funnel steps by funnel_order if available
+            if (category === 'funnel') {
+              categoryKpis.sort((a, b) => {
+                const aMapping = mappings?.find(m => m.id === a.id);
+                const bMapping = mappings?.find(m => m.id === b.id);
+                return (aMapping?.funnel_order || 0) - (bMapping?.funnel_order || 0);
+              });
+            }
 
-                      <div className="space-y-2">
-                        <Label>Formato</Label>
-                        <Select
-                          value={kpi.format_type}
-                          onValueChange={(v) => updateKPI(kpi.id, { format_type: v as FormatType })}
-                        >
-                          <SelectTrigger>
+            return (
+              <section key={category} className="space-y-4">
+                <div className="flex items-center gap-2 px-1">
+                  <h3 className="font-semibold">{label}</h3>
+                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-bold uppercase tracking-wider">
+                    {categoryKpis.length}
+                  </Badge>
+                </div>
+
+                <div className="grid gap-4">
+                  {categoryKpis.map((kpi) => (
+                    <Card key={kpi.id}>
+                      <CardContent className="pt-6">
+                        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                          {/* Basic Info */}
+                          <div className="space-y-4">
                             <div className="flex items-center gap-2">
-                              {FORMAT_ICONS[kpi.format_type]}
-                              <SelectValue />
+                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-tight">
+                                Coluna original
+                              </span>
+                              <Badge variant="outline" className="text-[10px]">
+                                {sampleRow[kpi.source_column] !== undefined ? String(sampleRow[kpi.source_column]) : '-'}
+                              </Badge>
                             </div>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="number">
-                              <div className="flex items-center gap-2">
-                                <Hash className="h-4 w-4" /> Número
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="currency">
-                              <div className="flex items-center gap-2">
-                                <DollarSign className="h-4 w-4" /> Moeda
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="percent">
-                              <div className="flex items-center gap-2">
-                                <Percent className="h-4 w-4" /> Porcentagem
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="text">
-                              <div className="flex items-center gap-2">
-                                <Type className="h-4 w-4" /> Texto
-                              </div>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                            <div className="space-y-2">
+                              <Label className="text-xs">Identificação (Dashboard)</Label>
+                              <Input
+                                value={kpi.display_name}
+                                onChange={(e) => updateKPI(kpi.id, { display_name: e.target.value })}
+                                placeholder="Nome para este campo"
+                                className="h-9"
+                              />
+                            </div>
+                          </div>
 
-                      {kpi.format_type === 'currency' && (
-                        <div className="space-y-2">
-                          <Label>Símbolo da Moeda</Label>
-                          <Input
-                            value={kpi.currency_symbol}
-                            onChange={(e) => updateKPI(kpi.id, { currency_symbol: e.target.value })}
-                            placeholder="R$"
-                            className="w-24"
-                          />
+                          {/* Category Specific Config */}
+                          <div className="space-y-2">
+                            {CATEGORY_KEYS[category] ? (
+                              <>
+                                <Label className="text-xs">Mapear para Campo do Dashboard</Label>
+                                <Select
+                                  value={kpi.mapped_to_key || ''}
+                                  onValueChange={(v) => updateKPI(kpi.id, { mapped_to_key: v })}
+                                >
+                                  <SelectTrigger className="h-9">
+                                    <SelectValue placeholder="Selecione o campo alvo" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {CATEGORY_KEYS[category].map((key) => (
+                                      <SelectItem key={key.value} value={key.value}>
+                                        {key.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </>
+                            ) : (
+                              <>
+                                <Label className="text-xs">Formato de Exibição</Label>
+                                <Select
+                                  value={kpi.format_type}
+                                  onValueChange={(v) => updateKPI(kpi.id, { format_type: v as FormatType })}
+                                >
+                                  <SelectTrigger className="h-9">
+                                    <div className="flex items-center gap-2">
+                                      {FORMAT_ICONS[kpi.format_type]}
+                                      <SelectValue />
+                                    </div>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="number">Número</SelectItem>
+                                    <SelectItem value="currency">Moeda</SelectItem>
+                                    <SelectItem value="percent">Porcentagem</SelectItem>
+                                    <SelectItem value="text">Texto</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Formatting options if applicable */}
+                          <div className="flex gap-4">
+                            {(kpi.format_type === 'currency' || kpi.format_type === 'number' || kpi.format_type === 'percent') && (
+                              <div className="space-y-2 flex-1">
+                                <Label className="text-xs">Casas Decimais</Label>
+                                <Select
+                                  value={String(kpi.decimal_places)}
+                                  onValueChange={(v) => updateKPI(kpi.id, { decimal_places: parseInt(v) })}
+                                >
+                                  <SelectTrigger className="h-9">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {[0, 1, 2, 3].map(n => (
+                                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
+                            {kpi.format_type === 'currency' && (
+                              <div className="space-y-2 w-20">
+                                <Label className="text-xs">Simbolo</Label>
+                                <Input
+                                  value={kpi.currency_symbol}
+                                  onChange={(e) => updateKPI(kpi.id, { currency_symbol: e.target.value })}
+                                  className="h-9"
+                                />
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </ScrollArea>
 
-                      {(kpi.format_type === 'number' || kpi.format_type === 'currency' || kpi.format_type === 'percent') && (
-                        <div className="space-y-2">
-                          <Label>Casas Decimais</Label>
-                          <Select
-                            value={String(kpi.decimal_places)}
-                            onValueChange={(v) => updateKPI(kpi.id, { decimal_places: parseInt(v) })}
-                          >
-                            <SelectTrigger className="w-24">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="0">0</SelectItem>
-                              <SelectItem value="1">1</SelectItem>
-                              <SelectItem value="2">2</SelectItem>
-                              <SelectItem value="3">3</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Funnel Preview */}
-      {funnelMappings.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Etapas do Funil ({funnelMappings.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 overflow-x-auto pb-2">
-              {funnelMappings
-                .sort((a, b) => (a.funnel_order || 0) - (b.funnel_order || 0))
-                .map((step, index) => (
-                  <div key={step.id} className="flex items-center">
-                    <div className="rounded-lg border bg-muted/50 px-4 py-2 text-sm whitespace-nowrap">
-                      {step.display_name || step.source_column}
-                    </div>
-                    {index < funnelMappings.length - 1 && (
-                      <div className="mx-2 text-muted-foreground">→</div>
-                    )}
-                  </div>
-                ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={saving} className="gap-2">
+      <div className="flex justify-end pt-4 border-t">
+        <Button onClick={handleSave} disabled={saving} className="gap-2 px-8">
           {saving ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
