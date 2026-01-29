@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version, x-google-token',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version, x-google-token, x-share-token',
 };
 
 interface TokenResponse {
@@ -244,7 +244,9 @@ serve(async (req) => {
 
 
     // Parse request body
-    const { action, spreadsheetId, range } = await req.json();
+    const body = await req.json();
+    const { action, spreadsheetId, range } = body;
+    console.log(`Parsed body: action=${action}, spreadsheetId=${spreadsheetId}, range=${range}`);
 
     let result;
     switch (action) {
