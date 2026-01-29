@@ -3,8 +3,8 @@ import { ColumnMapping } from '@/hooks/useColumnMappings';
 export interface DashboardData {
     bigNumbers: {
         label: string;
-        value: number | string;
-        previousValue?: number | string;
+        value: number;
+        previousValue?: number;
         format: 'number' | 'currency' | 'decimal' | 'percentage';
     }[];
     weeklyData: any[];

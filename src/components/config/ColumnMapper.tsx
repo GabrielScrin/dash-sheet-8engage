@@ -52,7 +52,11 @@ export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMap
 
         const headerPromises = sheetNames.map(async (name) => {
           const { data, error } = await supabase.functions.invoke('google-sheets', {
-            body: { action: 'read-data', spreadsheetId, sheetName: name, range: 'A1:Z1' },
+            body: {
+              action: 'read-data',
+              spreadsheetId,
+              range: `'${name}'!A1:Z1`
+            },
             headers: providerToken ? { 'x-google-token': providerToken } : undefined,
           });
           if (error) throw error;
