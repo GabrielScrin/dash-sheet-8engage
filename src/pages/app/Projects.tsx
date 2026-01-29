@@ -161,7 +161,7 @@ export default function Projects() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container py-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -170,7 +170,7 @@ export default function Projects() {
               Gerencie seus dashboards conectados ao Google Sheets
             </p>
           </div>
-          
+
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button size="lg" className="gap-2">
@@ -261,10 +261,13 @@ export default function Projects() {
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ delay: index * 0.05 }}
                 >
-                  <Card className="group relative overflow-hidden transition-all hover:shadow-lg hover:-translate-y-1">
+                  <Card
+                    className="group relative overflow-hidden transition-all hover:shadow-lg hover:-translate-y-1 cursor-pointer"
+                    onClick={() => navigate(`/app/projects/${project.id}/config`)}
+                  >
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
-                        <div className="space-y-1">
+                        <div className="space-y-1 z-10">
                           <CardTitle className="text-lg">{project.name}</CardTitle>
                           {project.description && (
                             <CardDescription className="line-clamp-2">
@@ -272,38 +275,40 @@ export default function Projects() {
                             </CardDescription>
                           )}
                         </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <Link to={`/app/projects/${project.id}/config`}>
-                                <Settings className="mr-2 h-4 w-4" />
-                                Configurar
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link to={`/app/projects/${project.id}/preview`}>
-                                <ExternalLink className="mr-2 h-4 w-4" />
-                                Visualizar
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => handleDeleteProject(project.id)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div onClick={(e) => e.stopPropagation()} className="z-20">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem asChild>
+                                <Link to={`/app/projects/${project.id}/config`}>
+                                  <Settings className="mr-2 h-4 w-4" />
+                                  Configurar
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link to={`/app/projects/${project.id}/preview`}>
+                                  <ExternalLink className="mr-2 h-4 w-4" />
+                                  Visualizar
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => handleDeleteProject(project.id)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-3">
+                    <CardContent className="space-y-3 z-10">
                       <div className="flex items-center gap-2">
                         {getStatusBadge(project.status)}
                         {project.spreadsheet_name && (
@@ -318,11 +323,6 @@ export default function Projects() {
                         Atualizado {format(new Date(project.updated_at), "d 'de' MMM 'às' HH:mm", { locale: ptBR })}
                       </div>
                     </CardContent>
-                    <Link 
-                      to={`/app/projects/${project.id}/config`}
-                      className="absolute inset-0"
-                      aria-label={`Abrir ${project.name}`}
-                    />
                   </Card>
                 </motion.div>
               ))}

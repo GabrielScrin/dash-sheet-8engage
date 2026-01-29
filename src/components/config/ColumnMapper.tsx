@@ -56,7 +56,7 @@ export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMap
             headers: providerToken ? { 'x-google-token': providerToken } : undefined,
           });
           if (error) throw error;
-          return data?.headers || [];
+          return data?.values?.[0] || [];
         });
 
         const allHeadersArrays = await Promise.all(headerPromises);
