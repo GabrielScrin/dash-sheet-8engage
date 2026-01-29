@@ -81,6 +81,7 @@ async function getSheetTabs(accessToken: string, spreadsheetId: string) {
 }
 
 import { Redis } from "https://esm.sh/@upstash/redis@1.25.0";
+import { Ratelimit } from "https://esm.sh/@upstash/ratelimit@0.4.3";
 
 const redisUrl = Deno.env.get("UPSTASH_REDIS_REST_URL");
 const redisToken = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
@@ -88,6 +89,13 @@ const redisToken = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
 const redis = redisUrl && redisToken
   ? new Redis({ url: redisUrl, token: redisToken })
   : null;
+
+// Rate limiter: 100 requests per hour per IP
+const ratelimit = redis ? new Ratelimit({
+  redis: redis,
+  limiter: Ratelimit.slidingWindow(100, "1h"),
+  analytics: true,
+}) : null;
 
 async function readSheetData(accessToken: string, spreadsheetId: string, range: string) {
   const cacheKey = `sheet_data:${spreadsheetId}:${range}`;
@@ -140,6 +148,26 @@ serve(async (req) => {
   }
 
   try {
+    // Rate limiting check
+    if (ratelimit) {
+      const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+      const { success, reset } = await ratelimit.limit(clientIp);
+      
+      if (!success) {
+        console.log(`Rate limit exceeded for IP: ${clientIp}`);
+        return new Response(JSON.stringify({ 
+          error: "Rate limit exceeded. Please try again later."
+        }), {
+          status: 429,
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json',
+            'Retry-After': String(Math.ceil((reset - Date.now()) / 1000))
+          },
+        });
+      }
+    }
+
     // Get authorization header
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {

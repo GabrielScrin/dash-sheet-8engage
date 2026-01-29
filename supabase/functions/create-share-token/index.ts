@@ -172,10 +172,10 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Fatal create-share-token error:', error);
+    // Return generic error without exposing internal details
     return new Response(
       JSON.stringify({
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : String(error)
+        error: 'Failed to create share token. Please try again.'
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
