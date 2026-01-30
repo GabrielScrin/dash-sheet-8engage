@@ -119,6 +119,15 @@ export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMap
   };
 
   const handleSave = async () => {
+    if (!projectId) {
+      toast({
+        title: 'Erro',
+        description: 'ID do projeto não encontrado.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const mappingsToSave: CreateMappingInput[] = localMappings.map(m => ({
       project_id: projectId,
       source_column: m.source_column,
@@ -129,7 +138,20 @@ export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMap
       funnel_order: m.funnel_order,
     }));
 
-    await saveMappings.mutateAsync(mappingsToSave);
+    try {
+      await saveMappings.mutateAsync(mappingsToSave);
+      toast({
+        title: 'Sucesso!',
+        description: 'Mapeamentos salvos com sucesso.',
+      });
+    } catch (error: any) {
+      console.error('Error saving mappings:', error);
+      toast({
+        title: 'Erro ao salvar',
+        description: error.message || 'Não foi possível salvar os mapeamentos.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const getMappingsByCategory = (category: MappingCategory) => {

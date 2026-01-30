@@ -124,13 +124,46 @@ Deno.serve(async (req) => {
       filters_used: {},
     });
 
-    // Return validated data (never return the token or password_hash)
+    // Fetch project data to return with validation
+    const { data: projectData, error: projectError } = await supabase
+      .from('projects')
+      .select('id, name, spreadsheet_id, sheet_name, sheet_names')
+      .eq('id', shareToken.project_id)
+      .single();
+
+    if (projectError || !projectData) {
+      console.error('Project not found:', projectError);
+      return new Response(
+        JSON.stringify({ error: 'Project not found', valid: false }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Fetch column mappings for the project
+    const { data: mappingsData, error: mappingsError } = await supabase
+      .from('column_mappings')
+      .select('*')
+      .eq('project_id', shareToken.project_id);
+
+    if (mappingsError) {
+      console.error('Error fetching mappings:', mappingsError);
+    }
+
+    // Return validated data with project info (never return the token or password_hash)
     return new Response(
       JSON.stringify({
         valid: true,
         projectId: shareToken.project_id,
         allowedFilters: shareToken.allowed_filters,
         tokenName: shareToken.name,
+        project: {
+          id: projectData.id,
+          name: projectData.name,
+          spreadsheet_id: projectData.spreadsheet_id,
+          sheet_name: projectData.sheet_name,
+          sheet_names: projectData.sheet_names,
+        },
+        mappings: mappingsData || [],
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
