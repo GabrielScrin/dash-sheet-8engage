@@ -1,190 +1,204 @@
 
 
-## Plano: Tornar Todos os Menus Funcionais
+# Plano para Tornar o App Funcional
 
-### Resumo dos Problemas
+## Problemas Identificados
 
-| Menu | Status Atual | Problema |
-|------|--------------|----------|
-| Menu 2 - Abas | Parcialmente funcional | Permite apenas 1 aba, precisa de seleção múltipla |
-| Menu 3 - Colunas | Placeholder | Sem interface de mapeamento, apenas texto informativo |
-| Menu 4 - KPIs | Placeholder | Sem configuração de Big Numbers e Funil |
-| Menu 5 - Compartilhar | Placeholder | Sem geração de links de acesso |
+Após análise detalhada do código, identifiquei **6 problemas críticos** que estão impedindo o funcionamento correto do app:
 
 ---
 
-### Fase 1: Seleção de Múltiplas Abas (Menu 2)
+### 1. Autenticação Google OAuth Incompleta
 
-**Mudança no Banco de Dados**
-- Alterar campo `sheet_name` (string) para `sheet_names` (array de strings) na tabela `projects`
-- OU criar tabela relacionada `project_sheets` para armazenar múltiplas abas
+**Sintoma**: Login funciona, mas acesso às planilhas falha.
 
-**Mudanças no Frontend**
+**Causa Raiz**: O fluxo de OAuth está configurado para solicitar `access_type: 'offline'` e salvar o `provider_refresh_token`, mas:
+- O `provider_refresh_token` só é fornecido pelo Google na **primeira autorização** (quando `prompt: 'consent'` é usado)
+- Se o usuário já autorizou antes, o Google não envia um novo refresh token
+- O código depende do `provider_token` (access token de curta duração) que expira em ~1 hora
 
-1. **Atualizar `SheetTabSelector.tsx`**
-   - Adicionar checkboxes para seleção múltipla
-   - Manter lista de abas selecionadas em estado local
-   - Botão "Confirmar Seleção" ao final
-   - Indicador visual de abas já selecionadas
-
-2. **Atualizar `ProjectConfig.tsx`**
-   - Modificar `handleTabSelect` para aceitar array de abas
-   - Exibir badges com abas selecionadas
-
-3. **Atualizar interface do `Project`**
-   - Tipo do campo de abas para suportar múltiplos valores
+**Solução**: 
+- Garantir que o refresh token seja sempre solicitado e armazenado
+- Fallback para o refresh token quando o access token expira
+- Adicionar trigger no banco para criar perfil automaticamente no signup
 
 ---
 
-### Fase 2: Mapeamento de Colunas (Menu 3)
+### 2. Perfil de Usuário Não Criado Automaticamente
 
-**Criar componente `ColumnMapper.tsx`**
+**Sintoma**: Erro ao acessar planilhas após login.
 
-Funcionalidades:
-- Carregar cabeçalhos das abas selecionadas usando `useSheetData`
-- Lista de colunas disponíveis (arrastáveis)
-- Slots de destino para diferentes métricas:
-  - Big Numbers (até 12)
-  - Campos do funil (até 8 etapas)
-  - Dados de criativos (nome, thumbnail, link)
-  - Dados semanais
-- Drag and drop usando `@dnd-kit/core` (já instalado)
-- Salvar mapeamentos na tabela `column_mappings`
+**Causa Raiz**: O código tenta salvar `google_refresh_token` na tabela `profiles`, mas:
+- Não existe trigger para criar automaticamente um registro em `profiles` quando um usuário se registra
+- A função `handle_new_user()` mencionada nas migrations pode não estar funcionando corretamente
 
-**Estrutura visual:**
-```
-┌─────────────────────────────────────────────────────────┐
-│  Colunas da Planilha          │  Mapeamentos           │
-│ ┌─────────────────────┐       │ ┌──────────────────┐   │
-│ │ 📊 Data             │       │ │ Big Numbers      │   │
-│ │ 📊 Vendas           │ ───▶  │ │ • Vendas         │   │
-│ │ 📊 Faturamento      │       │ │ • Faturamento    │   │
-│ │ 📊 Impressões       │       │ └──────────────────┘   │
-│ │ 📊 Cliques          │       │ ┌──────────────────┐   │
-│ │ 📊 Nome Criativo    │       │ │ Funil            │   │
-│ │ 📊 Thumbnail URL    │       │ │ 1. Impressões    │   │
-│ │ 📊 Link             │       │ │ 2. Cliques       │   │
-│ └─────────────────────┘       │ └──────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-```
+**Solução**:
+- Criar/verificar trigger `on_auth_user_created` que insere em `profiles`
+- Garantir que o código frontend faça upsert ao invés de apenas update
 
 ---
 
-### Fase 3: Configuração de KPIs (Menu 4)
+### 3. Preview do Dashboard Não Carrega Dados
 
-**Criar componente `KPIConfigurator.tsx`**
+**Sintoma**: DashboardView mostra "Configuração Incompleta" ou dados vazios.
 
-Funcionalidades:
-- Exibir preview dos Big Numbers com dados reais
-- Configurar formato de cada métrica (número, moeda, %, decimal)
-- Definir nome de exibição customizado
-- Ordenar KPIs via drag-and-drop
-- Configurar etapas do funil (ordem e labels)
-- Preview em tempo real do funil
+**Causa Raiz**: 
+- A query para buscar dados do Google Sheets depende de ter um `provider_token` válido OU um `shareToken`
+- Se o token expirou e não há refresh token salvo, a requisição falha
+- A Edge Function `google-sheets` retorna erro 400 com `GOOGLE_RECONNECT_REQUIRED`
 
-**Tabela de configuração:**
-
-| Métrica | Coluna Original | Formato | Nome Exibição |
-|---------|-----------------|---------|---------------|
-| Vendas | vendas_total | Número | Vendas Totais |
-| Revenue | faturamento_br | Moeda (R$) | Faturamento |
+**Solução**:
+- Melhorar tratamento de erro no DashboardView para mostrar mensagem clara
+- Adicionar botão "Reconectar Google" quando token expira
+- Verificar se refresh token está sendo usado corretamente na Edge Function
 
 ---
 
-### Fase 4: Compartilhamento (Menu 5)
+### 4. Botão "Salvar Mapeamentos" - Possível Problema de RLS
 
-**Criar componente `ShareManager.tsx`**
+**Sintoma**: Botão de salvar não funciona (sem feedback visual de erro).
 
-Funcionalidades:
-- Gerar token único de acesso (usar tabela `share_tokens`)
-- Opções de proteção:
-  - Senha opcional
-  - Data de expiração
-  - Filtros permitidos
-- Lista de links gerados
-- Copiar link para clipboard
-- Revogar acesso
+**Causa Raiz**: Após análise das RLS policies, as políticas parecem corretas. O problema pode ser:
+- O `projectId` não está sendo passado corretamente
+- Erro silencioso na mutation do React Query
+- Falta de feedback ao usuário quando ocorre erro
 
-**Interface:**
-```
-┌─────────────────────────────────────────────┐
-│  Gerar Novo Link                            │
-│  ┌───────────────────────────────────────┐  │
-│  │ Nome: Link para Cliente X             │  │
-│  │ Expiração: [ ] Nunca / [x] 30 dias    │  │
-│  │ Senha: [ ] Sem senha / [x] ****       │  │
-│  │ [Gerar Link]                          │  │
-│  └───────────────────────────────────────┘  │
-│                                             │
-│  Links Ativos                               │
-│  ┌───────────────────────────────────────┐  │
-│  │ Cliente X - Expira em 15 dias  [Copiar]│ │
-│  │ Interno - Permanente           [Revogar]│ │
-│  └───────────────────────────────────────┘  │
-└─────────────────────────────────────────────┘
-```
+**Solução**:
+- Adicionar logs de debug no `ColumnMapper.tsx`
+- Verificar se o `handleSave` está capturando erros corretamente
+- Adicionar toast de erro explícito na mutation
 
 ---
 
-### Arquivos a Criar
+### 5. Links de Compartilhamento Não Funcionam
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `src/components/config/ColumnMapper.tsx` | Interface drag-and-drop para mapeamento |
-| `src/components/config/KPIConfigurator.tsx` | Configuração de Big Numbers e Funil |
-| `src/components/config/ShareManager.tsx` | Gerenciamento de links de compartilhamento |
-| `src/components/config/ColumnItem.tsx` | Componente arrastável de coluna |
-| `src/components/config/MappingSlot.tsx` | Slot de destino para mapeamento |
-| `src/hooks/useColumnMappings.ts` | Hook para salvar/carregar mapeamentos |
-| `src/hooks/useShareTokens.ts` | Hook para gerenciar tokens de acesso |
+**Sintoma**: Rota `/view/:token` não carrega o dashboard.
+
+**Causa Raiz**: A validação do token está implementada, mas:
+- A Edge Function `validate-share-token` precisa de autenticação anon do Supabase (header `authorization`)
+- A chamada no `ViewDashboard.tsx` não inclui este header automaticamente
+- A RLS impede que projetos sejam lidos por usuários não autenticados
+
+**Solução**:
+- A Edge Function já usa `SUPABASE_SERVICE_ROLE_KEY` para acessar os dados
+- Precisa criar uma policy ou view para permitir acesso público aos dados do projeto quando validado via share token
+- Alternativa: fazer a Edge Function retornar todos os dados necessários do projeto
 
 ---
 
-### Arquivos a Modificar
+### 6. Rate Limiting Sem Redis Configurado
+
+**Sintoma**: Edge Function pode falhar silenciosamente.
+
+**Causa Raiz**: O código de rate limiting depende de variáveis `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` que não estão configuradas (não aparecem nos secrets).
+
+**Solução**:
+- O código já tem fallback (`redis ? ... : null`), então isso não deve causar erros
+- Mas é bom verificar se não há null pointer exceptions
+
+---
+
+## Plano de Implementação
+
+### Fase 1: Correções Críticas de Autenticação
+
+1. **Criar trigger para auto-criar perfil**
+   ```sql
+   CREATE OR REPLACE FUNCTION public.handle_new_user()
+   RETURNS trigger AS $$
+   BEGIN
+     INSERT INTO public.profiles (user_id, email, full_name, avatar_url)
+     VALUES (
+       NEW.id,
+       NEW.email,
+       COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name'),
+       NEW.raw_user_meta_data->>'avatar_url'
+     )
+     ON CONFLICT (user_id) DO UPDATE SET
+       email = EXCLUDED.email,
+       full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
+       avatar_url = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url);
+     RETURN NEW;
+   END;
+   $$ LANGUAGE plpgsql SECURITY DEFINER;
+   ```
+
+2. **Atualizar AuthContext para fazer upsert do refresh token**
+   - Modificar o `onAuthStateChange` para usar upsert ao invés de update
+
+### Fase 2: Correções do Dashboard e Preview
+
+3. **Melhorar tratamento de erros no DashboardView**
+   - Detectar erro `GOOGLE_RECONNECT_REQUIRED`
+   - Mostrar botão para reconectar conta Google
+
+4. **Adicionar feedback visual no ColumnMapper**
+   - Melhorar tratamento de erro no `handleSave`
+   - Adicionar loading state mais visível
+
+### Fase 3: Correções de Compartilhamento
+
+5. **Criar política RLS para acesso via share token**
+   - Criar view pública para dados de projeto
+   - OU modificar Edge Function para retornar dados completos
+
+6. **Modificar google-sheets Edge Function**
+   - Quando receber `x-share-token`, buscar project owner e usar seu refresh token
+   - Não exigir autenticação do viewer
+
+### Fase 4: Melhorias de UX
+
+7. **Adicionar estados de loading e erro mais claros**
+   - Skeleton loaders consistentes
+   - Mensagens de erro acionáveis
+
+---
+
+## Arquivos a Modificar
 
 | Arquivo | Mudança |
 |---------|---------|
-| `src/components/sheets/SheetTabSelector.tsx` | Adicionar seleção múltipla com checkboxes |
-| `src/pages/app/ProjectConfig.tsx` | Integrar novos componentes nos steps 3, 4 e 5 |
-| `src/hooks/useSheetData.ts` | Suportar múltiplas abas |
+| `supabase/migrations/new.sql` | Trigger para criar perfil + upsert |
+| `src/contexts/AuthContext.tsx` | Upsert de perfil ao login |
+| `src/components/dashboard/DashboardView.tsx` | Tratamento de erro + botão reconectar |
+| `src/components/config/ColumnMapper.tsx` | Melhor feedback de erro |
+| `supabase/functions/google-sheets/index.ts` | Ajustar lógica de share token |
+| `src/pages/ViewDashboard.tsx` | Passar dados de projeto da validação |
 
 ---
 
-### Migração de Banco de Dados
+## Detalhes Técnicos
 
-Adicionar suporte para múltiplas abas:
+### Fluxo de Dados Atual (Problemático)
 
-```sql
--- Opção 1: Usar JSONB array
-ALTER TABLE projects 
-ADD COLUMN sheet_names JSONB DEFAULT '[]';
-
--- Migrar dados existentes
-UPDATE projects 
-SET sheet_names = jsonb_build_array(sheet_name)
-WHERE sheet_name IS NOT NULL;
+```text
+Usuário -> Login Google -> access_token (1h) + refresh_token
+                               |
+                               v
+               profiles.google_refresh_token (FALHA se não existe profile)
+                               |
+                               v
+               DashboardView -> google-sheets Edge Function
+                               |
+                               v
+               "GOOGLE_RECONNECT_REQUIRED" (refresh_token = null)
 ```
 
----
+### Fluxo de Dados Corrigido
 
-### Ordem de Implementação
-
-1. **Migração do banco** - Adicionar campo `sheet_names`
-2. **SheetTabSelector** - Implementar seleção múltipla
-3. **ColumnMapper** - Criar interface de mapeamento com drag-and-drop
-4. **KPIConfigurator** - Configuração de formatos e labels
-5. **ShareManager** - Geração de links de acesso
-6. **Integração** - Conectar tudo no ProjectConfig
-
----
-
-### Resultado Esperado
-
-Após implementação:
-
-1. Menu 2 permite selecionar múltiplas abas da planilha
-2. Menu 3 mostra colunas disponíveis e permite arrastar para slots de métricas
-3. Menu 4 permite configurar formato, ordem e labels dos KPIs
-4. Menu 5 permite gerar links de acesso com configurações de segurança
-5. Dashboard exibe dados reais baseados nos mapeamentos configurados
+```text
+Usuário -> Login Google -> access_token + refresh_token
+                               |
+                               v
+            Trigger cria profile automaticamente
+                               |
+                               v
+            AuthContext faz UPSERT do refresh_token
+                               |
+                               v
+            DashboardView -> google-sheets -> refresh_token válido
+                               |
+                               v
+            Dados carregados corretamente
+```
 
