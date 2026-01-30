@@ -27,24 +27,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
         setLoading(false);
 
-        // Capture provider tokens on sign in
+        // Capture provider tokens on sign in - use UPSERT to handle missing profiles
         if (event === 'SIGNED_IN' && session?.provider_refresh_token) {
-          console.log('Saving Google refresh token...');
+          console.log('Saving Google refresh token via upsert...');
           // Use setTimeout to avoid blocking the auth flow
           setTimeout(async () => {
             try {
               const { error } = await supabase
                 .from('profiles')
-                .update({ google_refresh_token: session.provider_refresh_token })
-                .eq('user_id', session.user.id);
+                .upsert({
+                  user_id: session.user.id,
+                  email: session.user.email,
+                  full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name,
+                  avatar_url: session.user.user_metadata?.avatar_url,
+                  google_refresh_token: session.provider_refresh_token,
+                }, {
+                  onConflict: 'user_id',
+                });
               
               if (error) {
-                console.error('Failed to save Google refresh token:', error);
+                console.error('Failed to upsert profile with refresh token:', error);
               } else {
-                console.log('Google refresh token saved successfully');
+                console.log('Profile upserted with Google refresh token');
               }
             } catch (err) {
-              console.error('Error saving refresh token:', err);
+              console.error('Error upserting profile:', err);
             }
           }, 0);
         }

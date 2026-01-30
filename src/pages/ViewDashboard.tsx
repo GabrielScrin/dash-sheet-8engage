@@ -1,13 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { DashboardView } from '@/components/dashboard/DashboardView';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { motion, AnimatePresence } from 'framer-motion';
+import { BigNumberCard } from '@/components/dashboard/BigNumberCard';
+import { WeeklyComparisonTable } from '@/components/dashboard/WeeklyComparisonTable';
+import { CreativePerformanceTable } from '@/components/dashboard/CreativePerformanceTable';
+import { FunnelVisualization } from '@/components/dashboard/FunnelVisualization';
+import { DashboardFilters } from '@/components/dashboard/DashboardFilters';
+import { processDashboardData } from '@/lib/dashboard-utils';
+import { subDays } from 'date-fns';
+import { DateRange } from 'react-day-picker';
+import { useQuery } from '@tanstack/react-query';
 
 interface ValidationResult {
   valid: boolean;
@@ -16,18 +26,34 @@ interface ValidationResult {
   allowedFilters?: Record<string, unknown>;
   tokenName?: string;
   error?: string;
+  project?: {
+    id: string;
+    name: string;
+    spreadsheet_id: string;
+    sheet_name: string;
+    sheet_names: string[];
+  };
+  mappings?: any[];
 }
 
 export default function PublicDashboard() {
   const { token } = useParams<{ token: string }>();
 
   const [status, setStatus] = useState<'loading' | 'password' | 'validated' | 'error'>('loading');
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [validationData, setValidationData] = useState<ValidationResult | null>(null);
   const [tokenName, setTokenName] = useState<string>('Dashboard');
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Dashboard state
+  const [activeTab, setActiveTab] = useState('perpetua');
+  const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 30),
+    to: new Date(),
+  });
 
   const validateToken = async (passwordAttempt?: string) => {
     if (!token) {
@@ -66,7 +92,7 @@ export default function PublicDashboard() {
       }
 
       if (data.valid && data.projectId) {
-        setProjectId(data.projectId);
+        setValidationData(data);
         setTokenName(data.tokenName || 'Dashboard');
         setStatus('validated');
         return;
@@ -96,6 +122,99 @@ export default function PublicDashboard() {
       validateToken(password);
     }
   };
+
+  // Fetch sheet data using the share token
+  const sheetNames: string[] = Array.isArray(validationData?.project?.sheet_names)
+    ? validationData.project.sheet_names
+    : (validationData?.project?.sheet_name ? [validationData.project.sheet_name] : []);
+
+  const allSheetsQuery = useQuery({
+    queryKey: ['public-sheets-data', validationData?.project?.spreadsheet_id, sheetNames, token],
+    queryFn: async () => {
+      if (!validationData?.project?.spreadsheet_id) return [];
+
+      const results = await Promise.all(
+        sheetNames.map(async (name: string) => {
+          try {
+            const range = `'${name}'!A:Z`;
+
+            const { data, error } = await supabase.functions.invoke('google-sheets', {
+              body: {
+                action: 'read-data',
+                spreadsheetId: validationData.project!.spreadsheet_id,
+                range
+              },
+              headers: {
+                'x-share-token': token!,
+              },
+            });
+
+            if (error) {
+              console.error(`Error fetching sheet ${name}:`, error);
+              return [];
+            }
+
+            const rows = data.values || [];
+            if (rows.length < 2) return [];
+            
+            const headers = rows[0] as string[];
+            return rows.slice(1).map((row: any[]) => {
+              const obj: Record<string, any> = {};
+              headers.forEach((h, i) => { obj[h] = row[i] || ''; });
+              return obj;
+            });
+          } catch (err) {
+            console.error(`Unexpected error fetching sheet ${name}:`, err);
+            return [];
+          }
+        })
+      );
+      return results.flat();
+    },
+    enabled: status === 'validated' && !!validationData?.project?.spreadsheet_id && sheetNames.length > 0,
+  });
+
+  const allRows = allSheetsQuery.data || [];
+
+  // Apply Filters
+  const filteredRows = useMemo(() => {
+    if (!allRows.length) return [];
+
+    return allRows.filter(row => {
+      if (dateRange?.from) {
+        const dateKey = Object.keys(row).find(k =>
+          k.toLowerCase().includes('data') || k.toLowerCase().includes('date')
+        );
+        if (dateKey && row[dateKey]) {
+          const rowDate = new Date(row[dateKey]);
+          if (!isNaN(rowDate.getTime())) {
+            const from = new Date(dateRange.from!);
+            from.setHours(0, 0, 0, 0);
+            const to = dateRange.to ? new Date(dateRange.to) : new Date();
+            to.setHours(23, 59, 59, 999);
+            if (rowDate < from) return false;
+            if (rowDate > to) return false;
+          }
+        }
+      }
+
+      if (selectedCreative) {
+        const creativeKey = Object.keys(row).find(k =>
+          k.toLowerCase().includes('criativo') || k.toLowerCase().includes('creative')
+        );
+        if (creativeKey && row[creativeKey] !== selectedCreative) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [allRows, dateRange, selectedCreative]);
+
+  // Process Data
+  const processedData = useMemo(() => {
+    return processDashboardData(filteredRows, validationData?.mappings || []);
+  }, [filteredRows, validationData?.mappings]);
 
   // Loading state
   if (status === 'loading') {
@@ -203,6 +322,8 @@ export default function PublicDashboard() {
   }
 
   // Validated - show dashboard
+  const isLoadingData = allSheetsQuery.isLoading;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Minimal Header */}
@@ -213,11 +334,173 @@ export default function PublicDashboard() {
         </div>
       </header>
 
-      <main>
-        <DashboardView
-          projectId={projectId || ''}
-          shareToken={token}
-        />
+      <main className="container py-6">
+        {isLoadingData ? (
+          <div className="flex h-[60vh] flex-col items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+            <p className="text-muted-foreground">Carregando dados do dashboard...</p>
+          </div>
+        ) : allRows.length === 0 ? (
+          <div className="py-12 text-center">
+            <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
+              <AlertCircle className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">Nenhum dado encontrado</h3>
+            <p className="text-muted-foreground max-w-sm mx-auto">
+              As planilhas parecem estar vazias ou houve um erro ao carregar os dados.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Filters */}
+            <DashboardFilters
+              selectedCreative={selectedCreative}
+              onCreativeChange={setSelectedCreative}
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+            />
+
+            {/* Tabs */}
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+              <TabsList className="grid w-full max-w-md grid-cols-2">
+                <TabsTrigger value="perpetua">Perpétua</TabsTrigger>
+                <TabsTrigger value="distribuicao">Distribuição de Conteúdos</TabsTrigger>
+              </TabsList>
+
+              <AnimatePresence mode="wait">
+                <TabsContent value="perpetua" className="mt-6">
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                    className="space-y-8"
+                  >
+                    {/* Big Numbers */}
+                    {processedData.bigNumbers.length > 0 && (
+                      <section>
+                        <h3 className="mb-4 text-lg font-semibold">Indicadores Principais</h3>
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                          {processedData.bigNumbers.map((kpi, index) => (
+                            <BigNumberCard
+                              key={kpi.label}
+                              label={kpi.label}
+                              value={kpi.value}
+                              previousValue={kpi.previousValue}
+                              format={kpi.format}
+                              delay={index * 0.1}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {/* Weekly Comparison */}
+                    {processedData.weeklyData.length > 0 && (
+                      <section>
+                        <h3 className="mb-4 text-lg font-semibold">Visão Semanal</h3>
+                        <WeeklyComparisonTable data={processedData.weeklyData} />
+                      </section>
+                    )}
+
+                    {/* Creative Performance */}
+                    {processedData.creativeData.length > 0 && (
+                      <section>
+                        <h3 className="mb-4 text-lg font-semibold">Performance por Criativo</h3>
+                        <CreativePerformanceTable
+                          data={processedData.creativeData}
+                          selectedCreative={selectedCreative}
+                          onCreativeSelect={setSelectedCreative}
+                        />
+                      </section>
+                    )}
+
+                    {/* Funnel */}
+                    {processedData.funnelData.length > 0 && (
+                      <section>
+                        <h3 className="mb-4 text-lg font-semibold">Funil de Conversão</h3>
+                        <FunnelVisualization data={processedData.funnelData} />
+                      </section>
+                    )}
+                  </motion.div>
+                </TabsContent>
+
+                <TabsContent value="distribuicao" className="mt-6">
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                    className="space-y-8"
+                  >
+                    <section>
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                        <BigNumberCard
+                          label="Alcance Total"
+                          value={processedData.distributionData.totalReach}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="Impressões"
+                          value={processedData.distributionData.totalImpressions}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="Engajamento Médio"
+                          value={processedData.distributionData.avgEngagement}
+                          format="percentage"
+                        />
+                        <BigNumberCard
+                          label="Views de Vídeo"
+                          value={processedData.distributionData.videoViews}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="Novos Seguidores"
+                          value={processedData.distributionData.followersGained}
+                          format="number"
+                        />
+                      </div>
+                    </section>
+
+                    {processedData.distributionData.platformBreakdown.length > 0 && (
+                      <section>
+                        <h3 className="mb-4 text-lg font-semibold">Breakdown por Plataforma</h3>
+                        <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/50 border-b">
+                              <tr>
+                                <th className="px-4 py-3 text-left font-medium">Plataforma</th>
+                                <th className="px-4 py-3 text-right font-medium">Alcance</th>
+                                <th className="px-4 py-3 text-right font-medium">Engajamento</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {processedData.distributionData.platformBreakdown.map((item) => (
+                                <tr key={item.platform} className="hover:bg-muted/30">
+                                  <td className="px-4 py-3 font-medium capitalize">{item.platform}</td>
+                                  <td className="px-4 py-3 text-right">{item.reach.toLocaleString('pt-BR')}</td>
+                                  <td className="px-4 py-3 text-right">{(item.engagement * 100).toFixed(2)}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    )}
+                  </motion.div>
+                </TabsContent>
+              </AnimatePresence>
+            </Tabs>
+          </>
+        )}
+
+        {/* Footer */}
+        <footer className="mt-12 border-t pt-6">
+          <p className="text-center text-sm text-muted-foreground">
+            Última atualização: {new Date().toLocaleTimeString('pt-BR')} • Dados sincronizados com Google Sheets
+          </p>
+        </footer>
       </main>
     </div>
   );

@@ -1,15 +1,14 @@
 import * as React from 'react';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BigNumberCard } from '@/components/dashboard/BigNumberCard';
 import { WeeklyComparisonTable } from '@/components/dashboard/WeeklyComparisonTable';
 import { CreativePerformanceTable } from '@/components/dashboard/CreativePerformanceTable';
 import { FunnelVisualization } from '@/components/dashboard/FunnelVisualization';
 import { DashboardFilters } from '@/components/dashboard/DashboardFilters';
-import { useSheetData } from '@/hooks/useSheetData';
 import { useColumnMappings } from '@/hooks/useColumnMappings';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,6 +16,7 @@ import { processDashboardData } from '@/lib/dashboard-utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { subDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DashboardViewProps {
   projectId: string;
@@ -25,8 +25,11 @@ interface DashboardViewProps {
 }
 
 export function DashboardView({ projectId, isPreview = false, shareToken }: DashboardViewProps) {
+  const { signInWithGoogle } = useAuth();
   const [activeTab, setActiveTab] = useState('perpetua');
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
+  const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -84,6 +87,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
             if (error) {
               console.error(`Error fetching sheet ${name}:`, error);
+              // Check for Google reconnect error
+              const errorBody = error.message || '';
+              if (errorBody.includes('GOOGLE_RECONNECT_REQUIRED')) {
+                setGoogleReconnectRequired(true);
+              }
               return [];
             }
 
@@ -98,8 +106,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               headers.forEach((h, i) => { obj[h] = row[i] || ''; });
               return obj;
             });
-          } catch (err) {
+          } catch (err: any) {
             console.error(`Unexpected error fetching sheet ${name}:`, err);
+            // Check for Google reconnect error in catch
+            if (err?.message?.includes('GOOGLE_RECONNECT_REQUIRED') || 
+                err?.context?.body?.includes('GOOGLE_RECONNECT_REQUIRED')) {
+              setGoogleReconnectRequired(true);
+            }
             return [];
           }
         })
@@ -166,6 +179,42 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       <div className="flex h-[60vh] flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
         <p className="text-muted-foreground">Carregando dados do dashboard...</p>
+      </div>
+    );
+  }
+
+  const handleReconnectGoogle = async () => {
+    setIsReconnecting(true);
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      console.error('Reconnect failed:', err);
+    } finally {
+      setIsReconnecting(false);
+    }
+  };
+
+  // Show reconnect prompt if Google token expired
+  if (googleReconnectRequired && !shareToken) {
+    return (
+      <div className="container py-12">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Reconexão Necessária</AlertTitle>
+          <AlertDescription className="mt-2">
+            <p className="mb-4">
+              Sua conexão com o Google expirou. Reconecte sua conta para acessar os dados das planilhas.
+            </p>
+            <Button onClick={handleReconnectGoogle} disabled={isReconnecting}>
+              {isReconnecting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Reconectar Conta Google
+            </Button>
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
