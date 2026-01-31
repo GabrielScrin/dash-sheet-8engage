@@ -426,7 +426,12 @@ export default function ProjectConfig() {
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => navigate(`/app/projects/${id}/preview`)}
+                  onClick={() => {
+                    if (id) {
+                      navigate(`/app/projects/${id}/preview`);
+                    }
+                  }}
+                  disabled={!id}
                   className="gap-2"
                 >
                   <Eye className="h-4 w-4" />
