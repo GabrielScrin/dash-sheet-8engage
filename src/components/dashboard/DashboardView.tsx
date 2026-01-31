@@ -17,6 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { subDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { useAuth } from '@/contexts/AuthContext';
+import { FileSpreadsheet } from 'lucide-react';
 
 interface DashboardViewProps {
   projectId: string;
@@ -233,6 +234,36 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     );
   }
 
+
+  // Check if project has spreadsheet configured
+  if (!project?.spreadsheet_id) {
+    return (
+      <div className="container py-12 text-center">
+        <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
+          <FileSpreadsheet className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <h3 className="text-lg font-semibold mb-2">Planilha Não Configurada</h3>
+        <p className="text-muted-foreground max-w-sm mx-auto">
+          Você ainda não selecionou uma planilha do Google. Vá para a etapa "Planilha" para configurar.
+        </p>
+      </div>
+    );
+  }
+
+  // Check if sheets are selected
+  if (sheetNames.length === 0) {
+    return (
+      <div className="container py-12 text-center">
+        <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
+          <FileSpreadsheet className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <h3 className="text-lg font-semibold mb-2">Abas Não Selecionadas</h3>
+        <p className="text-muted-foreground max-w-sm mx-auto">
+          Você ainda não selecionou as abas da planilha. Vá para a etapa "Aba" para configurar.
+        </p>
+      </div>
+    );
+  }
 
   if (!mappings || mappings.length === 0) {
     return (
