@@ -1,219 +1,261 @@
 
-# Plano para Corrigir Preview e Publicar (Tela em Branco)
+# Análise de Conformidade PRD - O Que Falta Implementar
 
-## Problema Identificado
-
-Após análise detalhada do código, identifiquei as seguintes causas para a tela em branco:
-
-### 1. Falta de Tratamento de Erro no ProjectPreview
-
-Quando o fetch do projeto falha (por erro de rede ou permissão), o componente `ProjectPreview.tsx`:
-- Mostra um toast de erro, mas...
-- Continua renderizando o `DashboardView` mesmo com `project === null`
-- O `DashboardView` faz queries adicionais que também falham silenciosamente
-
-### 2. Falta de Tratamento para Projeto Sem Configuração
-
-O `DashboardView` não trata o caso onde:
-- `project.spreadsheet_id` é `null` (planilha não selecionada)
-- `sheetNames` é um array vazio (sem abas configuradas)
-
-Nesses casos, a tela fica em branco porque a query de sheets está desabilitada mas não há UI de feedback.
-
-### 3. Falta de Error Boundary
-
-Erros no React causam crash silencioso sem feedback visual.
+Após análise detalhada do código atual e comparação com o PRD fornecido, segue o status de implementação organizado por categoria.
 
 ---
 
-## Solução
+## Resumo Executivo
 
-### Arquivo 1: `src/pages/app/ProjectPreview.tsx`
-
-**Mudanças:**
-- Adicionar tratamento para quando projeto não é encontrado
-- Redirecionar para lista de projetos com mensagem de erro
-- Melhorar feedback visual
-
-```tsx
-// Adicionar após linha 46 (no catch)
-} catch (error: any) {
-  toast({
-    title: 'Erro ao carregar projeto',
-    description: error.message,
-    variant: 'destructive',
-  });
-  // Redirecionar para lista de projetos após erro
-  navigate('/app/projects');
-} finally {
-```
-
-```tsx
-// Adicionar check após loading, antes do return principal
-if (!project) {
-  return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <div className="container py-12 text-center">
-        <AlertCircle className="mx-auto h-12 w-12 text-destructive mb-4" />
-        <h3 className="text-lg font-semibold">Projeto não encontrado</h3>
-        <p className="text-muted-foreground mb-4">
-          O projeto solicitado não existe ou você não tem permissão para acessá-lo.
-        </p>
-        <Button asChild>
-          <Link to="/app/projects">Voltar para Projetos</Link>
-        </Button>
-      </div>
-    </div>
-  );
-}
-```
+| Categoria | Implementado | Parcial | Faltando |
+|-----------|--------------|---------|----------|
+| Autenticação | 2 | 0 | 1 |
+| Integração Google | 3 | 0 | 1 |
+| Dashboard Core | 6 | 2 | 2 |
+| Compartilhamento | 4 | 0 | 0 |
+| UX/Design | 4 | 1 | 2 |
+| Performance/Segurança | 2 | 2 | 3 |
 
 ---
 
-### Arquivo 2: `src/components/dashboard/DashboardView.tsx`
+## IMPLEMENTADO (Funcional)
 
-**Mudanças:**
-- Adicionar tratamento para projeto sem planilha configurada
-- Melhorar feedback quando não há sheets
+### Autenticação e Acesso
+- Autenticação via Google OAuth2 com escopos corretos (`sheets.readonly`, `drive.metadata.readonly`)
+- Níveis de acesso Admin (configura) e Cliente (visualiza via link)
+- Geração de tokens JWT para links de compartilhamento (com senha opcional e expiração)
+- Dashboard público (`/view/:token`) funcional
 
-```tsx
-// Adicionar ANTES do check de mappings (linha 237)
-// Check if project has spreadsheet configured
-if (!project?.spreadsheet_id) {
-  return (
-    <div className="container py-12 text-center">
-      <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
-        <FileSpreadsheet className="h-6 w-6 text-muted-foreground" />
-      </div>
-      <h3 className="text-lg font-semibold mb-2">Planilha Não Configurada</h3>
-      <p className="text-muted-foreground max-w-sm mx-auto">
-        Você ainda não selecionou uma planilha do Google. Vá para a etapa "Planilha" para configurar.
-      </p>
-    </div>
-  );
-}
+### Integração Google Sheets
+- Integração nativa com Google Sheets API v4 via Edge Functions
+- Listagem e seleção visual de planilhas
+- Seleção de múltiplas abas (multi-tab)
+- Leitura de dados via proxy seguro
 
-// Check if sheets are selected
-if (sheetNames.length === 0) {
-  return (
-    <div className="container py-12 text-center">
-      <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
-        <FileSpreadsheet className="h-6 w-6 text-muted-foreground" />
-      </div>
-      <h3 className="text-lg font-semibold mb-2">Abas Não Selecionadas</h3>
-      <p className="text-muted-foreground max-w-sm mx-auto">
-        Você ainda não selecionou as abas da planilha. Vá para a etapa "Aba" para configurar.
-      </p>
-    </div>
-  );
-}
-```
+### Dashboard Core
+- Dois modos: "Perpétua" e "Distribuição de Conteúdos" (tabs)
+- Big Numbers com animação CountUp e variação percentual
+- Tabela de Comparação Semanal
+- Tabela de Performance por Criativo
+- Funil de Conversão com animação GSAP/SVG
+- Filtros de Data (presets + custom range)
+- Filtro de Criativo
+
+### Configuração Admin
+- Wizard de 5 passos (Planilha > Aba > Colunas > KPIs > Compartilhar)
+- Mapeamento de colunas para categorias
+- Configuração de formato (número/moeda/porcentagem)
+- Gerenciamento de links de compartilhamento
+
+### Design
+- Tema claro e escuro
+- Animações com Framer Motion (transições de tabs)
+- Responsividade básica
+- Paleta inspirada LookerStudio/Meta
 
 ---
 
-### Arquivo 3: `src/components/ErrorBoundary.tsx` (NOVO)
+## PARCIALMENTE IMPLEMENTADO
 
-Criar um Error Boundary para capturar erros React:
+### 1. Persistência de Filtros na URL
+**Status:** Filtros funcionam mas NÃO são persistidos na URL
 
+**O que falta:**
+- Query params para `dateFrom`, `dateTo`, `metric`, `creativeId`
+- Leitura dos params na inicialização do dashboard
+- Atualização automática da URL ao mudar filtros
+
+### 2. Logs de Acesso e Auditoria
+**Status:** Tabela `access_logs` existe mas NÃO está sendo populada
+
+**O que falta:**
+- Inserir registro em `access_logs` quando cliente visualiza dashboard
+- Exibir logs para Admin (quem visualizou, quando, filtros usados)
+
+### 3. Preview em Tempo Real do Mapeamento
+**Status:** Existe preview básico da amostra de dados mas não mostra como ficará renderizado
+
+**O que falta:**
+- Pequeno painel mostrando BigNumbers/Funil com dados reais durante configuração
+- Atualização dinâmica conforme mapeamentos são alterados
+
+---
+
+## NÃO IMPLEMENTADO
+
+### Must Have (Críticos)
+
+#### 1. Cache de Leitura (Redis)
+**Impacto:** Performance e quotas do Google
+**O que implementar:**
+- Sistema de cache para respostas do Google Sheets
+- TTL configurável (padrão 5 minutos)
+- Invalidação manual pelo Admin
+
+#### 2. Footer com Timestamp do Cache
+**Impacto:** UX - Cliente saber quando dados foram atualizados
+**O que implementar:**
+- Exibir "Última atualização: X min atrás" no rodapé do dashboard
+
+#### 3. Página de Configurações da Conta (`/app/settings`)
+**Impacto:** Gestão de tokens e acesso
+**O que implementar:**
+- Revogar acesso ao Google
+- Ver tokens ativos
+- Gerenciar conta
+
+---
+
+### Should Have (Importantes)
+
+#### 4. Export CSV/PDF
+**Impacto:** Usuários querem baixar dados
+**O que implementar:**
+- Botão "Exportar" no dashboard
+- Gerar CSV dos dados filtrados
+- Gerar PDF snapshot do dashboard
+
+#### 5. Ordenação e Filtragem Avançada nas Tabelas
+**Impacto:** UX em tabelas grandes
+**O que implementar:**
+- Clique no header para ordenar
+- Filtro por coluna
+- Paginação real (atualmente não há)
+
+#### 6. Validação de Dados ao Mapear
+**Impacto:** Evitar erros como mapear texto como BigNumber
+**O que implementar:**
+- Detecção automática de tipo (número, moeda, data, texto)
+- Aviso visual se tipo incompatível
+- Sugestão de formato baseado nos dados
+
+---
+
+### Could Have (Desejáveis)
+
+#### 7. Página Embed (`/embed/:token`)
+**Status:** Rota não existe
+**O que implementar:**
+- Versão minimal para iframe
+- Sem header/footer
+- Otimizada para embed
+
+#### 8. Virtualização de Tabelas
+**Impacto:** Performance com muitos dados
+**O que implementar:**
+- Usar react-window ou similar
+- Renderizar apenas linhas visíveis
+
+#### 9. Atalhos de Teclado
+**Impacto:** Acessibilidade
+**O que implementar:**
+- Navegar entre tabs com keyboard
+- Aplicar filtros
+- Shortcuts documentados
+
+---
+
+## Prioridade de Implementação Recomendada
+
+### Fase 1 - Críticos (1-2 dias)
+1. **Persistência de Filtros na URL** - Essencial para links compartilháveis funcionarem corretamente
+2. **Logs de Acesso** - Auditoria é requisito crítico
+3. **Footer com Timestamp** - UX básica
+
+### Fase 2 - Importantes (2-3 dias)
+4. **Cache Redis** - Performance e quotas do Google
+5. **Validação de Dados no Mapeamento** - Evitar erros de configuração
+6. **Preview em Tempo Real** - Melhor UX de configuração
+
+### Fase 3 - Melhorias (3-5 dias)
+7. **Ordenação/Paginação de Tabelas**
+8. **Export CSV/PDF**
+9. **Página de Settings**
+10. **Página Embed**
+
+---
+
+## Detalhes Técnicos por Funcionalidade
+
+### Persistência de Filtros na URL
+
+**Arquivos afetados:**
+- `src/components/dashboard/DashboardFilters.tsx`
+- `src/components/dashboard/DashboardView.tsx`
+- `src/pages/ViewDashboard.tsx`
+
+**Abordagem:**
 ```tsx
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+// Hook para sincronizar filtros com URL
+import { useSearchParams } from 'react-router-dom';
 
-interface Props {
-  children: ReactNode;
-  fallback?: ReactNode;
-}
-
-interface State {
-  hasError: boolean;
-  error?: Error;
-}
-
-export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false
+function useFilterParams() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  const filters = {
+    dateFrom: searchParams.get('dateFrom'),
+    dateTo: searchParams.get('dateTo'),
+    creative: searchParams.get('creative'),
   };
-
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
-  }
-
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
-  }
-
-  private handleReset = () => {
-    this.setState({ hasError: false, error: undefined });
-    window.location.reload();
+  
+  const updateFilters = (newFilters) => {
+    setSearchParams(newFilters);
   };
-
-  public render() {
-    if (this.state.hasError) {
-      return this.props.fallback || (
-        <div className="min-h-[60vh] flex flex-col items-center justify-center p-8">
-          <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Algo deu errado</h2>
-          <p className="text-muted-foreground mb-4 text-center max-w-md">
-            Ocorreu um erro inesperado. Por favor, tente novamente.
-          </p>
-          <Button onClick={this.handleReset}>Recarregar Página</Button>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
+  
+  return { filters, updateFilters };
 }
 ```
 
----
+### Logs de Acesso
 
-### Arquivo 4: `src/pages/app/ProjectPreview.tsx` (uso do ErrorBoundary)
+**Arquivos afetados:**
+- `supabase/functions/validate-share-token/index.ts`
+- Nova página: `src/pages/app/ProjectLogs.tsx`
 
-Envolver o DashboardView com ErrorBoundary:
+**Abordagem:**
+- Inserir log na validação do token
+- Capturar IP via headers
+- Criar UI para Admin visualizar logs
 
-```tsx
-<main>
-  <ErrorBoundary>
-    <DashboardView projectId={id!} isPreview />
-  </ErrorBoundary>
-</main>
-```
+### Cache Redis
 
----
-
-## Resumo das Mudanças
-
-| Arquivo | Mudança |
-|---------|---------|
-| `src/pages/app/ProjectPreview.tsx` | Adicionar tratamento para projeto null + ErrorBoundary |
-| `src/components/dashboard/DashboardView.tsx` | Adicionar checks para spreadsheet_id e sheetNames vazios |
-| `src/components/ErrorBoundary.tsx` | Criar novo componente (NOVO) |
+**Nota:** Lovable Cloud não suporta Redis diretamente, mas podemos:
+1. Usar cache em memória na Edge Function
+2. Usar tabela `cache_entries` no Supabase com TTL
+3. Implementar cache no cliente via React Query (já parcialmente feito com `staleTime`)
 
 ---
 
-## Resultado Esperado
+## Conformidade com Planilha Esperada
 
-Após as correções:
-1. **Preview de projeto sem planilha**: Mostra mensagem "Planilha Não Configurada"
-2. **Preview de projeto sem abas**: Mostra mensagem "Abas Não Selecionadas"
-3. **Preview de projeto inexistente**: Mostra mensagem "Projeto não encontrado" + botão voltar
-4. **Erro inesperado no React**: Error Boundary captura e mostra opção de recarregar
+Para o dashboard funcionar corretamente, a planilha precisa ter colunas numéricas para:
+
+### Big Numbers
+Colunas com valores numéricos agregáveis:
+- `Total Leads`, `Total Vendas`, `Faturamento`, `Investimento`, etc.
+
+### Funil de Conversão
+Colunas numéricas na ordem do funil:
+- `Impressões` > `Cliques` > `Landing Page Views` > `Checkout Views` > `Vendas`
+
+### Comparação Semanal
+Dados por período com:
+- Coluna de data/semana
+- Colunas numéricas de métricas
+
+### Performance por Criativo
+- Coluna identificadora: `Criativo`, `Creative`, ou `Nome do Criativo`
+- Colunas de métricas: `Cliques`, `Impressões`, `Vendas`, etc.
 
 ---
 
-## Sobre o Botão "Publicar"
+## Conclusão
 
-O botão "Publicar" só aparece no **Step 5 (Compartilhar)** da configuração. Nos outros steps, o botão é "Próximo". Este é o comportamento esperado baseado no código:
+O projeto está aproximadamente **70% implementado** em relação aos requisitos "Must Have" do PRD. As principais lacunas são:
 
-```tsx
-{currentStep < steps.length ? (
-  <Button onClick={() => setCurrentStep(...)}>Próximo</Button>
-) : (
-  <Button onClick={handlePublish}>Publicar</Button>
-)}
-```
+1. **Persistência de filtros na URL** - Impede links compartilháveis completos
+2. **Logs de auditoria** - Não está registrando acessos
+3. **Cache** - Dependência direta do Google a cada request
+4. **Validação de mapeamento** - Usuários podem mapear incorretamente
 
-Se você precisa do botão "Publicar" visível em todos os steps, posso adicionar isso também.
+Deseja que eu implemente alguma dessas funcionalidades em específico?
