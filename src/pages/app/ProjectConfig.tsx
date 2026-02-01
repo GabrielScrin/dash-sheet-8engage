@@ -14,6 +14,7 @@ import { SheetTabSelector } from '@/components/sheets/SheetTabSelector';
 import { ColumnMapper } from '@/components/config/ColumnMapper';
 import { KPIConfigurator } from '@/components/config/KPIConfigurator';
 import { ShareManager } from '@/components/config/ShareManager';
+import { AccessLogsPanel } from '@/components/dashboard/AccessLogsPanel';
 
 interface Project {
   id: string;
@@ -269,7 +270,10 @@ export default function ProjectConfig() {
         );
       case 5:
         return project?.id ? (
-          <ShareManager projectId={project.id} />
+          <div className="space-y-6">
+            <ShareManager projectId={project.id} />
+            <AccessLogsPanel projectId={project.id} />
+          </div>
         ) : (
           <div className="rounded-lg border p-6 text-center">
             <Share2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />

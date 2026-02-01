@@ -14,10 +14,12 @@ import { WeeklyComparisonTable } from '@/components/dashboard/WeeklyComparisonTa
 import { CreativePerformanceTable } from '@/components/dashboard/CreativePerformanceTable';
 import { FunnelVisualization } from '@/components/dashboard/FunnelVisualization';
 import { DashboardFilters } from '@/components/dashboard/DashboardFilters';
+import { DashboardFooter } from '@/components/dashboard/DashboardFooter';
 import { processDashboardData } from '@/lib/dashboard-utils';
 import { subDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useFilterParams } from '@/hooks/useFilterParams';
 
 interface ValidationResult {
   valid: boolean;
@@ -38,6 +40,7 @@ interface ValidationResult {
 
 export default function PublicDashboard() {
   const { token } = useParams<{ token: string }>();
+  const queryClient = useQueryClient();
 
   const [status, setStatus] = useState<'loading' | 'password' | 'validated' | 'error'>('loading');
   const [validationData, setValidationData] = useState<ValidationResult | null>(null);
@@ -46,14 +49,20 @@ export default function PublicDashboard() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // Dashboard state
-  const [activeTab, setActiveTab] = useState('perpetua');
-  const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+  // URL-based filters
+  const { filters, dateRange, setDateRange, setCreative, setTab } = useFilterParams('perpetua');
+
+  // Local state for creative selection (synced with URL)
+  const selectedCreative = filters.creative;
+  const activeTab = filters.tab;
+
+  // Initialize date range from URL or default
+  const effectiveDateRange: DateRange | undefined = dateRange || {
     from: subDays(new Date(), 30),
     to: new Date(),
-  });
+  };
 
   const validateToken = async (passwordAttempt?: string) => {
     if (!token) {
@@ -169,28 +178,55 @@ export default function PublicDashboard() {
           }
         })
       );
+      
+      // Update last updated timestamp
+      setLastUpdated(new Date());
+      
       return results.flat();
     },
     enabled: status === 'validated' && !!validationData?.project?.spreadsheet_id && sheetNames.length > 0,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   const allRows = allSheetsQuery.data || [];
+
+  // Handle date range changes
+  const handleDateRangeChange = (range: DateRange | undefined) => {
+    setDateRange(range);
+  };
+
+  // Handle creative selection
+  const handleCreativeChange = (creative: string | null) => {
+    setCreative(creative);
+  };
+
+  // Handle tab changes
+  const handleTabChange = (tab: string) => {
+    setTab(tab);
+  };
+
+  // Refresh data
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ 
+      queryKey: ['public-sheets-data', validationData?.project?.spreadsheet_id] 
+    });
+  };
 
   // Apply Filters
   const filteredRows = useMemo(() => {
     if (!allRows.length) return [];
 
     return allRows.filter(row => {
-      if (dateRange?.from) {
+      if (effectiveDateRange?.from) {
         const dateKey = Object.keys(row).find(k =>
           k.toLowerCase().includes('data') || k.toLowerCase().includes('date')
         );
         if (dateKey && row[dateKey]) {
           const rowDate = new Date(row[dateKey]);
           if (!isNaN(rowDate.getTime())) {
-            const from = new Date(dateRange.from!);
+            const from = new Date(effectiveDateRange.from!);
             from.setHours(0, 0, 0, 0);
-            const to = dateRange.to ? new Date(dateRange.to) : new Date();
+            const to = effectiveDateRange.to ? new Date(effectiveDateRange.to) : new Date();
             to.setHours(23, 59, 59, 999);
             if (rowDate < from) return false;
             if (rowDate > to) return false;
@@ -209,7 +245,7 @@ export default function PublicDashboard() {
 
       return true;
     });
-  }, [allRows, dateRange, selectedCreative]);
+  }, [allRows, effectiveDateRange, selectedCreative]);
 
   // Process Data
   const processedData = useMemo(() => {
@@ -323,6 +359,7 @@ export default function PublicDashboard() {
 
   // Validated - show dashboard
   const isLoadingData = allSheetsQuery.isLoading;
+  const isRefreshing = allSheetsQuery.isFetching && !allSheetsQuery.isLoading;
 
   return (
     <div className="min-h-screen bg-background">
@@ -355,13 +392,13 @@ export default function PublicDashboard() {
             {/* Filters */}
             <DashboardFilters
               selectedCreative={selectedCreative}
-              onCreativeChange={setSelectedCreative}
-              dateRange={dateRange}
-              onDateRangeChange={setDateRange}
+              onCreativeChange={handleCreativeChange}
+              dateRange={effectiveDateRange}
+              onDateRangeChange={handleDateRangeChange}
             />
 
             {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="mt-6">
               <TabsList className="grid w-full max-w-md grid-cols-2">
                 <TabsTrigger value="perpetua">Perpétua</TabsTrigger>
                 <TabsTrigger value="distribuicao">Distribuição de Conteúdos</TabsTrigger>
@@ -410,7 +447,7 @@ export default function PublicDashboard() {
                         <CreativePerformanceTable
                           data={processedData.creativeData}
                           selectedCreative={selectedCreative}
-                          onCreativeSelect={setSelectedCreative}
+                          onCreativeSelect={handleCreativeChange}
                         />
                       </section>
                     )}
@@ -495,12 +532,12 @@ export default function PublicDashboard() {
           </>
         )}
 
-        {/* Footer */}
-        <footer className="mt-12 border-t pt-6">
-          <p className="text-center text-sm text-muted-foreground">
-            Última atualização: {new Date().toLocaleTimeString('pt-BR')} • Dados sincronizados com Google Sheets
-          </p>
-        </footer>
+        {/* Footer with timestamp */}
+        <DashboardFooter 
+          lastUpdated={lastUpdated}
+          onRefresh={handleRefresh}
+          isRefreshing={isRefreshing}
+        />
       </main>
     </div>
   );
