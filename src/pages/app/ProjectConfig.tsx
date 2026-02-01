@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronRight, FileSpreadsheet, Columns, BarChart3, Share2, Eye } from 'lucide-react';
+import { Check, ChevronRight, FileSpreadsheet, Columns, BarChart3, Share2, Eye, Database, Link2, Facebook } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -25,14 +25,16 @@ interface Project {
   sheet_name: string | null;
   sheet_names: string[] | null;
   status: string;
+  source_type: 'sheet' | 'meta_ads' | null;
+  source_config: any;
 }
 
 const steps = [
-  { id: 1, name: 'Planilha', icon: FileSpreadsheet, description: 'Selecione a planilha Google' },
-  { id: 2, name: 'Aba', icon: FileSpreadsheet, description: 'Escolha a aba com os dados' },
-  { id: 3, name: 'Colunas', icon: Columns, description: 'Mapeie as colunas para métricas' },
-  { id: 4, name: 'KPIs', icon: BarChart3, description: 'Configure os indicadores' },
-  { id: 5, name: 'Compartilhar', icon: Share2, description: 'Gere links de acesso' },
+  { id: 1, name: 'Fonte', icon: Database, description: 'Escolha a origem dos dados' },
+  { id: 2, name: 'Conexão', icon: Link2, description: 'Conecte sua conta ou planilha' },
+  { id: 3, name: 'Mapeamento', icon: Columns, description: 'Configure as colunas' },
+  { id: 4, name: 'KPIs', icon: BarChart3, description: 'Visualização dos dados' },
+  { id: 5, name: 'Publicar', icon: Share2, description: 'Compartilhe seu dashboard' },
 ];
 
 export default function ProjectConfig() {
@@ -43,12 +45,28 @@ export default function ProjectConfig() {
   const [loading, setLoading] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
   const [sheetSelectorOpen, setSheetSelectorOpen] = useState(false);
+  const [adAccounts, setAdAccounts] = useState<any[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
 
   useEffect(() => {
     if (id) {
       fetchProject();
     }
   }, [id]);
+
+  useEffect(() => {
+    if (currentStep === 2 && project?.source_type === 'meta_ads' && !project.source_config?.ad_account_id) {
+      // Try auto-fetch
+      setLoadingAccounts(true);
+      supabase.functions.invoke('meta-api?action=ad-accounts')
+        .then(({ data, error }) => {
+          if (!error && data?.accounts) {
+            setAdAccounts(data.accounts);
+          }
+        })
+        .finally(() => setLoadingAccounts(false));
+    }
+  }, [currentStep, project?.source_type]);
 
   const fetchProject = async () => {
     try {
@@ -124,9 +142,29 @@ export default function ProjectConfig() {
     }
   };
 
+  const handleSourceSelect = async (type: 'sheet' | 'meta_ads') => {
+    if (!project) return;
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ source_type: type })
+        .eq('id', project.id);
+
+      if (error) throw error;
+
+      setProject({ ...project, source_type: type });
+      setCurrentStep(2);
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao salvar fonte',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleTabsSelect = async (tabs: { sheetId: number; title: string }[]) => {
     if (!project) return;
-
     try {
       const sheetNames = tabs.map(t => t.title);
       const { error } = await supabase
@@ -164,22 +202,164 @@ export default function ProjectConfig() {
       case 1:
         return (
           <div className="space-y-6">
-            {project?.spreadsheet_name ? (
-              <div className="rounded-lg border p-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
-                    <FileSpreadsheet className="h-6 w-6 text-green-600 dark:text-green-400" />
+            <h3 className="text-lg font-medium">De onde vêm seus dados?</h3>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card
+                className={`cursor-pointer transition-all hover:border-primary ${project?.source_type === 'sheet' ? 'border-primary bg-primary/5' : ''}`}
+                onClick={() => handleSourceSelect('sheet')}
+              >
+                <CardContent className="flex flex-col items-center justify-center p-6 text-center">
+                  <div className="mb-4 rounded-full bg-green-100 p-3 dark:bg-green-900/20">
+                    <FileSpreadsheet className="h-8 w-8 text-green-600 dark:text-green-400" />
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{project.spreadsheet_name}</p>
-                    <p className="text-sm text-muted-foreground">Planilha conectada</p>
+                  <h4 className="font-semibold">Planilha Google</h4>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Conecte uma planilha do seu Google Drive. Ideal para dados manuais ou exportados.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card
+                className={`cursor-pointer transition-all hover:border-primary ${project?.source_type === 'meta_ads' ? 'border-primary bg-primary/5' : ''}`}
+                onClick={() => handleSourceSelect('meta_ads')}
+              >
+                <CardContent className="flex flex-col items-center justify-center p-6 text-center">
+                  <div className="mb-4 rounded-full bg-blue-100 p-3 dark:bg-blue-900/20">
+                    <Facebook className="h-8 w-8 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <Button variant="outline" onClick={() => setSheetSelectorOpen(true)}>
-                    Alterar
-                  </Button>
+                  <h4 className="font-semibold">Meta Ads</h4>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Conexão nativa com Facebook e Instagram Ads. Dados atualizados automaticamente.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+      case 2:
+        if (project?.source_type === 'meta_ads') {
+          return (
+            <div className="space-y-6">
+              {!project.source_config?.ad_account_id ? (
+                <div className="space-y-6">
+                  <div className="rounded-lg border-2 border-dashed p-8 text-center">
+                    <Facebook className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Conectar Meta Ads</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Conecte sua conta do Facebook para listar suas contas de anúncios.
+                    </p>
+                    <Button
+                      size="lg"
+                      className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={async () => {
+                        try {
+                          const { data: resData, error: resError } = await supabase.functions.invoke('meta-auth?action=authorize');
+
+                          if (resError) throw resError;
+                          if (resData?.url) {
+                            window.location.href = resData.url;
+                          }
+                        } catch (e: any) {
+                          toast({ title: 'Erro na conexão', description: e.message, variant: 'destructive' });
+                        }
+                      }}
+                    >
+                      <Facebook className="h-5 w-5" />
+                      Conectar Conta
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ) : (
+              ) : (
+                <div className="space-y-4">
+                  {!project.source_config?.ad_account_id ? (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-lg font-medium">Selecione uma conta de anúncios</h3>
+                        <Button variant="outline" onClick={async () => {
+                          setLoadingAccounts(true);
+                          try {
+                            const { data, error } = await supabase.functions.invoke('meta-api?action=ad-accounts');
+                            if (error) throw error;
+                            setAdAccounts(data.accounts || []);
+                          } catch (e: any) {
+                            toast({ title: 'Erro ao listar contas', description: e.message, variant: 'destructive' });
+                          } finally {
+                            setLoadingAccounts(false);
+                          }
+                        }}>
+                          Actualizar Lista
+                        </Button>
+                      </div>
+
+                      {loadingAccounts ? (
+                        <div className="space-y-2">
+                          {[1, 2, 3].map(i => <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />)}
+                        </div>
+                      ) : (
+                        <div className="grid gap-4">
+                          {adAccounts.length === 0 && (
+                            <div className="text-center py-8 text-muted-foreground">
+                              Nenhuma conta encontrada. Clique em "Atualizar Lista" ou verifique suas permissões no Facebook.
+                            </div>
+                          )}
+                          {adAccounts.map((acc) => (
+                            <Card
+                              key={acc.id}
+                              className="cursor-pointer hover:border-primary transition-colors"
+                              onClick={async () => {
+                                try {
+                                  const { error } = await supabase
+                                    .from('projects')
+                                    .update({
+                                      source_config: { ...project.source_config, ad_account_id: acc.id, ad_account_name: acc.name }
+                                    })
+                                    .eq('id', project.id);
+
+                                  if (error) throw error;
+                                  setProject({ ...project, source_config: { ...project.source_config, ad_account_id: acc.id, ad_account_name: acc.name } });
+                                  setCurrentStep(3); // Go to Mapping
+                                } catch (e: any) {
+                                  toast({ title: 'Erro ao selecionar conta', description: e.message, variant: 'destructive' });
+                                }
+                              }}
+                            >
+                              <CardContent className="p-4 flex justify-between items-center">
+                                <div>
+                                  <p className="font-medium">{acc.name}</p>
+                                  <p className="text-xs text-muted-foreground">ID: {acc.id} • {acc.currency}</p>
+                                </div>
+                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border p-4 bg-blue-50 border-blue-200 flex justify-between items-center">
+                      <div>
+                        <p className="font-medium text-blue-800">Conta Conectada: {project.source_config.ad_account_name}</p>
+                        <p className="text-sm text-blue-600">ID: {project.source_config.ad_account_id}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        // Clear selection to allow re-select
+                        // For now just allow overwrite by showing list again? 
+                        // Or specific clear action
+                        // Simple cheat: clear local state to show list
+                        setProject({ ...project, source_config: { ...project.source_config, ad_account_id: null } });
+                      }}>Alterar</Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // Default to Sheet logic (existing)
+        return (
+          <div className="space-y-6">
+            {!project?.spreadsheet_id ? (
               <div className="rounded-lg border-2 border-dashed p-8 text-center">
                 <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                 <h3 className="text-lg font-semibold mb-2">Conectar Planilha Google</h3>
@@ -190,44 +370,41 @@ export default function ProjectConfig() {
                   <FileSpreadsheet className="h-5 w-5" />
                   Selecionar Planilha
                 </Button>
-                <p className="mt-4 text-xs text-muted-foreground">
-                  O acesso é somente leitura. Nenhuma modificação será feita na sua planilha.
-                </p>
               </div>
-            )}
-          </div>
-        );
-      case 2:
-        return project?.spreadsheet_id && project?.spreadsheet_name ? (
-          <div className="space-y-4">
-            {project.sheet_names && project.sheet_names.length > 0 && (
-              <div className="rounded-lg border p-4 bg-muted/50">
-                <p className="text-sm text-muted-foreground mb-2">Abas selecionadas:</p>
-                <div className="flex flex-wrap gap-2">
-                  {project.sheet_names.map((name) => (
-                    <Badge key={name} variant="secondary">
-                      {name}
-                    </Badge>
-                  ))}
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-lg border p-4 bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-900/30 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <FileSpreadsheet className="h-5 w-5 text-green-600 dark:text-green-400" />
+                    <div>
+                      <p className="font-medium text-sm">{project.spreadsheet_name}</p>
+                      <p className="text-xs text-muted-foreground">Planilha conectada</p>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setSheetSelectorOpen(true)}>Alterar</Button>
                 </div>
+
+                {project.sheet_names && project.sheet_names.length > 0 && (
+                  <div className="rounded-lg border p-4 bg-muted/50">
+                    <p className="text-sm text-muted-foreground mb-2">Abas selecionadas:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {project.sheet_names.map((name) => (
+                        <Badge key={name} variant="secondary">
+                          {name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <SheetTabSelector
+                  spreadsheetId={project.spreadsheet_id}
+                  spreadsheetName={project.spreadsheet_name}
+                  selectedTabs={project.sheet_names || []}
+                  onSelect={handleTabsSelect}
+                  onBack={() => setCurrentStep(1)}
+                />
               </div>
             )}
-            <SheetTabSelector
-              spreadsheetId={project.spreadsheet_id}
-              spreadsheetName={project.spreadsheet_name}
-              selectedTabs={project.sheet_names || []}
-              onSelect={handleTabsSelect}
-              onBack={() => setCurrentStep(1)}
-            />
-          </div>
-        ) : (
-          <div className="rounded-lg border p-6 text-center">
-            <p className="text-muted-foreground">
-              Primeiro, selecione uma planilha na etapa anterior.
-            </p>
-            <Button className="mt-4" onClick={() => setCurrentStep(1)}>
-              Ir para Etapa 1
-            </Button>
           </div>
         );
       case 3:
