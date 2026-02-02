@@ -47,6 +47,26 @@ export default function ProjectConfig() {
   const [sheetSelectorOpen, setSheetSelectorOpen] = useState(false);
   const [adAccounts, setAdAccounts] = useState<any[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
+
+  const fetchAdAccounts = async ({ silent }: { silent?: boolean } = {}) => {
+    setLoadingAccounts(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('meta-api?action=ad-accounts');
+      if (error) throw error;
+      setMetaConnected(true);
+      setAdAccounts(data?.accounts || []);
+    } catch (e: any) {
+      const message = e?.message || 'Erro ao listar contas de anÃºncios';
+      setMetaConnected(false);
+      setAdAccounts([]);
+      if (!silent && !message.toLowerCase().includes('meta account not connected')) {
+        toast({ title: 'Erro ao listar contas', description: message, variant: 'destructive' });
+      }
+    } finally {
+      setLoadingAccounts(false);
+    }
+  };
 
   useEffect(() => {
     if (id) {
@@ -56,17 +76,10 @@ export default function ProjectConfig() {
 
   useEffect(() => {
     if (currentStep === 2 && project?.source_type === 'meta_ads' && !project.source_config?.ad_account_id) {
-      // Try auto-fetch
-      setLoadingAccounts(true);
-      supabase.functions.invoke('meta-api?action=ad-accounts')
-        .then(({ data, error }) => {
-          if (!error && data?.accounts) {
-            setAdAccounts(data.accounts);
-          }
-        })
-        .finally(() => setLoadingAccounts(false));
+      setMetaConnected(null);
+      fetchAdAccounts({ silent: true });
     }
-  }, [currentStep, project?.source_type]);
+  }, [currentStep, project?.source_type, project?.source_config?.ad_account_id]);
 
   const fetchProject = async () => {
     try {
@@ -94,12 +107,12 @@ export default function ProjectConfig() {
       setProject(projectData);
 
       // Determine current step based on project state
-      if (!data.spreadsheet_id) {
+      if (!projectData.source_type) {
         setCurrentStep(1);
-      } else if (!data.sheet_name) {
-        setCurrentStep(2);
+      } else if (projectData.source_type === 'meta_ads') {
+        setCurrentStep(projectData.source_config?.ad_account_id ? 3 : 2);
       } else {
-        setCurrentStep(3);
+        setCurrentStep(projectData.spreadsheet_id && projectData.sheet_name ? 3 : 2);
       }
     } catch (error: any) {
       toast({
@@ -248,7 +261,7 @@ export default function ProjectConfig() {
         if (project?.source_type === 'meta_ads') {
           return (
             <div className="space-y-6">
-              {!project.source_config?.ad_account_id ? (
+              {metaConnected === false ? (
                 <div className="space-y-6">
                   <div className="rounded-lg border-2 border-dashed p-8 text-center">
                     <Facebook className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
@@ -261,7 +274,10 @@ export default function ProjectConfig() {
                       className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={async () => {
                         try {
-                          const { data: resData, error: resError } = await supabase.functions.invoke('meta-auth?action=authorize');
+                          const returnTo = `/app/projects/${project.id}/config`;
+                          const { data: resData, error: resError } = await supabase.functions.invoke(
+                            `meta-auth?action=authorize&return_to=${encodeURIComponent(returnTo)}`
+                          );
 
                           if (resError) throw resError;
                           if (resData?.url) {
@@ -277,25 +293,18 @@ export default function ProjectConfig() {
                     </Button>
                   </div>
                 </div>
+              ) : metaConnected !== true ? (
+                <div className="rounded-lg border p-6 text-center text-muted-foreground">
+                  Verificando conexÃ£o com a Meta...
+                </div>
               ) : (
                 <div className="space-y-4">
                   {!project.source_config?.ad_account_id ? (
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
                         <h3 className="text-lg font-medium">Selecione uma conta de anúncios</h3>
-                        <Button variant="outline" onClick={async () => {
-                          setLoadingAccounts(true);
-                          try {
-                            const { data, error } = await supabase.functions.invoke('meta-api?action=ad-accounts');
-                            if (error) throw error;
-                            setAdAccounts(data.accounts || []);
-                          } catch (e: any) {
-                            toast({ title: 'Erro ao listar contas', description: e.message, variant: 'destructive' });
-                          } finally {
-                            setLoadingAccounts(false);
-                          }
-                        }}>
-                          Actualizar Lista
+                        <Button variant="outline" onClick={() => fetchAdAccounts()}>
+                          Atualizar Lista
                         </Button>
                       </div>
 
@@ -349,12 +358,20 @@ export default function ProjectConfig() {
                         <p className="font-medium text-blue-800">Conta Conectada: {project.source_config.ad_account_name}</p>
                         <p className="text-sm text-blue-600">ID: {project.source_config.ad_account_id}</p>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => {
-                        // Clear selection to allow re-select
-                        // For now just allow overwrite by showing list again? 
-                        // Or specific clear action
-                        // Simple cheat: clear local state to show list
-                        setProject({ ...project, source_config: { ...project.source_config, ad_account_id: null } });
+                      <Button variant="ghost" size="sm" onClick={async () => {
+                        try {
+                          const nextConfig = { ...project.source_config, ad_account_id: null, ad_account_name: null };
+                          const { error } = await supabase
+                            .from('projects')
+                            .update({ source_config: nextConfig })
+                            .eq('id', project.id);
+
+                          if (error) throw error;
+                          setProject({ ...project, source_config: nextConfig });
+                          fetchAdAccounts({ silent: true });
+                        } catch (e: any) {
+                          toast({ title: 'Erro ao alterar conta', description: e.message, variant: 'destructive' });
+                        }
                       }}>Alterar</Button>
                     </div>
                   )}

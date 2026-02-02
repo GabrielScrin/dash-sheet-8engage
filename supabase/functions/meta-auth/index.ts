@@ -5,6 +5,27 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+function base64UrlEncode(input: string) {
+  const bytes = new TextEncoder().encode(input);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function getOriginFromRequest(req: Request) {
+  const origin = req.headers.get('origin');
+  if (origin) return origin;
+
+  const referer = req.headers.get('referer');
+  if (!referer) return null;
+
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -12,26 +33,31 @@ Deno.serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const path = url.pathname.split('/').pop(); // "meta-auth" or "authorize" or "callback" ?? 
-    // Usually mapped to /functions/v1/meta-auth
-    // Let's check query params or path logic.
-    // Assuming we call /authorize or /callback via params or logic.
-    // Safer: check valid action via query param or simple path match if strict routing used.
 
-    // We'll use a simple "action = authorize | callback" query param for simplicity in single function
-    const action = url.searchParams.get('action');
+    const requestBody = req.method === 'POST' ? await req.json().catch(() => null) : null;
+    const action = url.searchParams.get('action') ?? requestBody?.action;
 
     const META_CLIENT_ID = Deno.env.get('META_CLIENT_ID');
     const META_CLIENT_SECRET = Deno.env.get('META_CLIENT_SECRET');
-    const META_REDIRECT_URI = `${url.origin}/functions/v1/meta-auth?action=callback`; // Self-referential callback
+
+    const requestOrigin = getOriginFromRequest(req);
+    const defaultRedirectUri = requestOrigin ? `${requestOrigin.replace(/\/$/, '')}/app/meta/callback` : null;
+    const META_REDIRECT_URI = Deno.env.get('META_REDIRECT_URI') ?? defaultRedirectUri;
 
     if (!META_CLIENT_ID || !META_CLIENT_SECRET) {
       throw new Error('Missing Meta configuration');
     }
+    if (!META_REDIRECT_URI) {
+      throw new Error('Missing Meta redirect URI (set META_REDIRECT_URI or call from a browser origin)');
+    }
 
     if (action === 'authorize') {
-      const scope = 'ads_read,read_insights,business_management'; // Scopes needed
-      const metaAuthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${META_CLIENT_ID}&redirect_uri=${encodeURIComponent(META_REDIRECT_URI)}&scope=${scope}&response_type=code`;
+      // NOTE: `read_insights` is for Page Insights and will cause "Invalid Scopes" for many apps.
+      // `ads_read` is enough for listing ad accounts and pulling Ads Insights.
+      const scope = Deno.env.get('META_SCOPES') ?? 'ads_read,business_management';
+      const returnTo = url.searchParams.get('return_to') ?? requestBody?.return_to ?? null;
+      const state = returnTo ? base64UrlEncode(JSON.stringify({ return_to: returnTo })) : undefined;
+      const metaAuthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${META_CLIENT_ID}&redirect_uri=${encodeURIComponent(META_REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&response_type=code${state ? `&state=${state}` : ''}`;
 
       return new Response(JSON.stringify({ url: metaAuthUrl }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -39,7 +65,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'callback') {
-      const code = url.searchParams.get('code');
+      const code = url.searchParams.get('code') ?? requestBody?.code;
       if (!code) throw new Error('No code provided');
 
       // 1. Exchange code for access token
