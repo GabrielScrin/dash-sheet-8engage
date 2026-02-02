@@ -14,45 +14,76 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const action = url.searchParams.get('action'); // 'ad-accounts' | 'insights'
 
-    // 1. Authenticate User via Supabase Token
+    // Validate JWT manually using getClaims
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) throw new Error('Missing Auth Header');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!; // Needed to read service_tokens
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+    const token = authHeader.replace('Bearer ', '');
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
-    if (userError || !user) throw new Error('Invalid User');
 
-    // 2. Get Meta Access Token from DB
+    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      console.error('JWT validation failed:', claimsError);
+      return new Response(JSON.stringify({ error: 'Invalid or expired token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const userId = claimsData.claims.sub as string;
+    console.log('Authenticated user:', userId);
+
+    // Use service role for database operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Get Meta Access Token from DB
     const { data: tokenData, error: tokenError } = await supabase
       .from('service_tokens')
       .select('access_token')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('provider', 'meta')
       .single();
 
-    if (tokenError || !tokenData) throw new Error('Meta account not connected');
+    if (tokenError || !tokenData) {
+      console.error('Token not found:', tokenError);
+      return new Response(JSON.stringify({ error: 'Meta account not connected' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
     const ACCESS_TOKEN = tokenData.access_token;
 
     // --- Action: List Ad Accounts ---
     if (action === 'ad-accounts') {
+      console.log('Fetching ad accounts for user:', userId);
       const res = await fetch(`https://graph.facebook.com/v19.0/me/adaccounts?fields=name,account_id,currency,timezone_name&access_token=${ACCESS_TOKEN}`);
       const data = await res.json();
 
-      if (data.error) throw new Error(data.error.message);
+      if (data.error) {
+        console.error('Meta API error:', data.error);
+        throw new Error(data.error.message);
+      }
 
       const accounts = data.data.map((acc: any) => ({
-        id: acc.account_id, // "act_" prefix is stripped by specific field request or just pure ID
+        id: acc.account_id,
         name: acc.name,
         currency: acc.currency,
         timezone: acc.timezone_name
       }));
 
+      console.log('Found', accounts.length, 'ad accounts');
       return new Response(JSON.stringify({ accounts }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -61,15 +92,13 @@ Deno.serve(async (req) => {
     // --- Action: Fetch Insights ---
     if (action === 'insights') {
       const accountId = url.searchParams.get('accountId');
-      const startDate = url.searchParams.get('startDate'); // YYYY-MM-DD
-      const endDate = url.searchParams.get('endDate');     // YYYY-MM-DD
+      const startDate = url.searchParams.get('startDate');
+      const endDate = url.searchParams.get('endDate');
 
       if (!accountId) throw new Error('Missing accountId');
       if (!startDate || !endDate) throw new Error('Missing date range');
 
-      // CACHING STRATEGY (Simple implementation)
-      // Check if we have cached data? For now, implementing direct fetch.
-      // In a real prod env, we'd query a 'cache_meta_insights' table or Redis here.
+      console.log('Fetching insights for account:', accountId);
 
       const fields = 'impressions,clicks,spend,actions,date_start,date_stop';
       const apiUrl = `https://graph.facebook.com/v19.0/act_${accountId}/insights?level=account&time_increment=1&time_range={'since':'${startDate}','until':'${endDate}'}&fields=${fields}&access_token=${ACCESS_TOKEN}`;
@@ -77,7 +106,10 @@ Deno.serve(async (req) => {
       const res = await fetch(apiUrl);
       const data = await res.json();
 
-      if (data.error) throw new Error(data.error.message);
+      if (data.error) {
+        console.error('Meta API error:', data.error);
+        throw new Error(data.error.message);
+      }
 
       // Normalize Data
       const normalized = data.data.map((row: any) => {
@@ -85,14 +117,12 @@ Deno.serve(async (req) => {
         const clicks = parseInt(row.clicks || '0');
         const impressions = parseInt(row.impressions || '0');
 
-        // Calc Metrics
         const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
         const cpc = clicks > 0 ? spend / clicks : 0;
 
-        // Extract Actions (Leads, Purchases, etc.)
         let leads = 0;
         if (row.actions) {
-          const leadAction = row.actions.find((a: any) => a.action_type === 'lead'); // Customize based on mapping preference later
+          const leadAction = row.actions.find((a: any) => a.action_type === 'lead');
           if (leadAction) leads = parseInt(leadAction.value);
         }
         const cpl = leads > 0 ? spend / leads : 0;
@@ -120,6 +150,7 @@ Deno.serve(async (req) => {
     });
 
   } catch (error: any) {
+    console.error('Edge function error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
