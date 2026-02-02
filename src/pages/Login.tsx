@@ -15,7 +15,15 @@ export default function Login() {
   const location = useLocation();
   const { toast } = useToast();
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/app/projects';
+  const from = (() => {
+    const state = location.state as any;
+    const rawFrom = state?.from;
+
+    if (typeof rawFrom === 'string') return rawFrom;
+    if (rawFrom?.pathname) return `${rawFrom.pathname}${rawFrom.search || ''}`;
+
+    return '/app/projects';
+  })();
 
   useEffect(() => {
     if (user && !loading) {
