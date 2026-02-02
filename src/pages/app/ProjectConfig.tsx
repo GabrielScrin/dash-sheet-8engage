@@ -78,10 +78,18 @@ export default function ProjectConfig() {
 
       if (error) throw error;
 
-      // Parse sheet_names from JSONB
+      // Parse sheet_names from JSONB and ensure all fields are present
       const projectData: Project = {
-        ...data,
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        spreadsheet_id: data.spreadsheet_id,
+        spreadsheet_name: data.spreadsheet_name,
+        sheet_name: data.sheet_name,
         sheet_names: Array.isArray(data.sheet_names) ? data.sheet_names as string[] : [],
+        status: data.status || 'draft',
+        source_type: (data.source_type as 'sheet' | 'meta_ads' | null) || null,
+        source_config: data.source_config || {},
       };
       setProject(projectData);
 
