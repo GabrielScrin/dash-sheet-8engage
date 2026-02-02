@@ -154,6 +154,8 @@ export type Database = {
           name: string
           sheet_name: string | null
           sheet_names: Json | null
+          source_config: Json | null
+          source_type: string | null
           spreadsheet_id: string | null
           spreadsheet_name: string | null
           status: string | null
@@ -169,6 +171,8 @@ export type Database = {
           name: string
           sheet_name?: string | null
           sheet_names?: Json | null
+          source_config?: Json | null
+          source_type?: string | null
           spreadsheet_id?: string | null
           spreadsheet_name?: string | null
           status?: string | null
@@ -184,10 +188,51 @@ export type Database = {
           name?: string
           sheet_name?: string | null
           sheet_names?: Json | null
+          source_config?: Json | null
+          source_type?: string | null
           spreadsheet_id?: string | null
           spreadsheet_name?: string | null
           status?: string | null
           theme?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      service_tokens: {
+        Row: {
+          access_token: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          provider: string
+          refresh_token: string | null
+          scope: string | null
+          token_type: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          provider: string
+          refresh_token?: string | null
+          scope?: string | null
+          token_type?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          provider?: string
+          refresh_token?: string | null
+          scope?: string | null
+          token_type?: string | null
           updated_at?: string
           user_id?: string
         }
