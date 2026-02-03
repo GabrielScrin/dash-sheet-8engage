@@ -73,8 +73,8 @@ Deno.serve(async (req) => {
         `https://graph.facebook.com/v19.0/me/adaccounts?fields=name,account_id,currency,timezone_name&limit=200&access_token=${ACCESS_TOKEN}`;
 
       while (nextUrl) {
-        const res = await fetch(nextUrl);
-        const data = await res.json();
+        const res: Response = await fetch(nextUrl);
+        const data: { data?: any[]; paging?: { next?: string }; error?: { message: string } } = await res.json();
 
         if (data.error) {
           console.error('Meta API error:', data.error);
