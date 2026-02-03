@@ -32,9 +32,8 @@ interface Project {
 const steps = [
   { id: 1, name: 'Fonte', icon: Database, description: 'Escolha a origem dos dados' },
   { id: 2, name: 'Conexão', icon: Link2, description: 'Conecte sua conta ou planilha' },
-  { id: 3, name: 'Mapeamento', icon: Columns, description: 'Configure as colunas' },
-  { id: 4, name: 'KPIs', icon: BarChart3, description: 'Visualização dos dados' },
-  { id: 5, name: 'Publicar', icon: Share2, description: 'Compartilhe seu dashboard' },
+  { id: 3, name: 'Colunas', icon: Columns, description: 'Mapeie e ajuste métricas' },
+  { id: 4, name: 'Publicar', icon: Share2, description: 'Compartilhe seu dashboard' },
 ];
 
 export default function ProjectConfig() {
@@ -434,11 +433,28 @@ export default function ProjectConfig() {
         );
       case 3:
         return project?.spreadsheet_id && project?.sheet_names && project.sheet_names.length > 0 ? (
-          <ColumnMapper
-            projectId={project.id}
-            spreadsheetId={project.spreadsheet_id}
-            sheetNames={project.sheet_names}
-          />
+          <div className="space-y-8">
+            <ColumnMapper
+              projectId={project.id}
+              spreadsheetId={project.spreadsheet_id}
+              sheetNames={project.sheet_names}
+            />
+
+            <div className="rounded-lg border p-6">
+              <div className="flex items-center gap-2 mb-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                <h3 className="text-lg font-semibold">KPIs (opcional)</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">
+                Ajuste nomes, formatos e campos-alvo. Se você não configurar, o dashboard ainda aparece — só pode ficar sem métricas.
+              </p>
+              <KPIConfigurator
+                projectId={project.id}
+                spreadsheetId={project.spreadsheet_id}
+                sheetNames={project.sheet_names}
+              />
+            </div>
+          </div>
         ) : (
           <div className="rounded-lg border p-6 text-center">
             <Columns className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
@@ -452,25 +468,6 @@ export default function ProjectConfig() {
           </div>
         );
       case 4:
-        return project?.id && project?.spreadsheet_id && project?.sheet_names ? (
-          <KPIConfigurator
-            projectId={project.id}
-            spreadsheetId={project.spreadsheet_id}
-            sheetNames={project.sheet_names}
-          />
-        ) : (
-          <div className="rounded-lg border p-6 text-center">
-            <BarChart3 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Configurar KPIs</h3>
-            <p className="text-muted-foreground">
-              Primeiro, mapeie as colunas na etapa anterior.
-            </p>
-            <Button className="mt-4" onClick={() => setCurrentStep(3)}>
-              Ir para Etapa 3
-            </Button>
-          </div>
-        );
-      case 5:
         return project?.id ? (
           <div className="space-y-6">
             <ShareManager projectId={project.id} />

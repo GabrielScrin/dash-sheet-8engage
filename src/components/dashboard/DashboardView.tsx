@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { processDashboardData } from '@/lib/dashboard-utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { subDays } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -54,6 +54,30 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   // 2. Fetch Column Mappings
   const { mappings, isLoading: loadingMappings } = useColumnMappings(projectId);
+
+  const metaInsightsQuery = useQuery({
+    queryKey: [
+      'meta-insights',
+      project?.source_config?.ad_account_id,
+      dateRange?.from ? dateRange.from.toISOString() : null,
+      dateRange?.to ? dateRange.to.toISOString() : null,
+    ],
+    queryFn: async () => {
+      const accountId = project?.source_config?.ad_account_id;
+      if (!accountId) return [];
+
+      const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
+      const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
+
+      const { data, error } = await supabase.functions.invoke(
+        `meta-api?action=insights&accountId=${encodeURIComponent(accountId)}&startDate=${startDate}&endDate=${endDate}`
+      );
+      if (error) throw error;
+
+      return (data?.data || []) as Array<Record<string, any>>;
+    },
+    enabled: project?.source_type === 'meta_ads' && !!project?.source_config?.ad_account_id && !shareToken,
+  });
 
   // 3. Fetch Sheet Data from all configured sheets
   const sheetNames: string[] = Array.isArray(project?.sheet_names)
@@ -124,13 +148,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     enabled: !!project?.spreadsheet_id && sheetNames.length > 0,
   });
 
-  const allRows = allSheetsQuery.data || [];
+  const sourceRows = (project?.source_type === 'meta_ads' ? (metaInsightsQuery.data || []) : (allSheetsQuery.data || [])) as any[];
 
   // 4. Apply Filters
   const filteredRows = useMemo(() => {
-    if (!allRows.length) return [];
+    if (!sourceRows.length) return [];
 
-    return allRows.filter(row => {
+    return sourceRows.filter(row => {
       // Date Filter
       if (dateRange?.from) {
         // Try to find a date column
@@ -165,14 +189,120 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       return true;
     });
-  }, [allRows, dateRange, selectedCreative]);
+  }, [sourceRows, dateRange, selectedCreative]);
 
   // 5. Process Data
-  const processedData = useMemo(() => {
-    return processDashboardData(filteredRows, mappings || []);
-  }, [filteredRows, mappings]);
+  const effectiveMappings = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return mappings || [];
 
-  const isLoading = loadingProject || loadingMappings || allSheetsQuery.isLoading;
+    // For Meta Ads we can render meaningful KPIs even if the user didn't configure mappings yet.
+    return [
+      {
+        id: 'meta_spend',
+        project_id: projectId,
+        source_column: 'spend',
+        mapped_to: 'big_number',
+        mapped_to_key: null,
+        display_name: 'Gasto',
+        data_type: 'number',
+        is_big_number: true,
+        is_funnel_step: false,
+        funnel_order: null,
+        format_options: { format_type: 'currency' },
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'meta_impressions',
+        project_id: projectId,
+        source_column: 'impressions',
+        mapped_to: 'big_number',
+        mapped_to_key: null,
+        display_name: 'Impressões',
+        data_type: 'number',
+        is_big_number: true,
+        is_funnel_step: false,
+        funnel_order: null,
+        format_options: { format_type: 'number' },
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'meta_clicks',
+        project_id: projectId,
+        source_column: 'clicks',
+        mapped_to: 'big_number',
+        mapped_to_key: null,
+        display_name: 'Cliques',
+        data_type: 'number',
+        is_big_number: true,
+        is_funnel_step: false,
+        funnel_order: null,
+        format_options: { format_type: 'number' },
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'meta_ctr',
+        project_id: projectId,
+        source_column: 'ctr',
+        mapped_to: 'big_number',
+        mapped_to_key: null,
+        display_name: 'CTR',
+        data_type: 'number',
+        is_big_number: true,
+        is_funnel_step: false,
+        funnel_order: null,
+        format_options: { format_type: 'percent' },
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'meta_cpc',
+        project_id: projectId,
+        source_column: 'cpc',
+        mapped_to: 'big_number',
+        mapped_to_key: null,
+        display_name: 'CPC',
+        data_type: 'number',
+        is_big_number: true,
+        is_funnel_step: false,
+        funnel_order: null,
+        format_options: { format_type: 'currency' },
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'meta_cpl',
+        project_id: projectId,
+        source_column: 'cpl',
+        mapped_to: 'big_number',
+        mapped_to_key: null,
+        display_name: 'CPL',
+        data_type: 'number',
+        is_big_number: true,
+        is_funnel_step: false,
+        funnel_order: null,
+        format_options: { format_type: 'currency' },
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'meta_leads_funnel',
+        project_id: projectId,
+        source_column: 'leads',
+        mapped_to: 'funnel',
+        mapped_to_key: null,
+        display_name: 'Leads',
+        data_type: 'number',
+        is_big_number: false,
+        is_funnel_step: true,
+        funnel_order: 1,
+        format_options: { format_type: 'number' },
+        created_at: new Date().toISOString(),
+      },
+    ] as any[];
+  }, [mappings, project?.source_config?.ad_account_id, project?.source_type, projectId]);
+
+  const processedData = useMemo(() => {
+    return processDashboardData(filteredRows, effectiveMappings as any);
+  }, [filteredRows, effectiveMappings]);
+
+  const isLoading = loadingProject || loadingMappings || allSheetsQuery.isLoading || metaInsightsQuery.isLoading;
 
   if (isLoading) {
     return (
@@ -245,10 +375,21 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     }
 
     if (project.source_type === 'meta_ads') {
+      if (shareToken) {
+        warnings.push({
+          title: 'Meta Ads indisponível no link compartilhado',
+          description: 'Por enquanto, o dashboard público não consegue buscar dados da Meta. Abra logado para visualizar.',
+        });
+      }
       if (!project.source_config?.ad_account_id) {
         warnings.push({
           title: 'Meta Ads não configurado',
           description: 'Conecte a Meta e selecione uma conta de anúncios para começar a puxar dados.',
+        });
+      } else if (!metaInsightsQuery.isLoading && (metaInsightsQuery.data || []).length === 0) {
+        warnings.push({
+          title: 'Sem dados da Meta no período',
+          description: 'Tente ampliar o período ou verifique se a conta tem campanhas/entregas.',
         });
       }
       return warnings;
@@ -273,7 +414,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       });
     }
 
-    if (project.spreadsheet_id && sheetNames.length > 0 && allRows.length === 0 && !allSheetsQuery.isLoading) {
+    if (project.spreadsheet_id && sheetNames.length > 0 && sourceRows.length === 0 && !allSheetsQuery.isLoading) {
       warnings.push({
         title: 'Nenhum dado encontrado',
         description: `As abas selecionadas (${sheetNames.join(', ')}) estão vazias, inacessíveis ou em um formato não esperado.`,
@@ -465,7 +606,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       {/* Footer */}
       <footer className="mt-12 border-t pt-6">
         <p className="text-center text-sm text-muted-foreground">
-          Última atualização: {new Date().toLocaleTimeString('pt-BR')} • Dados sincronizados com Google Sheets
+          Última atualização: {new Date().toLocaleTimeString('pt-BR')} • Dados sincronizados com {project?.source_type === 'meta_ads' ? 'Meta Ads' : 'Google Sheets'}
         </p>
       </footer>
     </div>
