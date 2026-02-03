@@ -86,11 +86,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
 
       const { data, error } = await supabase.functions.invoke(
-<<<<<<< HEAD
-        `meta-api?action=insights&accountId=${encodeURIComponent(accountId)}&startDate=${startDate}&endDate=${endDate}&level=campaign`
-=======
-        `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}`
->>>>>>> e29e36e06ff519479af09b699578462c749b4e24
+        `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=campaign`
       );
       if (error) throw error;
 
@@ -369,6 +365,44 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     return processDashboardData(filteredRows, effectiveMappings as any);
   }, [filteredRows, effectiveMappings]);
 
+  const metaWeeklyData = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [];
+
+    const byWeek = new Map<string, { weekStart: string; spend: number; clicks: number; leads: number }>();
+
+    for (const row of filteredRows as any[]) {
+      const dateStr = String(row?.date || row?.date_start || '');
+      const date = dateStr ? new Date(dateStr) : null;
+      if (!date || isNaN(date.getTime())) continue;
+
+      // Week start (Sunday-based) as YYYY-MM-DD
+      const weekStart = new Date(date);
+      weekStart.setHours(0, 0, 0, 0);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      const key = format(weekStart, 'yyyy-MM-dd');
+
+      const current = byWeek.get(key) || { weekStart: key, spend: 0, clicks: 0, leads: 0 };
+      current.spend += Number(row?.spend || 0);
+      current.clicks += Number(row?.clicks || 0);
+      current.leads += Number(row?.leads || 0);
+      byWeek.set(key, current);
+    }
+
+    const weeks = Array.from(byWeek.values())
+      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
+      .slice(0, 5)
+      .reverse();
+
+    return weeks.map((w, i) => ({
+      week: `Sem ${i + 1}`,
+      sales: w.leads,
+      investment: w.spend,
+      revenue: 0,
+      roas: 0,
+      conversion: w.clicks > 0 ? (w.leads / w.clicks) * 100 : 0,
+    }));
+  }, [filteredRows, project?.source_type]);
+
   const isLoading = loadingProject || loadingMappings || allSheetsQuery.isLoading || metaInsightsQuery.isLoading;
 
   if (isLoading) {
@@ -554,10 +588,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               )}
 
               {/* Weekly Comparison */}
-              {processedData.weeklyData.length > 0 && (
+              {(project?.source_type === 'meta_ads' ? metaWeeklyData.length > 0 : processedData.weeklyData.length > 0) && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Visão Semanal</h3>
-                  <WeeklyComparisonTable data={processedData.weeklyData} />
+                  <WeeklyComparisonTable data={project?.source_type === 'meta_ads' ? (metaWeeklyData as any) : processedData.weeklyData} />
                 </section>
               )}
 

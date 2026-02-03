@@ -49,9 +49,11 @@ export default function ProjectConfig() {
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
   const [adAccountSearch, setAdAccountSearch] = useState('');
+  const [metaCheckStartedAt, setMetaCheckStartedAt] = useState<number | null>(null);
 
   const fetchAdAccounts = async ({ silent }: { silent?: boolean } = {}) => {
     setLoadingAccounts(true);
+    setMetaCheckStartedAt(Date.now());
     try {
       const { data, error } = await supabase.functions.invoke('meta-api?action=ad-accounts');
       if (error) throw error;
@@ -82,6 +84,18 @@ export default function ProjectConfig() {
       fetchAdAccounts({ silent: true });
     }
   }, [currentStep, project?.source_type, project?.source_config?.ad_account_id]);
+
+  useEffect(() => {
+    if (metaConnected !== null) return;
+    if (!metaCheckStartedAt) return;
+
+    const id = window.setTimeout(() => {
+      // If we are still "checking" after a while, surface a retry path instead of hanging forever.
+      setMetaConnected(false);
+    }, 15000);
+
+    return () => window.clearTimeout(id);
+  }, [metaConnected, metaCheckStartedAt]);
 
   const fetchProject = async () => {
     try {
@@ -297,7 +311,15 @@ export default function ProjectConfig() {
                 </div>
               ) : metaConnected !== true ? (
                 <div className="rounded-lg border p-6 text-center text-muted-foreground">
-                  Verificando conexÃ£o com a Meta...
+                  <p className="mb-3">Verificando conexão com a Meta...</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchAdAccounts()}
+                    disabled={loadingAccounts}
+                  >
+                    {loadingAccounts ? 'Carregando...' : 'Tentar novamente'}
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-4">
