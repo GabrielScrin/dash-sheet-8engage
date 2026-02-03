@@ -33,7 +33,9 @@ Deno.serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { token, password }: ValidateRequest = await req.json();
+    const body: ValidateRequest = await req.json();
+    const token = typeof body.token === 'string' ? body.token.trim() : body.token;
+    const password = body.password;
 
     if (!token || typeof token !== 'string') {
       return new Response(
@@ -43,7 +45,7 @@ Deno.serve(async (req) => {
     }
 
     // Input validation - token should be hex string
-    if (!/^[a-f0-9]{48}$/.test(token)) {
+    if (!/^[a-f0-9]{48}$/i.test(token)) {
       console.log('Invalid token format');
       return new Response(
         JSON.stringify({ error: 'Invalid token format', valid: false }),

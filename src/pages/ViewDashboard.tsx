@@ -74,17 +74,30 @@ export default function PublicDashboard() {
     try {
       setIsSubmitting(true);
 
+      const normalizedToken = token.trim();
       const { data, error: fnError } = await supabase.functions.invoke<ValidationResult>(
         'validate-share-token',
         {
-          body: { token, password: passwordAttempt }
+          body: { token: normalizedToken, password: passwordAttempt }
         }
       );
 
       if (fnError) {
         console.error('Function error:', fnError);
         setStatus('error');
-        setError('Erro ao validar token');
+        const maybeContextBody = (fnError as any)?.context?.body;
+        const detailed =
+          typeof maybeContextBody === 'string'
+            ? (() => {
+                try {
+                  return JSON.parse(maybeContextBody)?.error;
+                } catch {
+                  return null;
+                }
+              })()
+            : null;
+
+        setError(detailed || fnError.message || 'Erro ao validar token');
         return;
       }
 

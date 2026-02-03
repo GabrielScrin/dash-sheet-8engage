@@ -32,6 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      const errorMessage = this.state.error?.message;
       return this.props.fallback || (
         <div className="min-h-[60vh] flex flex-col items-center justify-center p-8">
           <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
@@ -39,6 +40,11 @@ export class ErrorBoundary extends Component<Props, State> {
           <p className="text-muted-foreground mb-4 text-center max-w-md">
             Ocorreu um erro inesperado. Por favor, tente novamente.
           </p>
+          {errorMessage && (
+            <pre className="mb-4 max-w-2xl w-full overflow-auto rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+              {errorMessage}
+            </pre>
+          )}
           <Button onClick={this.handleReset}>Recarregar Página</Button>
         </div>
       );
