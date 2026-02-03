@@ -86,11 +86,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
 
       const { data, error } = await supabase.functions.invoke(
-<<<<<<< HEAD
-        `meta-api?action=insights&accountId=${encodeURIComponent(accountId)}&startDate=${startDate}&endDate=${endDate}&level=campaign`
-=======
-        `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}`
->>>>>>> e29e36e06ff519479af09b699578462c749b4e24
+        `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=campaign`
       );
       if (error) throw error;
 
