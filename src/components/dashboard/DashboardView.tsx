@@ -17,7 +17,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { subDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { useAuth } from '@/contexts/AuthContext';
-import { FileSpreadsheet } from 'lucide-react';
 
 interface DashboardViewProps {
   projectId: string;
@@ -227,74 +226,76 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Erro ao carregar dados</AlertTitle>
           <AlertDescription>
-            Não foi possível acessar as planilhas do Google. Verique as permissões.
+            Não foi possível acessar as planilhas do Google. Verifique as permissões.
           </AlertDescription>
         </Alert>
       </div>
     );
   }
 
+  const setupWarnings = (() => {
+    const warnings: { title: string; description: string }[] = [];
 
-  // Check if project has spreadsheet configured
-  if (!project?.spreadsheet_id) {
-    return (
-      <div className="container py-12 text-center">
-        <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
-          <FileSpreadsheet className="h-6 w-6 text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-semibold mb-2">Planilha Não Configurada</h3>
-        <p className="text-muted-foreground max-w-sm mx-auto">
-          Você ainda não selecionou uma planilha do Google. Vá para a etapa "Planilha" para configurar.
-        </p>
-      </div>
-    );
-  }
+    if (!project) {
+      warnings.push({
+        title: 'Projeto não carregado',
+        description: 'Não foi possível carregar as informações do projeto.',
+      });
+      return warnings;
+    }
 
-  // Check if sheets are selected
-  if (sheetNames.length === 0) {
-    return (
-      <div className="container py-12 text-center">
-        <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
-          <FileSpreadsheet className="h-6 w-6 text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-semibold mb-2">Abas Não Selecionadas</h3>
-        <p className="text-muted-foreground max-w-sm mx-auto">
-          Você ainda não selecionou as abas da planilha. Vá para a etapa "Aba" para configurar.
-        </p>
-      </div>
-    );
-  }
+    if (project.source_type === 'meta_ads') {
+      if (!project.source_config?.ad_account_id) {
+        warnings.push({
+          title: 'Meta Ads não configurado',
+          description: 'Conecte a Meta e selecione uma conta de anúncios para começar a puxar dados.',
+        });
+      }
+      return warnings;
+    }
 
-  if (!mappings || mappings.length === 0) {
-    return (
-      <div className="container py-12 text-center">
-        <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
-          <AlertCircle className="h-6 w-6 text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-semibold mb-2">Configuração Incompleta</h3>
-        <p className="text-muted-foreground max-w-sm mx-auto">
-          Você ainda não mapeou as colunas da sua planilha. Vá para a etapa "Colunas" para configurar quais dados quer ver.
-        </p>
-      </div>
-    );
-  }
+    if (!project.spreadsheet_id) {
+      warnings.push({
+        title: 'Planilha não configurada',
+        description: 'Selecione uma planilha do Google para começar a puxar dados.',
+      });
+    } else if (sheetNames.length === 0) {
+      warnings.push({
+        title: 'Abas não selecionadas',
+        description: 'Selecione ao menos uma aba da planilha para ler os dados.',
+      });
+    }
 
-  if (allRows.length === 0 && !allSheetsQuery.isLoading) {
-    return (
-      <div className="container py-12 text-center">
-        <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-4">
-          <AlertCircle className="h-6 w-6 text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-semibold mb-2">Nenhum dado encontrado</h3>
-        <p className="text-muted-foreground max-w-sm mx-auto">
-          As abas selecionadas ({sheetNames.join(', ')}) parecem estar vazias ou não contêm dados no formato esperado.
-        </p>
-      </div>
-    );
-  }
+    if (!mappings || mappings.length === 0) {
+      warnings.push({
+        title: 'Mapeamento de colunas pendente',
+        description: 'Sem mapeamento, o dashboard continua visível, mas não sabe quais métricas exibir.',
+      });
+    }
+
+    if (project.spreadsheet_id && sheetNames.length > 0 && allRows.length === 0 && !allSheetsQuery.isLoading) {
+      warnings.push({
+        title: 'Nenhum dado encontrado',
+        description: `As abas selecionadas (${sheetNames.join(', ')}) estão vazias, inacessíveis ou em um formato não esperado.`,
+      });
+    }
+
+    return warnings;
+  })();
 
   return (
     <div className="container py-6">
+      {setupWarnings.length > 0 && (
+        <div className="mb-6 space-y-3">
+          {setupWarnings.map((w) => (
+            <Alert key={w.title}>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{w.title}</AlertTitle>
+              <AlertDescription>{w.description}</AlertDescription>
+            </Alert>
+          ))}
+        </div>
+      )}
       {/* Filters */}
       <DashboardFilters
         selectedCreative={selectedCreative}
