@@ -91,6 +91,14 @@ export function processDashboardData(
                 weekData.investment = parseValue(row['investimento'] || row['Investment'] || 0);
                 weekData.revenue = parseValue(row['faturamento'] || row['Revenue'] || 0);
             }
+            // Ensure required fields exist to avoid runtime errors in tables.
+            weekData.sales = isFiniteNumber(weekData.sales) ? weekData.sales : 0;
+            weekData.investment = isFiniteNumber(weekData.investment) ? weekData.investment : 0;
+            weekData.revenue = isFiniteNumber(weekData.revenue) ? weekData.revenue : 0;
+            weekData.roas = isFiniteNumber(weekData.roas)
+              ? weekData.roas
+              : (weekData.investment > 0 ? weekData.revenue / weekData.investment : 0);
+            weekData.conversion = isFiniteNumber(weekData.conversion) ? weekData.conversion : 0;
             return weekData;
         });
     }
@@ -102,13 +110,30 @@ export function processDashboardData(
         allRows.forEach(row => {
             const name = row['criativo'] || row['Creative'] || row['Nome do Criativo'] || 'Desconhecido';
             if (!creativeGroups[name]) {
-                creativeGroups[name] = { name, clicks: 0, impressions: 0, sales: 0, revenue: 0 };
+                creativeGroups[name] = {
+                    id: String(name),
+                    name: String(name),
+                    thumbnail: row['thumbnail'] || row['Thumbnail'] || undefined,
+                    link: row['link'] || row['Link'] || undefined,
+                    clicks: 0,
+                    impressions: 0,
+                    ctr: 0,
+                    landingViews: 0,
+                    checkoutViews: 0,
+                    sales: 0,
+                    revenue: 0,
+                };
             }
             creativeGroups[name].clicks += (parseValue(row['cliques'] || row['Clicks']) || 0);
             creativeGroups[name].impressions += (parseValue(row['impressoes'] || row['Impressions']) || 0);
             creativeGroups[name].sales += (parseValue(row['vendas'] || row['Sales']) || 0);
+            creativeGroups[name].landingViews += (parseValue(row['lp_views'] || row['LP Views'] || row['landing_views'] || row['Landing Views']) || 0);
+            creativeGroups[name].checkoutViews += (parseValue(row['checkout'] || row['Checkout'] || row['checkout_views'] || row['Checkout Views']) || 0);
         });
-        data.creativeData = Object.values(creativeGroups);
+        data.creativeData = Object.values(creativeGroups).map((g: any) => ({
+            ...g,
+            ctr: g.impressions > 0 ? (g.clicks / g.impressions) * 100 : 0,
+        }));
     }
 
     // 5. Process Distribution Data
@@ -178,4 +203,8 @@ function parseValue(val: any): number {
 
     const parsed = parseFloat(cleaned);
     return isNaN(parsed) || !isFinite(parsed) ? 0 : parsed;
+}
+
+function isFiniteNumber(value: any): value is number {
+    return typeof value === 'number' && isFinite(value);
 }
