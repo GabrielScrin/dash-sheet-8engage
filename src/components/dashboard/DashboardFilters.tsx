@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { format, subDays, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarIcon, X, ChevronDown } from 'lucide-react';
+import { CalendarIcon, X, ChevronDown, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -15,12 +15,23 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 
 interface DashboardFiltersProps {
   selectedCreative: string | null;
   onCreativeChange: (id: string | null) => void;
   dateRange: DateRange | undefined;
   onDateRangeChange: (range: DateRange | undefined) => void;
+  campaigns?: { id: string; name: string }[];
+  selectedCampaignId?: string | null;
+  onCampaignChange?: (id: string | null) => void;
 }
 
 const presets = [
@@ -35,12 +46,16 @@ export function DashboardFilters({
   selectedCreative,
   onCreativeChange,
   dateRange,
-  onDateRangeChange
+  onDateRangeChange,
+  campaigns = [],
+  selectedCampaignId = null,
+  onCampaignChange,
 }: DashboardFiltersProps) {
   const [preset, setPreset] = useState('last_7_days');
   const [viewMode, setViewMode] = useState('week');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [internalDateRange, setInternalDateRange] = useState<DateRange | undefined>(dateRange);
+  const [isCampaignOpen, setIsCampaignOpen] = useState(false);
 
   const handlePresetChange = (value: string) => {
     setPreset(value);
@@ -74,6 +89,11 @@ export function DashboardFilters({
     if (!dateRange.to) return format(dateRange.from, "d 'de' MMM", { locale: ptBR });
     return `${format(dateRange.from, "d 'de' MMM", { locale: ptBR })} - ${format(dateRange.to, "d 'de' MMM", { locale: ptBR })}`;
   };
+
+  const selectedCampaignLabel =
+    selectedCampaignId
+      ? campaigns.find((c) => c.id === selectedCampaignId)?.name || 'Campanha selecionada'
+      : 'Todas as campanhas';
 
   return (
     <div className="sticky top-[7.5rem] z-30 -mx-4 bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
@@ -143,6 +163,50 @@ export function DashboardFilters({
         </Select>
 
         {/* Active Filters */}
+        {campaigns.length > 0 && onCampaignChange && (
+          <Popover open={isCampaignOpen} onOpenChange={setIsCampaignOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="justify-between w-[320px]">
+                <span className="truncate">{selectedCampaignLabel}</span>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[320px] p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Buscar campanha..." />
+                <CommandList>
+                  <CommandEmpty>Nenhuma campanha encontrada.</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      value="__all__"
+                      onSelect={() => {
+                        onCampaignChange(null);
+                        setIsCampaignOpen(false);
+                      }}
+                    >
+                      <Check className={cn("mr-2 h-4 w-4", !selectedCampaignId ? "opacity-100" : "opacity-0")} />
+                      Todas as campanhas
+                    </CommandItem>
+                    {campaigns.slice(0, 500).map((c) => (
+                      <CommandItem
+                        key={c.id}
+                        value={c.name}
+                        onSelect={() => {
+                          onCampaignChange(c.id);
+                          setIsCampaignOpen(false);
+                        }}
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", selectedCampaignId === c.id ? "opacity-100" : "opacity-0")} />
+                        <span className="truncate">{c.name}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        )}
+
         {selectedCreative && (
           <Badge variant="secondary" className="gap-1 pl-2">
             Criativo selecionado
@@ -162,6 +226,7 @@ export function DashboardFilters({
             onClick={() => {
               handlePresetChange('last_7_days');
               onCreativeChange(null);
+              onCampaignChange?.(null);
             }}
           >
             Limpar filtros

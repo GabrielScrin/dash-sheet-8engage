@@ -6,6 +6,7 @@ import { Check, ChevronRight, FileSpreadsheet, Columns, BarChart3, Share2, Eye, 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Header } from '@/components/layout/Header';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -47,6 +48,7 @@ export default function ProjectConfig() {
   const [adAccounts, setAdAccounts] = useState<any[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
+  const [adAccountSearch, setAdAccountSearch] = useState('');
 
   const fetchAdAccounts = async ({ silent }: { silent?: boolean } = {}) => {
     setLoadingAccounts(true);
@@ -55,6 +57,7 @@ export default function ProjectConfig() {
       if (error) throw error;
       setMetaConnected(true);
       setAdAccounts(data?.accounts || []);
+      setAdAccountSearch('');
     } catch (e: any) {
       const message = e?.message || 'Erro ao listar contas de anÃºncios';
       setMetaConnected(false);
@@ -307,18 +310,32 @@ export default function ProjectConfig() {
                         </Button>
                       </div>
 
+                      <Input
+                        value={adAccountSearch}
+                        onChange={(e) => setAdAccountSearch(e.target.value)}
+                        placeholder="Buscar conta pelo nome..."
+                      />
+
                       {loadingAccounts ? (
                         <div className="space-y-2">
                           {[1, 2, 3].map(i => <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />)}
                         </div>
                       ) : (
                         <div className="grid gap-4">
-                          {adAccounts.length === 0 && (
+                          {adAccounts.filter((acc) => {
+                            if (!adAccountSearch.trim()) return true;
+                            return String(acc?.name || '').toLowerCase().includes(adAccountSearch.trim().toLowerCase());
+                          }).length === 0 && (
                             <div className="text-center py-8 text-muted-foreground">
                               Nenhuma conta encontrada. Clique em "Atualizar Lista" ou verifique suas permissões no Facebook.
                             </div>
                           )}
-                          {adAccounts.map((acc) => (
+                          {adAccounts
+                            .filter((acc) => {
+                              if (!adAccountSearch.trim()) return true;
+                              return String(acc?.name || '').toLowerCase().includes(adAccountSearch.trim().toLowerCase());
+                            })
+                            .map((acc) => (
                             <Card
                               key={acc.id}
                               className="cursor-pointer hover:border-primary transition-colors"
@@ -333,7 +350,7 @@ export default function ProjectConfig() {
 
                                   if (error) throw error;
                                   setProject({ ...project, source_config: { ...project.source_config, ad_account_id: acc.id, ad_account_name: acc.name } });
-                                  setCurrentStep(3); // Go to Mapping
+                                  navigate(`/app/projects/${project.id}/preview`);
                                 } catch (e: any) {
                                   toast({ title: 'Erro ao selecionar conta', description: e.message, variant: 'destructive' });
                                 }

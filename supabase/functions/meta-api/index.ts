@@ -68,23 +68,35 @@ Deno.serve(async (req) => {
     // --- Action: List Ad Accounts ---
     if (action === 'ad-accounts') {
       console.log('Fetching ad accounts for user:', userId);
-      const res = await fetch(`https://graph.facebook.com/v19.0/me/adaccounts?fields=name,account_id,currency,timezone_name&access_token=${ACCESS_TOKEN}`);
-      const data = await res.json();
+      const accounts: any[] = [];
+      let nextUrl: string | null =
+        `https://graph.facebook.com/v19.0/me/adaccounts?fields=name,account_id,currency,timezone_name&limit=200&access_token=${ACCESS_TOKEN}`;
 
-      if (data.error) {
-        console.error('Meta API error:', data.error);
-        throw new Error(data.error.message);
+      while (nextUrl) {
+        const res = await fetch(nextUrl);
+        const data = await res.json();
+
+        if (data.error) {
+          console.error('Meta API error:', data.error);
+          throw new Error(data.error.message);
+        }
+
+        if (Array.isArray(data.data)) accounts.push(...data.data);
+        nextUrl = data?.paging?.next || null;
+
+        // Safety guard to avoid infinite loops or unexpected huge result sets
+        if (accounts.length > 5000) break;
       }
 
-      const accounts = data.data.map((acc: any) => ({
+      const normalizedAccounts = accounts.map((acc: any) => ({
         id: acc.account_id,
         name: acc.name,
         currency: acc.currency,
         timezone: acc.timezone_name
       }));
 
-      console.log('Found', accounts.length, 'ad accounts');
-      return new Response(JSON.stringify({ accounts }), {
+      console.log('Found', normalizedAccounts.length, 'ad accounts');
+      return new Response(JSON.stringify({ accounts: normalizedAccounts }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -94,14 +106,18 @@ Deno.serve(async (req) => {
       const accountId = url.searchParams.get('accountId');
       const startDate = url.searchParams.get('startDate');
       const endDate = url.searchParams.get('endDate');
+      const level = url.searchParams.get('level') || 'account';
 
       if (!accountId) throw new Error('Missing accountId');
       if (!startDate || !endDate) throw new Error('Missing date range');
 
-      console.log('Fetching insights for account:', accountId);
+      console.log('Fetching insights for account:', accountId, 'level:', level);
 
-      const fields = 'impressions,clicks,spend,actions,date_start,date_stop';
-      const apiUrl = `https://graph.facebook.com/v19.0/act_${accountId}/insights?level=account&time_increment=1&time_range={'since':'${startDate}','until':'${endDate}'}&fields=${fields}&access_token=${ACCESS_TOKEN}`;
+      const fieldsBase = 'impressions,clicks,spend,actions,date_start,date_stop';
+      const fields = level === 'campaign'
+        ? `campaign_id,campaign_name,${fieldsBase}`
+        : fieldsBase;
+      const apiUrl = `https://graph.facebook.com/v19.0/act_${accountId}/insights?level=${encodeURIComponent(level)}&time_increment=1&time_range={'since':'${startDate}','until':'${endDate}'}&fields=${encodeURIComponent(fields)}&access_token=${ACCESS_TOKEN}`;
 
       const res = await fetch(apiUrl);
       const data = await res.json();
@@ -135,7 +151,9 @@ Deno.serve(async (req) => {
           leads,
           ctr,
           cpc,
-          cpl
+          cpl,
+          campaign_id: row.campaign_id,
+          campaign_name: row.campaign_name
         };
       });
 

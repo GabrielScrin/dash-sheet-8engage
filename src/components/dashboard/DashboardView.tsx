@@ -28,6 +28,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const { signInWithGoogle } = useAuth();
   const [activeTab, setActiveTab] = useState('perpetua');
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -70,7 +71,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
 
       const { data, error } = await supabase.functions.invoke(
-        `meta-api?action=insights&accountId=${encodeURIComponent(accountId)}&startDate=${startDate}&endDate=${endDate}`
+        `meta-api?action=insights&accountId=${encodeURIComponent(accountId)}&startDate=${startDate}&endDate=${endDate}&level=campaign`
       );
       if (error) throw error;
 
@@ -150,11 +151,58 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const sourceRows = (project?.source_type === 'meta_ads' ? (metaInsightsQuery.data || []) : (allSheetsQuery.data || [])) as any[];
 
+  const campaignOptions = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [];
+    const map = new Map<string, string>();
+    for (const row of sourceRows) {
+      if (row?.campaign_id && row?.campaign_name) {
+        map.set(String(row.campaign_id), String(row.campaign_name));
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [project?.source_type, sourceRows]);
+
+  const rowsAfterCampaignFilter = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return sourceRows;
+    if (!selectedCampaignId) return sourceRows;
+    return sourceRows.filter((r) => String(r?.campaign_id || '') === String(selectedCampaignId));
+  }, [project?.source_type, selectedCampaignId, sourceRows]);
+
+  const aggregatedMetaRows = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return rowsAfterCampaignFilter;
+
+    // If no campaign selected, aggregate by day across campaigns (sum metrics per date).
+    if (selectedCampaignId) return rowsAfterCampaignFilter;
+
+    const byDate = new Map<string, any>();
+    for (const row of rowsAfterCampaignFilter) {
+      const date = String(row?.date || row?.date_start || '');
+      if (!date) continue;
+      const current = byDate.get(date) || {
+        date,
+        impressions: 0,
+        clicks: 0,
+        spend: 0,
+        leads: 0,
+      };
+      current.impressions += Number(row?.impressions || 0);
+      current.clicks += Number(row?.clicks || 0);
+      current.spend += Number(row?.spend || 0);
+      current.leads += Number(row?.leads || 0);
+      byDate.set(date, current);
+    }
+
+    return Array.from(byDate.values())
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  }, [project?.source_type, rowsAfterCampaignFilter, selectedCampaignId]);
+
   // 4. Apply Filters
   const filteredRows = useMemo(() => {
-    if (!sourceRows.length) return [];
+    if (!aggregatedMetaRows.length) return [];
 
-    return sourceRows.filter(row => {
+    return aggregatedMetaRows.filter(row => {
       // Date Filter
       if (dateRange?.from) {
         // Try to find a date column
@@ -189,7 +237,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       return true;
     });
-  }, [sourceRows, dateRange, selectedCreative]);
+  }, [aggregatedMetaRows, dateRange, selectedCreative]);
 
   // 5. Process Data
   const effectiveMappings = useMemo(() => {
@@ -443,6 +491,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         onCreativeChange={setSelectedCreative}
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
+        campaigns={campaignOptions}
+        selectedCampaignId={selectedCampaignId}
+        onCampaignChange={(id) => setSelectedCampaignId(id)}
       />
 
       {/* Tabs */}
