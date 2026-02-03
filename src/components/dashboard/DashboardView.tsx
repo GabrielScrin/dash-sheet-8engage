@@ -18,6 +18,19 @@ import { format, subDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { useAuth } from '@/contexts/AuthContext';
 
+// Helper to safely type source_config from Json
+interface MetaSourceConfig {
+  ad_account_id?: string;
+  [key: string]: unknown;
+}
+
+function getSourceConfig(config: unknown): MetaSourceConfig | null {
+  if (config && typeof config === 'object' && !Array.isArray(config)) {
+    return config as MetaSourceConfig;
+  }
+  return null;
+}
+
 interface DashboardViewProps {
   projectId: string;
   isPreview?: boolean;
@@ -55,28 +68,30 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   // 2. Fetch Column Mappings
   const { mappings, isLoading: loadingMappings } = useColumnMappings(projectId);
 
+  const sourceConfig = getSourceConfig(project?.source_config);
+  const adAccountId = sourceConfig?.ad_account_id;
+
   const metaInsightsQuery = useQuery({
     queryKey: [
       'meta-insights',
-      project?.source_config?.ad_account_id,
+      adAccountId,
       dateRange?.from ? dateRange.from.toISOString() : null,
       dateRange?.to ? dateRange.to.toISOString() : null,
     ],
     queryFn: async () => {
-      const accountId = project?.source_config?.ad_account_id;
-      if (!accountId) return [];
+      if (!adAccountId) return [];
 
       const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
       const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
 
       const { data, error } = await supabase.functions.invoke(
-        `meta-api?action=insights&accountId=${encodeURIComponent(accountId)}&startDate=${startDate}&endDate=${endDate}`
+        `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}`
       );
       if (error) throw error;
 
       return (data?.data || []) as Array<Record<string, any>>;
     },
-    enabled: project?.source_type === 'meta_ads' && !!project?.source_config?.ad_account_id && !shareToken,
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
   });
 
   // 3. Fetch Sheet Data from all configured sheets
@@ -296,7 +311,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         created_at: new Date().toISOString(),
       },
     ] as any[];
-  }, [mappings, project?.source_config?.ad_account_id, project?.source_type, projectId]);
+  }, [mappings, adAccountId, project?.source_type, projectId]);
 
   const processedData = useMemo(() => {
     return processDashboardData(filteredRows, effectiveMappings as any);
@@ -381,7 +396,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           description: 'Por enquanto, o dashboard público não consegue buscar dados da Meta. Abra logado para visualizar.',
         });
       }
-      if (!project.source_config?.ad_account_id) {
+      if (!adAccountId) {
         warnings.push({
           title: 'Meta Ads não configurado',
           description: 'Conecte a Meta e selecione uma conta de anúncios para começar a puxar dados.',
