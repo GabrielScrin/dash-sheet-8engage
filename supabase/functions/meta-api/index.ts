@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const action = url.searchParams.get('action'); // 'ad-accounts' | 'campaigns' | 'insights'
+    const action = url.searchParams.get('action'); // 'ad-accounts' | 'campaigns' | 'insights' | 'ad-thumbnails'
 
     // Validate JWT manually using getClaims
     const authHeader = req.headers.get('Authorization');
@@ -156,6 +156,54 @@ Deno.serve(async (req) => {
         }));
 
       return new Response(JSON.stringify({ campaigns: normalizedCampaigns }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // --- Action: Fetch Ad Thumbnails ---
+    if (action === 'ad-thumbnails') {
+      let body: any = null;
+      try {
+        body = await req.json();
+      } catch {
+        body = null;
+      }
+
+      const adIds: string[] = Array.isArray(body?.adIds) ? body.adIds.map((x: any) => String(x)).filter(Boolean) : [];
+      if (adIds.length === 0) {
+        return new Response(JSON.stringify({ thumbnails: {} }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      const thumbnails: Record<string, { thumbnail: string | null; image: string | null }> = {};
+
+      // Graph API: keep ids chunks small to avoid URL length issues
+      const chunkSize = 50;
+      for (let i = 0; i < adIds.length; i += chunkSize) {
+        const chunk = adIds.slice(i, i + chunkSize);
+        const idsParam = encodeURIComponent(chunk.join(','));
+        const fieldsParam = encodeURIComponent('creative{thumbnail_url,image_url}');
+        const graphUrl =
+          `https://graph.facebook.com/v19.0/?ids=${idsParam}&fields=${fieldsParam}&access_token=${ACCESS_TOKEN}`;
+
+        const res = await fetch(graphUrl);
+        const page = await res.json();
+        if (page?.error) {
+          console.error('Meta API error:', page.error);
+          throw new Error(page.error.message);
+        }
+
+        for (const id of chunk) {
+          const entry = page?.[id];
+          const creative = entry?.creative;
+          const thumbnail = typeof creative?.thumbnail_url === 'string' ? creative.thumbnail_url : null;
+          const image = typeof creative?.image_url === 'string' ? creative.image_url : null;
+          thumbnails[id] = { thumbnail, image };
+        }
+      }
+
+      return new Response(JSON.stringify({ thumbnails }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }

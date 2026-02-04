@@ -675,6 +675,39 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       .slice(0, 50);
   }, [metaAdsQuery.data, project?.source_type, selectedCampaignId]);
 
+  const creativeAdIds = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [];
+    return (metaCreativeData || []).map((c: any) => String(c?.id || '')).filter(Boolean);
+  }, [metaCreativeData, project?.source_type]);
+
+  const metaAdThumbnailsQuery = useQuery({
+    queryKey: ['meta-ad-thumbnails', adAccountId, creativeAdIds],
+    queryFn: async () => {
+      if (!creativeAdIds.length) return {};
+      const { data, error } = await supabase.functions.invoke('meta-api?action=ad-thumbnails', {
+        body: { adIds: creativeAdIds },
+      });
+      if (error) throw error;
+      return (data?.thumbnails || {}) as Record<string, { thumbnail: string | null; image: string | null }>;
+    },
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken && creativeAdIds.length > 0,
+  });
+
+  const metaCreativeDataWithThumbs = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [];
+    const thumbs = metaAdThumbnailsQuery.data || {};
+    return (metaCreativeData || []).map((row: any) => {
+      const id = String(row?.id || '');
+      const t = thumbs[id];
+      const thumbUrl = t?.thumbnail || t?.image || undefined;
+      return {
+        ...row,
+        thumbnail: thumbUrl,
+        link: thumbUrl,
+      };
+    });
+  }, [metaAdThumbnailsQuery.data, metaCreativeData, project?.source_type]);
+
   const metaFunnelData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
     const totals = (filteredRows as any[]).reduce(
@@ -1149,11 +1182,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               )}
 
               {/* Creative Performance */}
-              {(project?.source_type === 'meta_ads' ? metaCreativeData.length > 0 : processedData.creativeData.length > 0) && (
+              {(project?.source_type === 'meta_ads' ? metaCreativeDataWithThumbs.length > 0 : processedData.creativeData.length > 0) && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Performance por Criativo</h3>
                   <CreativePerformanceTable
-                    data={project?.source_type === 'meta_ads' ? (metaCreativeData as any) : processedData.creativeData}
+                    data={project?.source_type === 'meta_ads' ? (metaCreativeDataWithThumbs as any) : processedData.creativeData}
                     selectedCreative={selectedCreative}
                     onCreativeSelect={setSelectedCreative}
                   />
