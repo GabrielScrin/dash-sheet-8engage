@@ -72,6 +72,52 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const sourceConfig = getSourceConfig(project?.source_config);
   const adAccountId = sourceConfig?.ad_account_id;
 
+  const metaAccountInsightsQuery = useQuery({
+    queryKey: [
+      'meta-account-insights',
+      adAccountId,
+      dateRange?.from ? dateRange.from.toISOString() : null,
+      dateRange?.to ? dateRange.to.toISOString() : null,
+    ],
+    queryFn: async () => {
+      if (!adAccountId) return [];
+
+      const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
+      const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
+
+      const { data, error } = await supabase.functions.invoke(
+        `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=account`
+      );
+      if (error) throw error;
+
+      return (data?.data || []) as Array<Record<string, any>>;
+    },
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+  });
+
+  const metaAccountTotalsQuery = useQuery({
+    queryKey: [
+      'meta-account-totals',
+      adAccountId,
+      dateRange?.from ? dateRange.from.toISOString() : null,
+      dateRange?.to ? dateRange.to.toISOString() : null,
+    ],
+    queryFn: async () => {
+      if (!adAccountId) return [];
+
+      const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
+      const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
+
+      const { data, error } = await supabase.functions.invoke(
+        `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=account&timeIncrement=all`
+      );
+      if (error) throw error;
+
+      return (data?.data || []) as Array<Record<string, any>>;
+    },
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+  });
+
   const metaInsightsQuery = useQuery({
     queryKey: [
       'meta-insights',
@@ -87,6 +133,52 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       const { data, error } = await supabase.functions.invoke(
         `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=campaign`
+      );
+      if (error) throw error;
+
+      return (data?.data || []) as Array<Record<string, any>>;
+    },
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+  });
+
+  const metaCampaignTotalsQuery = useQuery({
+    queryKey: [
+      'meta-campaign-totals',
+      adAccountId,
+      dateRange?.from ? dateRange.from.toISOString() : null,
+      dateRange?.to ? dateRange.to.toISOString() : null,
+    ],
+    queryFn: async () => {
+      if (!adAccountId) return [];
+
+      const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
+      const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
+
+      const { data, error } = await supabase.functions.invoke(
+        `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=campaign&timeIncrement=all`
+      );
+      if (error) throw error;
+
+      return (data?.data || []) as Array<Record<string, any>>;
+    },
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+  });
+
+  const metaAdsQuery = useQuery({
+    queryKey: [
+      'meta-ads-insights',
+      adAccountId,
+      dateRange?.from ? dateRange.from.toISOString() : null,
+      dateRange?.to ? dateRange.to.toISOString() : null,
+    ],
+    queryFn: async () => {
+      if (!adAccountId) return [];
+
+      const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
+      const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
+
+      const { data, error } = await supabase.functions.invoke(
+        `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=ad`
       );
       if (error) throw error;
 
@@ -165,6 +257,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   });
 
   const sourceRows = (project?.source_type === 'meta_ads' ? (metaInsightsQuery.data || []) : (allSheetsQuery.data || [])) as any[];
+  const metaAccountRows = (metaAccountInsightsQuery.data || []) as any[];
 
   const campaignOptions = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
@@ -181,15 +274,19 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return sourceRows;
-    if (!selectedCampaignId) return sourceRows;
+    if (!selectedCampaignId) return metaAccountRows;
     return sourceRows.filter((r) => String(r?.campaign_id || '') === String(selectedCampaignId));
-  }, [project?.source_type, selectedCampaignId, sourceRows]);
+  }, [metaAccountRows, project?.source_type, selectedCampaignId, sourceRows]);
 
   const aggregatedMetaRows = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return rowsAfterCampaignFilter;
 
-    // If no campaign selected, aggregate by day across campaigns (sum metrics per date).
-    if (selectedCampaignId) return rowsAfterCampaignFilter;
+    // If no campaign selected, we already queried account-level rows (no aggregation needed).
+    if (!selectedCampaignId) {
+      return [...rowsAfterCampaignFilter].sort((a, b) =>
+        String(a?.date || a?.date_start || '').localeCompare(String(b?.date || b?.date_start || ''))
+      );
+    }
 
     const byDate = new Map<string, any>();
     for (const row of rowsAfterCampaignFilter) {
@@ -198,18 +295,62 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const current = byDate.get(date) || {
         date,
         impressions: 0,
+        reach: 0,
         clicks: 0,
+        inline_link_clicks: 0,
         spend: 0,
         leads: 0,
+        purchases: 0,
+        purchase_value: 0,
+        landing_views: 0,
+        checkout_views: 0,
+        video3s: 0,
+        video15s: 0,
+        thruplay: 0,
       };
       current.impressions += Number(row?.impressions || 0);
+      current.reach = Math.max(current.reach, Number(row?.reach || 0));
       current.clicks += Number(row?.clicks || 0);
+      current.inline_link_clicks += Number(row?.inline_link_clicks || 0);
       current.spend += Number(row?.spend || 0);
       current.leads += Number(row?.leads || 0);
+      current.purchases += Number(row?.purchases || 0);
+      current.purchase_value += Number(row?.purchase_value || 0);
+      current.landing_views += Number(row?.landing_views || 0);
+      current.checkout_views += Number(row?.checkout_views || 0);
+      current.video3s += Number(row?.video3s || 0);
+      current.video15s += Number(row?.video15s || 0);
+      current.thruplay += Number(row?.thruplay || 0);
       byDate.set(date, current);
     }
 
     return Array.from(byDate.values())
+      .map((r) => {
+        const impressions = Number(r?.impressions || 0);
+        const reach = Number(r?.reach || 0);
+        const clicks = Number(r?.clicks || 0);
+        const spend = Number(r?.spend || 0);
+        const leads = Number(r?.leads || 0);
+        const purchases = Number(r?.purchases || 0);
+        const purchaseValue = Number(r?.purchase_value || 0);
+        const video3s = Number(r?.video3s || 0);
+        const video15s = Number(r?.video15s || 0);
+        const thruplay = Number(r?.thruplay || 0);
+
+        return {
+          ...r,
+          frequency: reach > 0 ? impressions / reach : 0,
+          roas: spend > 0 ? purchaseValue / spend : 0,
+          // Recompute derived metrics for aggregated rows
+          ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+          cpc: clicks > 0 ? spend / clicks : 0,
+          cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
+          cpl: leads > 0 ? spend / leads : 0,
+          cpa: purchases > 0 ? spend / purchases : 0,
+          hook_rate: impressions > 0 ? video3s / impressions : 0,
+          hold_rate: impressions > 0 ? (video15s || thruplay) / impressions : 0,
+        };
+      })
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   }, [project?.source_type, rowsAfterCampaignFilter, selectedCampaignId]);
 
@@ -368,7 +509,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const metaWeeklyData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
 
-    const byWeek = new Map<string, { weekStart: string; spend: number; clicks: number; leads: number }>();
+    const byWeek = new Map<
+      string,
+      { weekStart: string; spend: number; clicks: number; leads: number; purchases: number; purchase_value: number }
+    >();
 
     for (const row of filteredRows as any[]) {
       const dateStr = String(row?.date || row?.date_start || '');
@@ -381,10 +525,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       weekStart.setDate(weekStart.getDate() - weekStart.getDay());
       const key = format(weekStart, 'yyyy-MM-dd');
 
-      const current = byWeek.get(key) || { weekStart: key, spend: 0, clicks: 0, leads: 0 };
+      const current = byWeek.get(key) || { weekStart: key, spend: 0, clicks: 0, leads: 0, purchases: 0, purchase_value: 0 };
       current.spend += Number(row?.spend || 0);
       current.clicks += Number(row?.clicks || 0);
       current.leads += Number(row?.leads || 0);
+      current.purchases += Number(row?.purchases || 0);
+      current.purchase_value += Number(row?.purchase_value || 0);
       byWeek.set(key, current);
     }
 
@@ -393,17 +539,141 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       .slice(0, 5)
       .reverse();
 
-    return weeks.map((w, i) => ({
-      week: `Sem ${i + 1}`,
-      sales: w.leads,
-      investment: w.spend,
-      revenue: 0,
-      roas: 0,
-      conversion: w.clicks > 0 ? (w.leads / w.clicks) * 100 : 0,
-    }));
+    return weeks.map((w, i) => {
+      const sales = w.purchases > 0 ? w.purchases : w.leads;
+      const investment = w.spend;
+      const revenue = w.purchase_value;
+      const roas = investment > 0 ? revenue / investment : 0;
+      const conversion = w.clicks > 0 ? (sales / w.clicks) * 100 : 0;
+
+      return {
+        week: `Sem ${i + 1}`,
+        sales,
+        investment,
+        revenue,
+        roas,
+        conversion,
+      };
+    });
   }, [filteredRows, project?.source_type]);
 
-  const isLoading = loadingProject || loadingMappings || allSheetsQuery.isLoading || metaInsightsQuery.isLoading;
+  const metaCreativeData = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [];
+    const rows = metaAdsQuery.data || [];
+    if (!rows.length) return [];
+
+    const byAd = new Map<string, any>();
+    for (const row of rows as any[]) {
+      if (selectedCampaignId && String(row?.campaign_id || '') !== String(selectedCampaignId)) continue;
+      const id = String(row?.ad_id || row?.ad_name || '');
+      if (!id) continue;
+      const current = byAd.get(id) || {
+        id,
+        name: String(row?.ad_name || 'Anúncio'),
+        impressions: 0,
+        clicks: 0,
+        ctr: 0,
+        landingViews: 0,
+        checkoutViews: 0,
+        sales: 0,
+      };
+      current.impressions += Number(row?.impressions || 0);
+      current.clicks += Number(row?.clicks || 0);
+      current.landingViews += Number(row?.landing_views || 0);
+      current.checkoutViews += Number(row?.checkout_views || 0);
+      current.sales += Number((row?.purchases && Number(row.purchases) > 0 ? row.purchases : row?.leads) || 0);
+      byAd.set(id, current);
+    }
+
+    return Array.from(byAd.values())
+      .map((a) => ({ ...a, ctr: a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0 }))
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, 50);
+  }, [metaAdsQuery.data, project?.source_type, selectedCampaignId]);
+
+  const metaFunnelData = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [];
+    const totals = (filteredRows as any[]).reduce(
+      (acc, r) => {
+        acc.impressions += Number(r?.impressions || 0);
+        acc.clicks += Number(r?.clicks || 0);
+        acc.leads += Number(r?.leads || 0);
+        acc.purchases += Number(r?.purchases || 0);
+        acc.landingViews += Number(r?.landing_views || 0);
+        acc.checkoutViews += Number(r?.checkout_views || 0);
+        return acc;
+      },
+      { impressions: 0, clicks: 0, leads: 0, purchases: 0, landingViews: 0, checkoutViews: 0 }
+    );
+
+    const steps: { label: string; value: number }[] = [
+      { label: 'Impressões', value: totals.impressions },
+      { label: 'Cliques', value: totals.clicks },
+    ];
+    if (totals.landingViews > 0) steps.push({ label: 'LP Views', value: totals.landingViews });
+    if (totals.checkoutViews > 0) steps.push({ label: 'Checkout', value: totals.checkoutViews });
+    if (totals.leads > 0) steps.push({ label: 'Leads', value: totals.leads });
+    if (totals.purchases > 0) steps.push({ label: 'Compras', value: totals.purchases });
+    return steps;
+  }, [filteredRows, project?.source_type]);
+
+  const metaTotalsRow = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return null;
+    if (shareToken) return null;
+
+    if (selectedCampaignId) {
+      const campaignTotals = (metaCampaignTotalsQuery.data || []) as any[];
+      return campaignTotals.find((r) => String(r?.campaign_id || '') === String(selectedCampaignId)) || null;
+    }
+
+    const accountTotals = (metaAccountTotalsQuery.data || []) as any[];
+    return accountTotals[0] || null;
+  }, [
+    metaAccountTotalsQuery.data,
+    metaCampaignTotalsQuery.data,
+    project?.source_type,
+    selectedCampaignId,
+    shareToken,
+  ]);
+
+  const metaBigNumbers = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [];
+    const r: any = metaTotalsRow;
+    if (!r) return [];
+
+    const spend = Number(r?.spend || 0);
+    const impressions = Number(r?.impressions || 0);
+    const clicks = Number(r?.clicks || 0);
+    const leads = Number(r?.leads || 0);
+    const purchases = Number(r?.purchases || 0);
+    const purchaseValue = Number(r?.purchase_value || 0);
+
+    const resultsLabel = purchases > 0 ? 'Compras' : 'Leads';
+    const results = purchases > 0 ? purchases : leads;
+    const costPerResult = results > 0 ? spend / results : 0;
+    const roas = spend > 0 ? purchaseValue / spend : Number(r?.roas || 0);
+
+    return [
+      { label: 'Gasto', value: spend, format: 'currency' as const },
+      { label: 'Impressões', value: impressions, format: 'number' as const },
+      { label: 'Cliques', value: clicks, format: 'number' as const },
+      { label: resultsLabel, value: results, format: 'number' as const },
+      { label: purchases > 0 ? 'CPA' : 'CPL', value: costPerResult, format: 'currency' as const },
+      { label: 'ROAS', value: roas, format: 'decimal' as const },
+    ];
+  }, [metaTotalsRow, project?.source_type]);
+
+  const bigNumbersToRender = project?.source_type === 'meta_ads' ? metaBigNumbers : processedData.bigNumbers;
+
+  const isLoading =
+    loadingProject ||
+    loadingMappings ||
+    allSheetsQuery.isLoading ||
+    metaInsightsQuery.isLoading ||
+    metaAccountInsightsQuery.isLoading ||
+    metaAccountTotalsQuery.isLoading ||
+    metaCampaignTotalsQuery.isLoading ||
+    metaAdsQuery.isLoading;
 
   if (isLoading) {
     return (
@@ -487,7 +757,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           title: 'Meta Ads não configurado',
           description: 'Conecte a Meta e selecione uma conta de anúncios para começar a puxar dados.',
         });
-      } else if (!metaInsightsQuery.isLoading && (metaInsightsQuery.data || []).length === 0) {
+      } else if (!shareToken && !metaAccountInsightsQuery.isLoading && (metaAccountInsightsQuery.data || []).length === 0) {
         warnings.push({
           title: 'Sem dados da Meta no período',
           description: 'Tente ampliar o período ou verifique se a conta tem campanhas/entregas.',
@@ -566,11 +836,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               className="space-y-8"
             >
               {/* Big Numbers */}
-              {processedData.bigNumbers.length > 0 && (
+              {bigNumbersToRender.length > 0 && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Indicadores Principais</h3>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                    {processedData.bigNumbers.map((kpi, index) => {
+                    {bigNumbersToRender.map((kpi, index) => {
                       const { label, value, previousValue, format } = kpi;
                       return (
                         <BigNumberCard
@@ -596,11 +866,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               )}
 
               {/* Creative Performance */}
-              {processedData.creativeData.length > 0 && (
+              {(project?.source_type === 'meta_ads' ? metaCreativeData.length > 0 : processedData.creativeData.length > 0) && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Performance por Criativo</h3>
                   <CreativePerformanceTable
-                    data={processedData.creativeData}
+                    data={project?.source_type === 'meta_ads' ? (metaCreativeData as any) : processedData.creativeData}
                     selectedCreative={selectedCreative}
                     onCreativeSelect={setSelectedCreative}
                   />
@@ -608,14 +878,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               )}
 
               {/* Funnel */}
-              {processedData.funnelData.length > 0 && (
+              {(project?.source_type === 'meta_ads' ? metaFunnelData.length > 0 : processedData.funnelData.length > 0) && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Funil de Conversão</h3>
-                  <FunnelVisualization data={processedData.funnelData} />
+                  <FunnelVisualization data={project?.source_type === 'meta_ads' ? (metaFunnelData as any) : processedData.funnelData} />
                 </section>
               )}
 
-              {processedData.bigNumbers.length === 0 && !allSheetsQuery.error && (
+              {bigNumbersToRender.length === 0 && !allSheetsQuery.error && (
                 <div className="rounded-lg border border-dashed p-12 text-center">
                   <p className="text-muted-foreground mb-4">
                     {filteredRows.length === 0

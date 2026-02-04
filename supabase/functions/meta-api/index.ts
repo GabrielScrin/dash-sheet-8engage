@@ -10,6 +10,26 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const toNumber = (value: unknown) => {
+    const n = typeof value === 'number' ? value : parseFloat(String(value ?? '0'));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const toInt = (value: unknown) => {
+    const n = typeof value === 'number' ? value : parseInt(String(value ?? '0'), 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const sumActionValues = (actions: any[] | undefined, matcher: (actionType: string) => boolean) => {
+    if (!Array.isArray(actions)) return 0;
+    return actions.reduce((sum, a) => {
+      const actionType = String(a?.action_type || '');
+      if (!actionType) return sum;
+      if (!matcher(actionType)) return sum;
+      return sum + toInt(a?.value);
+    }, 0);
+  };
+
   try {
     const url = new URL(req.url);
     const action = url.searchParams.get('action'); // 'ad-accounts' | 'insights'
@@ -107,53 +127,151 @@ Deno.serve(async (req) => {
       const startDate = url.searchParams.get('startDate');
       const endDate = url.searchParams.get('endDate');
       const level = url.searchParams.get('level') || 'account';
+      const timeIncrement = url.searchParams.get('timeIncrement') || '1'; // '1' (daily) | 'all' (aggregated)
+      const normalizedLevel = ['account', 'campaign', 'adset', 'ad'].includes(level) ? level : 'account';
 
       if (!accountId) throw new Error('Missing accountId');
       if (!startDate || !endDate) throw new Error('Missing date range');
 
-      console.log('Fetching insights for account:', accountId, 'level:', level);
+      console.log('Fetching insights for account:', accountId, 'level:', normalizedLevel);
 
-      const fieldsBase = 'impressions,clicks,spend,actions,date_start,date_stop';
-      const fields = level === 'campaign'
-        ? `campaign_id,campaign_name,${fieldsBase}`
-        : fieldsBase;
-      const apiUrl = `https://graph.facebook.com/v19.0/act_${accountId}/insights?level=${encodeURIComponent(level)}&time_increment=1&time_range={'since':'${startDate}','until':'${endDate}'}&fields=${encodeURIComponent(fields)}&access_token=${ACCESS_TOKEN}`;
+      const base =
+        'date_start,date_stop,impressions,reach,frequency,clicks,inline_link_clicks,spend,cpm,ctr,cpc,actions,action_values,purchase_roas,video_thruplay_watched_actions';
+      const fields =
+        normalizedLevel === 'campaign'
+          ? `campaign_id,campaign_name,${base}`
+          : normalizedLevel === 'adset'
+            ? `adset_id,adset_name,campaign_id,campaign_name,${base}`
+            : normalizedLevel === 'ad'
+              ? `ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,${base}`
+              : base;
 
-      const res = await fetch(apiUrl);
-      const data = await res.json();
+      const insights: any[] = [];
+      const timeIncrementParam =
+        timeIncrement === 'all' || timeIncrement === '0' || timeIncrement === 'false'
+          ? ''
+          : '&time_increment=1';
+      let nextUrl: string | null =
+        `https://graph.facebook.com/v19.0/act_${accountId}/insights?level=${encodeURIComponent(normalizedLevel)}` +
+        `${timeIncrementParam}&time_range={'since':'${startDate}','until':'${endDate}'}` +
+        `&fields=${encodeURIComponent(fields)}&limit=500&access_token=${ACCESS_TOKEN}`;
 
-      if (data.error) {
-        console.error('Meta API error:', data.error);
-        throw new Error(data.error.message);
+      while (nextUrl) {
+        const res = await fetch(nextUrl);
+        const page = await res.json();
+
+        if (page.error) {
+          console.error('Meta API error:', page.error);
+          throw new Error(page.error.message);
+        }
+
+        if (Array.isArray(page.data)) insights.push(...page.data);
+        nextUrl = page?.paging?.next || null;
+        if (insights.length > 5000) break;
       }
 
+      const isLeadLike = (t: string) =>
+        t === 'lead' ||
+        t.includes('lead') ||
+        t.includes('messaging_conversation_started') ||
+        t.includes('onsite_conversion.messaging') ||
+        t.includes('omni_lead') ||
+        t.includes('offsite_conversion.fb_pixel_lead');
+
+      const isPurchaseLike = (t: string) =>
+        t === 'purchase' || t.includes('purchase');
+
+      const isLandingViewLike = (t: string) =>
+        t === 'landing_page_view' || t.includes('landing_page_view');
+
+      const isCheckoutLike = (t: string) =>
+        t === 'initiate_checkout' ||
+        t.includes('initiate_checkout') ||
+        t.includes('omni_initiated_checkout') ||
+        t.includes('omni_initiate_checkout');
+
+      const isVideo3sLike = (t: string) =>
+        t === 'video_view' ||
+        t.includes('video_view') ||
+        t.includes('video_view_3s');
+
+      const isVideo15sLike = (t: string) =>
+        t.includes('video_view_15') || t.includes('video_view_15s');
+
       // Normalize Data
-      const normalized = data.data.map((row: any) => {
-        const spend = parseFloat(row.spend || '0');
-        const clicks = parseInt(row.clicks || '0');
-        const impressions = parseInt(row.impressions || '0');
+      const normalized = insights.map((row: any) => {
+        const spend = toNumber(row.spend);
+        const clicks = toInt(row.clicks);
+        const inlineLinkClicks = toInt(row.inline_link_clicks);
+        const impressions = toInt(row.impressions);
+        const reach = toInt(row.reach);
+        const frequency = toNumber(row.frequency);
+        const cpm = toNumber(row.cpm) || (impressions > 0 ? (spend / impressions) * 1000 : 0);
+        const ctr = toNumber(row.ctr) || (impressions > 0 ? (clicks / impressions) * 100 : 0);
+        const cpc = toNumber(row.cpc) || (clicks > 0 ? spend / clicks : 0);
 
-        const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
-        const cpc = clicks > 0 ? spend / clicks : 0;
+        const leads = sumActionValues(row.actions, isLeadLike);
+        const purchases = sumActionValues(row.actions, isPurchaseLike);
+        const landing_views = sumActionValues(row.actions, isLandingViewLike);
+        const checkout_views = sumActionValues(row.actions, isCheckoutLike);
 
-        let leads = 0;
-        if (row.actions) {
-          const leadAction = row.actions.find((a: any) => a.action_type === 'lead');
-          if (leadAction) leads = parseInt(leadAction.value);
-        }
+        // Revenue/value (when available). Meta returns monetary values inside action_values.
+        const purchase_value = Array.isArray(row.action_values)
+          ? row.action_values.reduce((sum: number, a: any) => {
+            const actionType = String(a?.action_type || '');
+            if (!actionType) return sum;
+            if (!isPurchaseLike(actionType)) return sum;
+            return sum + toNumber(a?.value);
+          }, 0)
+          : 0;
+
+        // Prefer computed ROAS from purchase_value when possible. Fallback to purchase_roas if provided.
+        const roasFromValue = spend > 0 ? purchase_value / spend : 0;
+        const roasFromMetaField = Array.isArray(row.purchase_roas)
+          ? row.purchase_roas.reduce((sum: number, r: any) => sum + toNumber(r?.value), 0)
+          : 0;
+        const roas = roasFromValue > 0 ? roasFromValue : roasFromMetaField;
+
+        const video3s = sumActionValues(row.actions, isVideo3sLike);
+        const video15s = sumActionValues(row.actions, isVideo15sLike);
+        const thruplay = Array.isArray(row.video_thruplay_watched_actions)
+          ? row.video_thruplay_watched_actions.reduce((sum: number, r: any) => sum + toInt(r?.value), 0)
+          : 0;
+
         const cpl = leads > 0 ? spend / leads : 0;
+        const cpa = purchases > 0 ? spend / purchases : 0;
 
         return {
           date: row.date_start,
+          date_stop: row.date_stop,
           impressions,
+          reach,
+          frequency,
           clicks,
+          inline_link_clicks: inlineLinkClicks,
           spend,
           leads,
+          purchases,
+          purchase_value,
+          landing_views,
+          checkout_views,
+          roas,
           ctr,
           cpc,
           cpl,
+          cpm,
+          cpa,
+          video3s,
+          video15s,
+          thruplay,
+          hook_rate: impressions > 0 ? video3s / impressions : 0,
+          hold_rate: impressions > 0 ? (video15s || thruplay) / impressions : 0,
           campaign_id: row.campaign_id,
-          campaign_name: row.campaign_name
+          campaign_name: row.campaign_name,
+          adset_id: row.adset_id,
+          adset_name: row.adset_name,
+          ad_id: row.ad_id,
+          ad_name: row.ad_name,
         };
       });
 
