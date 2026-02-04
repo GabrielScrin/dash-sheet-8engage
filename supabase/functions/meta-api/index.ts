@@ -218,9 +218,18 @@ Deno.serve(async (req) => {
         t.includes('offsite_conversion.fb_pixel_lead');
 
       const isMessageLike = (t: string) =>
+        // "Messaging conversations started" and close variants
         t.includes('messaging_conversation_started') ||
+        t.includes('messaging_first_reply') ||
+        t.includes('total_messaging_connection') ||
+        t.includes('messaging_user_depth') ||
+        // Onsite conversion variants
         t.includes('onsite_conversion.messaging') ||
+        t.includes('onsite_conversion.messaging_conversation_started') ||
+        t.includes('onsite_conversion.total_messaging_connection') ||
+        // Omni / platform variants
         t.includes('omni_message') ||
+        t.includes('omni_messaging') ||
         t.includes('messaging') ||
         t.includes('whatsapp') ||
         t.includes('instagram_direct');

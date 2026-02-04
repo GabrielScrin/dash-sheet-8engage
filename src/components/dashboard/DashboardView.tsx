@@ -800,7 +800,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     const clicks = Number(r?.clicks || 0);
     const lp = Number(r?.landing_views || 0);
     const leads = Number(r?.leads || 0);
-    const messages = Number(r?.messages || 0);
+    const rawMessages = Number(r?.messages || 0);
+    // Backwards-compatible fallback: older deployments might count messaging inside "leads".
+    const messages = rawMessages > 0 ? rawMessages : (leads > 0 ? leads : 0);
     const checkout = Number(r?.checkout_views || 0);
     const purchases = Number(r?.purchases || 0);
     const revenue = Number(r?.purchase_value || 0);
@@ -839,12 +841,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     }
 
     // captação (default)
+    const leadsWithFallback = leads > 0 ? leads : rawMessages;
     return [
       { label: 'Impressões', value: impressions },
       { label: 'Alcance', value: reach, badges: [{ label: 'Reach rate', kind: 'percentage', value: rate(reach, impressions) }] },
       { label: 'Cliques', value: clicks, badges: [{ label: 'CTR', kind: 'percentage', value: rate(clicks, impressions) }] },
       { label: 'Visualizações da página', value: lp, badges: [{ label: 'Connect rate', kind: 'percentage', value: rate(lp, clicks) }] },
-      { label: 'Leads', value: leads, badges: [{ label: 'Taxa de conversão', kind: 'percentage', value: rate(leads, lp) }] },
+      { label: 'Leads', value: leadsWithFallback, badges: [{ label: 'Taxa de conversão', kind: 'percentage', value: rate(leadsWithFallback, lp) }] },
     ];
   }, [funnelType, metaTotalsRow, project?.source_type]);
 
