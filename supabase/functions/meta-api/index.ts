@@ -133,8 +133,8 @@ Deno.serve(async (req) => {
         `https://graph.facebook.com/v19.0/act_${accountId}/campaigns?fields=id,name,effective_status,status&limit=200&access_token=${ACCESS_TOKEN}`;
 
       while (nextUrl) {
-        const res = await fetch(nextUrl);
-        const page = await res.json();
+        const res: Response = await fetch(nextUrl);
+        const page: { data?: any[]; paging?: { next?: string }; error?: { message: string } } = await res.json();
 
         if (page.error) {
           console.error('Meta API error:', page.error);
@@ -198,8 +198,8 @@ Deno.serve(async (req) => {
         `${breakdownsParam}&fields=${encodeURIComponent(fields)}&limit=500&access_token=${ACCESS_TOKEN}`;
 
       while (nextUrl) {
-        const res = await fetch(nextUrl);
-        const page = await res.json();
+        const res: Response = await fetch(nextUrl);
+        const page: { data?: any[]; paging?: { next?: string }; error?: { message: string } } = await res.json();
 
         if (page.error) {
           console.error('Meta API error:', page.error);
