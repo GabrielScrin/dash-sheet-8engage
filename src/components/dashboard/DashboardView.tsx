@@ -14,7 +14,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { processDashboardData } from '@/lib/dashboard-utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { format, subDays } from 'date-fns';
+import { format, startOfMonth, startOfWeek, subDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -42,6 +43,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const [activeTab, setActiveTab] = useState('perpetua');
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -304,6 +306,19 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     if (project?.source_type !== 'meta_ads') return [];
 
     const campaigns = (metaCampaignsQuery.data || []) as Array<{ id: string; name: string; effective_status?: string }>;
+    if (campaigns.length === 0) {
+      // Fallback: campaigns seen in insights for the selected period.
+      const fromInsights = (metaCampaignTotalsQuery.data || []) as any[];
+      const map = new Map<string, string>();
+      for (const row of fromInsights) {
+        if (row?.campaign_id && row?.campaign_name) {
+          map.set(String(row.campaign_id), String(row.campaign_name));
+        }
+      }
+      return Array.from(map.entries())
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    }
     const activeFirst = [...campaigns].sort((a, b) => {
       const aActive = String(a.effective_status || '').toUpperCase() === 'ACTIVE' ? 0 : 1;
       const bActive = String(b.effective_status || '').toUpperCase() === 'ACTIVE' ? 0 : 1;
@@ -312,7 +327,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     });
 
     return activeFirst.map((c) => ({ id: String(c.id), name: String(c.name), effective_status: c.effective_status }));
-  }, [metaCampaignsQuery.data, project?.source_type]);
+  }, [metaCampaignTotalsQuery.data, metaCampaignsQuery.data, project?.source_type]);
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return sourceRows;
@@ -551,9 +566,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const metaWeeklyData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
 
-    const byWeek = new Map<
+    const byBucket = new Map<
       string,
-      { weekStart: string; spend: number; clicks: number; leads: number; purchases: number; purchase_value: number }
+      { bucket: string; spend: number; clicks: number; leads: number; purchases: number; purchase_value: number }
     >();
 
     for (const row of filteredRows as any[]) {
@@ -561,35 +576,49 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const date = dateStr ? new Date(dateStr) : null;
       if (!date || isNaN(date.getTime())) continue;
 
-      // Week start (Sunday-based) as YYYY-MM-DD
-      const weekStart = new Date(date);
-      weekStart.setHours(0, 0, 0, 0);
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-      const key = format(weekStart, 'yyyy-MM-dd');
+      let key = '';
+      if (viewMode === 'day') {
+        const day = new Date(date);
+        day.setHours(0, 0, 0, 0);
+        key = format(day, 'yyyy-MM-dd');
+      } else if (viewMode === 'month') {
+        const month = startOfMonth(date);
+        key = format(month, 'yyyy-MM');
+      } else {
+        const weekStart = startOfWeek(date, { weekStartsOn: 0 });
+        key = format(weekStart, 'yyyy-MM-dd');
+      }
 
-      const current = byWeek.get(key) || { weekStart: key, spend: 0, clicks: 0, leads: 0, purchases: 0, purchase_value: 0 };
+      const current = byBucket.get(key) || { bucket: key, spend: 0, clicks: 0, leads: 0, purchases: 0, purchase_value: 0 };
       current.spend += Number(row?.spend || 0);
       current.clicks += Number(row?.clicks || 0);
       current.leads += Number(row?.leads || 0);
       current.purchases += Number(row?.purchases || 0);
       current.purchase_value += Number(row?.purchase_value || 0);
-      byWeek.set(key, current);
+      byBucket.set(key, current);
     }
 
-    const weeks = Array.from(byWeek.values())
-      .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
+    const buckets = Array.from(byBucket.values())
+      .sort((a, b) => b.bucket.localeCompare(a.bucket))
       .slice(0, 5)
       .reverse();
 
-    return weeks.map((w, i) => {
-      const sales = w.purchases > 0 ? w.purchases : w.leads;
-      const investment = w.spend;
-      const revenue = w.purchase_value;
+    return buckets.map((b, i) => {
+      const sales = b.purchases > 0 ? b.purchases : b.leads;
+      const investment = b.spend;
+      const revenue = b.purchase_value;
       const roas = investment > 0 ? revenue / investment : 0;
-      const conversion = w.clicks > 0 ? (sales / w.clicks) * 100 : 0;
+      const conversion = b.clicks > 0 ? (sales / b.clicks) * 100 : 0;
+
+      const label =
+        viewMode === 'day'
+          ? format(new Date(`${b.bucket}T00:00:00`), "dd/MM")
+          : viewMode === 'month'
+            ? format(new Date(`${b.bucket}-01T00:00:00`), "MMM/yy", { locale: ptBR })
+            : `Sem ${i + 1}`;
 
       return {
-        week: `Sem ${i + 1}`,
+        week: label,
         sales,
         investment,
         revenue,
@@ -597,7 +626,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         conversion,
       };
     });
-  }, [filteredRows, project?.source_type]);
+  }, [filteredRows, project?.source_type, viewMode]);
 
   const metaCreativeData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
@@ -750,7 +779,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     if (project?.source_type !== 'meta_ads') return null;
     const r: any = metaTotalsRow;
 
-    const totalReach = Number(r?.reach || 0);
+    const reachFromField = Number(r?.reach || 0);
+    const freq = Number(r?.frequency || 0);
+    const imps = Number(r?.impressions || 0);
+    const totalReach =
+      reachFromField > 0
+        ? reachFromField
+        : (freq > 0 && imps > 0 ? Math.round(imps / freq) : 0);
     const totalImpressions = Number(r?.impressions || 0);
     const avgEngagement = Number(r?.ctr || 0); // using CTR as engagement proxy for ads
 
@@ -765,8 +800,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     for (const row of platformRows) {
       const platform = String(row?.publisher_platform || 'Outros');
       const current = byPlatform.get(platform) || { reach: 0, impressions: 0, clicks: 0 };
-      current.reach += Number(row?.reach || 0);
-      current.impressions += Number(row?.impressions || 0);
+      const rowImps = Number(row?.impressions || 0);
+      const rowFreq = Number(row?.frequency || 0);
+      const rowReachField = Number(row?.reach || 0);
+      const rowReach = rowReachField > 0 ? rowReachField : (rowFreq > 0 && rowImps > 0 ? Math.round(rowImps / rowFreq) : 0);
+      current.reach += rowReach;
+      current.impressions += rowImps;
       current.clicks += Number(row?.clicks || 0);
       byPlatform.set(platform, current);
     }
@@ -911,6 +950,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           title: 'Meta Ads não configurado',
           description: 'Conecte a Meta e selecione uma conta de anúncios para começar a puxar dados.',
         });
+      } else if (!metaCampaignsQuery.isLoading && metaCampaignsQuery.error) {
+        warnings.push({
+          title: 'Falha ao carregar campanhas',
+          description: 'Não foi possível listar campanhas dessa conta. Confirme se a Edge Function `meta-api` foi redeployada e tente novamente.',
+        });
       } else if (!shareToken && !metaAccountInsightsQuery.isLoading && (metaAccountInsightsQuery.data || []).length === 0) {
         warnings.push({
           title: 'Sem dados da Meta no período',
@@ -972,6 +1016,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         campaignsLoading={metaCampaignsQuery.isLoading}
         selectedCampaignId={selectedCampaignId}
         onCampaignChange={(id) => setSelectedCampaignId(id)}
+        viewMode={viewMode}
+        onViewModeChange={(v) => setViewMode(v)}
       />
 
       {/* Tabs */}
@@ -1015,7 +1061,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               {/* Weekly Comparison */}
               {(project?.source_type === 'meta_ads' ? metaWeeklyData.length > 0 : processedData.weeklyData.length > 0) && (
                 <section>
-                  <h3 className="mb-4 text-lg font-semibold">Visão Semanal</h3>
+                  <h3 className="mb-4 text-lg font-semibold">
+                    {viewMode === 'day' ? 'Visão Diária' : viewMode === 'month' ? 'Visão Mensal' : 'Visão Semanal'}
+                  </h3>
                   <WeeklyComparisonTable data={project?.source_type === 'meta_ads' ? (metaWeeklyData as any) : processedData.weeklyData} />
                 </section>
               )}

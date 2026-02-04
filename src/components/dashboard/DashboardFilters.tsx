@@ -33,6 +33,8 @@ interface DashboardFiltersProps {
   campaignsLoading?: boolean;
   selectedCampaignId?: string | null;
   onCampaignChange?: (id: string | null) => void;
+  viewMode?: 'day' | 'week' | 'month';
+  onViewModeChange?: (value: 'day' | 'week' | 'month') => void;
 }
 
 const presets = [
@@ -52,9 +54,10 @@ export function DashboardFilters({
   campaignsLoading = false,
   selectedCampaignId = null,
   onCampaignChange,
+  viewMode = 'week',
+  onViewModeChange,
 }: DashboardFiltersProps) {
   const [preset, setPreset] = useState('last_7_days');
-  const [viewMode, setViewMode] = useState('week');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [internalDateRange, setInternalDateRange] = useState<DateRange | undefined>(dateRange);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
@@ -159,7 +162,10 @@ export function DashboardFilters({
         </Popover>
 
         {/* View Mode */}
-        <Select value={viewMode} onValueChange={setViewMode}>
+        <Select
+          value={viewMode}
+          onValueChange={(v) => onViewModeChange?.(v as 'day' | 'week' | 'month')}
+        >
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Visão" />
           </SelectTrigger>

@@ -245,8 +245,12 @@ Deno.serve(async (req) => {
         const clicks = toInt(row.clicks);
         const inlineLinkClicks = toInt(row.inline_link_clicks);
         const impressions = toInt(row.impressions);
-        const reach = toInt(row.reach);
+        let reach = toInt(row.reach);
         const frequency = toNumber(row.frequency);
+        if (reach === 0 && frequency > 0 && impressions > 0) {
+          // Some breakdown queries may omit reach; approximate from impressions/frequency when possible.
+          reach = Math.round(impressions / frequency);
+        }
         const cpm = toNumber(row.cpm) || (impressions > 0 ? (spend / impressions) * 1000 : 0);
         const ctr = toNumber(row.ctr) || (impressions > 0 ? (clicks / impressions) * 100 : 0);
         const cpc = toNumber(row.cpc) || (clicks > 0 ? spend / clicks : 0);
