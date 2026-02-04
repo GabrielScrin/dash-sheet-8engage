@@ -311,7 +311,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       return a.name.localeCompare(b.name, 'pt-BR');
     });
 
-    return activeFirst.map((c) => ({ id: String(c.id), name: String(c.name) }));
+    return activeFirst.map((c) => ({ id: String(c.id), name: String(c.name), effective_status: c.effective_status }));
   }, [metaCampaignsQuery.data, project?.source_type]);
 
   const rowsAfterCampaignFilter = useMemo(() => {
@@ -663,16 +663,84 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     if (project?.source_type !== 'meta_ads') return null;
     if (shareToken) return null;
 
+    const aggregateMetaTotals = (rows: any[], extra: Record<string, unknown> = {}) => {
+      const totals = rows.reduce(
+        (acc, r) => {
+          acc.spend += Number(r?.spend || 0);
+          acc.impressions += Number(r?.impressions || 0);
+          acc.clicks += Number(r?.clicks || 0);
+          acc.inline_link_clicks += Number(r?.inline_link_clicks || 0);
+          acc.leads += Number(r?.leads || 0);
+          acc.purchases += Number(r?.purchases || 0);
+          acc.purchase_value += Number(r?.purchase_value || 0);
+          acc.landing_views += Number(r?.landing_views || 0);
+          acc.checkout_views += Number(r?.checkout_views || 0);
+          acc.video3s += Number(r?.video3s || 0);
+          acc.video15s += Number(r?.video15s || 0);
+          acc.thruplay += Number(r?.thruplay || 0);
+          acc.reach = Math.max(acc.reach, Number(r?.reach || 0));
+          return acc;
+        },
+        {
+          spend: 0,
+          impressions: 0,
+          reach: 0,
+          clicks: 0,
+          inline_link_clicks: 0,
+          leads: 0,
+          purchases: 0,
+          purchase_value: 0,
+          landing_views: 0,
+          checkout_views: 0,
+          video3s: 0,
+          video15s: 0,
+          thruplay: 0,
+        }
+      );
+
+      const spend = totals.spend;
+      const impressions = totals.impressions;
+      const reach = totals.reach;
+      const clicks = totals.clicks;
+      const leads = totals.leads;
+      const purchases = totals.purchases;
+      const purchaseValue = totals.purchase_value;
+      const video3s = totals.video3s;
+      const video15s = totals.video15s;
+      const thruplay = totals.thruplay;
+
+      return {
+        ...totals,
+        frequency: reach > 0 ? impressions / reach : 0,
+        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+        cpc: clicks > 0 ? spend / clicks : 0,
+        cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
+        cpl: leads > 0 ? spend / leads : 0,
+        cpa: purchases > 0 ? spend / purchases : 0,
+        roas: spend > 0 ? purchaseValue / spend : 0,
+        hook_rate: impressions > 0 ? video3s / impressions : 0,
+        hold_rate: impressions > 0 ? (video15s || thruplay) / impressions : 0,
+        ...extra,
+      };
+    };
+
     if (selectedCampaignId) {
       const campaignTotals = (metaCampaignTotalsQuery.data || []) as any[];
-      return campaignTotals.find((r) => String(r?.campaign_id || '') === String(selectedCampaignId)) || null;
+      const filtered = campaignTotals.filter((r) => String(r?.campaign_id || '') === String(selectedCampaignId));
+      const campaignName =
+        filtered.find((r) => r?.campaign_name)?.campaign_name ||
+        (metaCampaignsQuery.data || []).find((c: any) => String(c?.id || '') === String(selectedCampaignId))?.name;
+      if (!filtered.length) return null;
+      return aggregateMetaTotals(filtered, { campaign_id: selectedCampaignId, campaign_name: campaignName });
     }
 
     const accountTotals = (metaAccountTotalsQuery.data || []) as any[];
-    return accountTotals[0] || null;
+    if (!accountTotals.length) return null;
+    return aggregateMetaTotals(accountTotals);
   }, [
     metaAccountTotalsQuery.data,
     metaCampaignTotalsQuery.data,
+    metaCampaignsQuery.data,
     project?.source_type,
     selectedCampaignId,
     shareToken,
@@ -901,6 +969,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
         campaigns={campaignOptions}
+        campaignsLoading={metaCampaignsQuery.isLoading}
         selectedCampaignId={selectedCampaignId}
         onCampaignChange={(id) => setSelectedCampaignId(id)}
       />

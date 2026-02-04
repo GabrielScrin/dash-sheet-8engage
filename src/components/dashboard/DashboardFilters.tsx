@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format, subDays, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CalendarIcon, X, ChevronDown, Check } from 'lucide-react';
@@ -29,7 +29,8 @@ interface DashboardFiltersProps {
   onCreativeChange: (id: string | null) => void;
   dateRange: DateRange | undefined;
   onDateRangeChange: (range: DateRange | undefined) => void;
-  campaigns?: { id: string; name: string }[];
+  campaigns?: { id: string; name: string; effective_status?: string }[];
+  campaignsLoading?: boolean;
   selectedCampaignId?: string | null;
   onCampaignChange?: (id: string | null) => void;
 }
@@ -48,6 +49,7 @@ export function DashboardFilters({
   dateRange,
   onDateRangeChange,
   campaigns = [],
+  campaignsLoading = false,
   selectedCampaignId = null,
   onCampaignChange,
 }: DashboardFiltersProps) {
@@ -56,6 +58,10 @@ export function DashboardFilters({
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [internalDateRange, setInternalDateRange] = useState<DateRange | undefined>(dateRange);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
+
+  useEffect(() => {
+    setInternalDateRange(dateRange);
+  }, [dateRange]);
 
   const handlePresetChange = (value: string) => {
     setPreset(value);
@@ -93,7 +99,9 @@ export function DashboardFilters({
   const selectedCampaignLabel =
     selectedCampaignId
       ? campaigns.find((c) => c.id === selectedCampaignId)?.name || 'Campanha selecionada'
-      : 'Todas as campanhas';
+      : campaignsLoading
+        ? 'Carregando campanhas...'
+        : 'Todas as campanhas';
 
   return (
     <div className="sticky top-[7.5rem] z-30 -mx-4 bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
@@ -163,10 +171,14 @@ export function DashboardFilters({
         </Select>
 
         {/* Active Filters */}
-        {campaigns.length > 0 && onCampaignChange && (
+        {onCampaignChange && (
           <Popover open={isCampaignOpen} onOpenChange={setIsCampaignOpen}>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="justify-between w-[320px]">
+              <Button
+                variant="outline"
+                className="justify-between w-[320px]"
+                disabled={campaignsLoading}
+              >
                 <span className="truncate">{selectedCampaignLabel}</span>
                 <ChevronDown className="h-4 w-4 opacity-50" />
               </Button>
@@ -187,7 +199,7 @@ export function DashboardFilters({
                       <Check className={cn("mr-2 h-4 w-4", !selectedCampaignId ? "opacity-100" : "opacity-0")} />
                       Todas as campanhas
                     </CommandItem>
-                    {campaigns.slice(0, 500).map((c) => (
+                    {campaigns.slice(0, 1000).map((c) => (
                       <CommandItem
                         key={c.id}
                         value={c.name}
@@ -197,7 +209,10 @@ export function DashboardFilters({
                         }}
                       >
                         <Check className={cn("mr-2 h-4 w-4", selectedCampaignId === c.id ? "opacity-100" : "opacity-0")} />
-                        <span className="truncate">{c.name}</span>
+                        <span className="truncate flex-1">{c.name}</span>
+                        {String(c.effective_status || '').toUpperCase() !== 'ACTIVE' && (
+                          <span className="ml-2 text-xs text-muted-foreground">Inativa</span>
+                        )}
                       </CommandItem>
                     ))}
                   </CommandGroup>
