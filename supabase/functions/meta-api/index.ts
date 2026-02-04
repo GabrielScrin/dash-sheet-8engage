@@ -187,8 +187,8 @@ Deno.serve(async (req) => {
         const graphUrl =
           `https://graph.facebook.com/v19.0/?ids=${idsParam}&fields=${fieldsParam}&access_token=${ACCESS_TOKEN}`;
 
-        const res = await fetch(graphUrl);
-        const page = await res.json();
+        const res: Response = await fetch(graphUrl);
+        const page: Record<string, any> & { error?: { message: string } } = await res.json();
         if (page?.error) {
           console.error('Meta API error:', page.error);
           throw new Error(page.error.message);
