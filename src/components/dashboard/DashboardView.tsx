@@ -4,6 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { BigNumberCard } from '@/components/dashboard/BigNumberCard';
 import { WeeklyComparisonTable } from '@/components/dashboard/WeeklyComparisonTable';
 import { CreativePerformanceTable } from '@/components/dashboard/CreativePerformanceTable';
@@ -44,6 +51,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
+  const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -705,6 +713,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           acc.clicks += Number(r?.clicks || 0);
           acc.inline_link_clicks += Number(r?.inline_link_clicks || 0);
           acc.leads += Number(r?.leads || 0);
+          acc.messages += Number(r?.messages || 0);
           acc.purchases += Number(r?.purchases || 0);
           acc.purchase_value += Number(r?.purchase_value || 0);
           acc.landing_views += Number(r?.landing_views || 0);
@@ -722,6 +731,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           clicks: 0,
           inline_link_clicks: 0,
           leads: 0,
+          messages: 0,
           purchases: 0,
           purchase_value: 0,
           landing_views: 0,
@@ -779,6 +789,64 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     selectedCampaignId,
     shareToken,
   ]);
+
+  const metaFunnelSteps = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [];
+    const r: any = metaTotalsRow;
+    if (!r) return [];
+
+    const impressions = Number(r?.impressions || 0);
+    const reach = Number(r?.reach || 0) || (Number(r?.frequency || 0) > 0 ? Math.round(impressions / Number(r.frequency)) : 0);
+    const clicks = Number(r?.clicks || 0);
+    const lp = Number(r?.landing_views || 0);
+    const leads = Number(r?.leads || 0);
+    const messages = Number(r?.messages || 0);
+    const checkout = Number(r?.checkout_views || 0);
+    const purchases = Number(r?.purchases || 0);
+    const revenue = Number(r?.purchase_value || 0);
+    const spend = Number(r?.spend || 0);
+
+    const rate = (num: number, den: number) => (den > 0 ? num / den : 0);
+
+    if (funnelType === 'mensagem') {
+      return [
+        { label: 'Impressões', value: impressions },
+        { label: 'Alcance', value: reach, badges: [{ label: 'Reach rate', kind: 'percentage', value: rate(reach, impressions) }] },
+        { label: 'Cliques', value: clicks, badges: [{ label: 'CTR', kind: 'percentage', value: rate(clicks, impressions) }] },
+        { label: 'Mensagens', value: messages, badges: [{ label: 'Taxa de mensagem', kind: 'percentage', value: rate(messages, clicks) }] },
+      ];
+    }
+
+    if (funnelType === 'conversao') {
+      return [
+        { label: 'Impressões', value: impressions },
+        { label: 'Alcance', value: reach, badges: [{ label: 'Reach rate', kind: 'percentage', value: rate(reach, impressions) }] },
+        { label: 'Cliques', value: clicks, badges: [{ label: 'CTR', kind: 'percentage', value: rate(clicks, impressions) }] },
+        { label: 'Visualizações da página', value: lp, badges: [{ label: 'Connect rate', kind: 'percentage', value: rate(lp, clicks) }] },
+        { label: 'Início de checkout', value: checkout, badges: [{ label: 'Checkout rate', kind: 'percentage', value: rate(checkout, lp) }] },
+        { label: 'Vendas', value: purchases, badges: [{ label: 'Taxa de compra', kind: 'percentage', value: rate(purchases, checkout) }] },
+        {
+          label: 'Total vendido',
+          value: revenue,
+          format: 'currency',
+          barValue: purchases > 0 ? purchases : 1,
+          badges: [
+            { label: 'ROAS', kind: 'decimal', value: spend > 0 ? revenue / spend : 0 },
+            { label: 'ROI', kind: 'percentage', value: spend > 0 ? (revenue - spend) / spend : 0 },
+          ],
+        },
+      ];
+    }
+
+    // captação (default)
+    return [
+      { label: 'Impressões', value: impressions },
+      { label: 'Alcance', value: reach, badges: [{ label: 'Reach rate', kind: 'percentage', value: rate(reach, impressions) }] },
+      { label: 'Cliques', value: clicks, badges: [{ label: 'CTR', kind: 'percentage', value: rate(clicks, impressions) }] },
+      { label: 'Visualizações da página', value: lp, badges: [{ label: 'Connect rate', kind: 'percentage', value: rate(lp, clicks) }] },
+      { label: 'Leads', value: leads, badges: [{ label: 'Taxa de conversão', kind: 'percentage', value: rate(leads, lp) }] },
+    ];
+  }, [funnelType, metaTotalsRow, project?.source_type]);
 
   const metaDistributionData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return null;
@@ -1090,10 +1158,24 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               )}
 
               {/* Funnel */}
-              {(project?.source_type === 'meta_ads' ? metaFunnelData.length > 0 : processedData.funnelData.length > 0) && (
+              {(project?.source_type === 'meta_ads' ? metaFunnelSteps.length > 0 : processedData.funnelData.length > 0) && (
                 <section>
-                  <h3 className="mb-4 text-lg font-semibold">Funil de Conversão</h3>
-                  <FunnelVisualization data={project?.source_type === 'meta_ads' ? (metaFunnelData as any) : processedData.funnelData} />
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold">Funil de Conversão</h3>
+                    {project?.source_type === 'meta_ads' && (
+                      <Select value={funnelType} onValueChange={(v) => setFunnelType(v as any)}>
+                        <SelectTrigger className="w-[220px]">
+                          <SelectValue placeholder="Tipo de funil" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="captacao">Captação</SelectItem>
+                          <SelectItem value="mensagem">Mensagem</SelectItem>
+                          <SelectItem value="conversao">Conversão</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                  <FunnelVisualization data={project?.source_type === 'meta_ads' ? (metaFunnelSteps as any) : processedData.funnelData} />
                 </section>
               )}
 

@@ -214,10 +214,16 @@ Deno.serve(async (req) => {
       const isLeadLike = (t: string) =>
         t === 'lead' ||
         t.includes('lead') ||
-        t.includes('messaging_conversation_started') ||
-        t.includes('onsite_conversion.messaging') ||
         t.includes('omni_lead') ||
         t.includes('offsite_conversion.fb_pixel_lead');
+
+      const isMessageLike = (t: string) =>
+        t.includes('messaging_conversation_started') ||
+        t.includes('onsite_conversion.messaging') ||
+        t.includes('omni_message') ||
+        t.includes('messaging') ||
+        t.includes('whatsapp') ||
+        t.includes('instagram_direct');
 
       const isPurchaseLike = (t: string) =>
         t === 'purchase' || t.includes('purchase');
@@ -256,6 +262,7 @@ Deno.serve(async (req) => {
         const cpc = toNumber(row.cpc) || (clicks > 0 ? spend / clicks : 0);
 
         const leads = sumActionValues(row.actions, isLeadLike);
+        const messages = sumActionValues(row.actions, isMessageLike);
         const purchases = sumActionValues(row.actions, isPurchaseLike);
         const landing_views = sumActionValues(row.actions, isLandingViewLike);
         const checkout_views = sumActionValues(row.actions, isCheckoutLike);
@@ -304,6 +311,7 @@ Deno.serve(async (req) => {
           inline_link_clicks: inlineLinkClicks,
           spend,
           leads,
+          messages,
           purchases,
           purchase_value,
           landing_views,

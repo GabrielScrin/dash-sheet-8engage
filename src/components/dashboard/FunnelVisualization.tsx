@@ -1,11 +1,23 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import gsap from 'gsap';
 import { Card, CardContent } from '@/components/ui/card';
 
+type BadgeKind = 'percentage' | 'decimal' | 'currency' | 'number';
+
+interface FunnelBadge {
+  label: string;
+  kind: BadgeKind;
+  // For percentage, value is ratio (0..1). For others, it's the raw number.
+  value: number;
+}
+
 interface FunnelStep {
   label: string;
   value: number;
+  barValue?: number;
+  format?: 'number' | 'currency';
+  badges?: FunnelBadge[];
 }
 
 interface FunnelVisualizationProps {
@@ -14,12 +26,17 @@ interface FunnelVisualizationProps {
 
 export function FunnelVisualization({ data }: FunnelVisualizationProps) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const hasAnimated = useRef(false);
+  const lastAnimatedKey = useRef<string | null>(null);
+
+  const animationKey = useMemo(() => {
+    return data.map((s) => `${s.label}:${String(s.value)}:${String(s.barValue ?? '')}`).join('|');
+  }, [data]);
 
   useEffect(() => {
-    if (!svgRef.current || hasAnimated.current || data.length === 0) return;
-    
-    hasAnimated.current = true;
+    if (!svgRef.current || data.length === 0) return;
+    if (lastAnimatedKey.current === animationKey) return;
+
+    lastAnimatedKey.current = animationKey;
     const svg = svgRef.current;
     const bars = svg.querySelectorAll('.funnel-bar');
     const labels = svg.querySelectorAll('.funnel-label');
@@ -63,17 +80,31 @@ export function FunnelVisualization({ data }: FunnelVisualizationProps) {
 
   if (data.length === 0) return null;
 
-  const maxValue = data[0].value;
+  const maxValue = Math.max(1, ...data.map((s) => Number(s.barValue ?? s.value) || 0));
   const svgHeight = data.length * 80 + 40;
   const barHeight = 48;
   const barGap = 32;
   const maxBarWidth = 400;
   const labelWidth = 140;
   const valueWidth = 100;
+  const minBarWidth = 28;
+  const scalePower = 0.6; // less literal, more aesthetic
 
-  const getRate = (currentValue: number, previousValue: number) => {
-    return ((currentValue / previousValue) * 100).toFixed(1);
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+  const formatBadgeValue = (b: FunnelBadge) => {
+    if (b.kind === 'percentage') return `${(b.value * 100).toFixed(1)}%`;
+    if (b.kind === 'currency') return formatCurrency(b.value);
+    if (b.kind === 'decimal') return b.value.toFixed(2);
+    return b.value.toLocaleString('pt-BR');
   };
+
+  const getDefaultBadge = (stepValue: number, previousValue: number): FunnelBadge => ({
+    label: 'Taxa',
+    kind: 'percentage',
+    value: previousValue > 0 ? stepValue / previousValue : 0,
+  });
 
   return (
     <motion.div
@@ -92,10 +123,21 @@ export function FunnelVisualization({ data }: FunnelVisualizationProps) {
               aria-label="Funil de conversão"
             >
               {data.map((step, index) => {
-                const barWidth = (step.value / maxValue) * maxBarWidth;
+                const barMetric = Number(step.barValue ?? step.value) || 0;
+                const ratio = Math.max(0, Math.min(1, barMetric / maxValue));
+                const easedRatio = Math.pow(ratio, scalePower);
+                const barWidth = minBarWidth + easedRatio * (maxBarWidth - minBarWidth);
                 const y = 20 + index * (barHeight + barGap);
                 const previousValue = index > 0 ? data[index - 1].value : null;
-                const rate = previousValue ? getRate(step.value, previousValue) : null;
+                const badges =
+                  index > 0
+                    ? (step.badges && step.badges.length > 0 ? step.badges : previousValue ? [getDefaultBadge(step.value, previousValue)] : [])
+                    : [];
+
+                const formattedValue =
+                  step.format === 'currency'
+                    ? formatCurrency(step.value)
+                    : step.value.toLocaleString('pt-BR');
 
                 return (
                   <g key={step.label}>
@@ -129,41 +171,70 @@ export function FunnelVisualization({ data }: FunnelVisualizationProps) {
                       textAnchor={barWidth > 80 ? 'end' : 'start'}
                       fill={barWidth > 80 ? 'white' : undefined}
                     >
-                      {step.value.toLocaleString('pt-BR')}
+                      {formattedValue}
                     </text>
 
                     {/* Connector line to next step */}
                     {index < data.length - 1 && (
+                      (() => {
+                        const next = data[index + 1];
+                        const nextMetric = Number(next.barValue ?? next.value) || 0;
+                        const nextRatio = Math.max(0, Math.min(1, nextMetric / maxValue));
+                        const nextEased = Math.pow(nextRatio, scalePower);
+                        const nextWidth = minBarWidth + nextEased * (maxBarWidth - minBarWidth);
+                        return (
                       <path
                         className="funnel-connector"
                         d={`M ${labelWidth + barWidth / 2} ${y + barHeight} 
-                            L ${labelWidth + (data[index + 1].value / maxValue) * maxBarWidth / 2} ${y + barHeight + barGap}`}
+                            L ${labelWidth + nextWidth / 2} ${y + barHeight + barGap}`}
                         stroke="hsl(var(--border))"
                         strokeWidth={2}
                         strokeDasharray="100"
                         fill="none"
                       />
+                        );
+                      })()
                     )}
 
                     {/* Rate badge */}
-                    {rate && (
+                    {badges.length > 0 && (
                       <g className="funnel-rate">
-                        <rect
-                          x={labelWidth + maxBarWidth + 20}
-                          y={y + barHeight / 2 - 12}
-                          width={60}
-                          height={24}
-                          rx={12}
-                          fill="hsl(var(--muted))"
-                        />
-                        <text
-                          x={labelWidth + maxBarWidth + 50}
-                          y={y + barHeight / 2 + 5}
-                          textAnchor="middle"
-                          className="fill-muted-foreground text-xs font-medium"
-                        >
-                          {rate}%
-                        </text>
+                        {badges.slice(0, 2).map((b, i) => {
+                          const badgeW = 112;
+                          const badgeH = 30;
+                          const gap = 8;
+                          const totalH = badges.length > 1 ? badgeH * 2 + gap : badgeH;
+                          const baseY = y + barHeight / 2 - totalH / 2;
+                          const by = baseY + i * (badgeH + gap);
+                          return (
+                            <g key={`${b.label}-${i}`}>
+                              <rect
+                                x={labelWidth + maxBarWidth + 20}
+                                y={by}
+                                width={badgeW}
+                                height={badgeH}
+                                rx={12}
+                                fill="hsl(var(--muted))"
+                              />
+                              <text
+                                x={labelWidth + maxBarWidth + 20 + badgeW / 2}
+                                y={by + 12}
+                                textAnchor="middle"
+                                className="fill-muted-foreground text-[10px] font-medium"
+                              >
+                                {b.label}
+                              </text>
+                              <text
+                                x={labelWidth + maxBarWidth + 20 + badgeW / 2}
+                                y={by + 24}
+                                textAnchor="middle"
+                                className="fill-foreground text-xs font-semibold"
+                              >
+                                {formatBadgeValue(b)}
+                              </text>
+                            </g>
+                          );
+                        })}
                       </g>
                     )}
                   </g>
@@ -174,10 +245,10 @@ export function FunnelVisualization({ data }: FunnelVisualizationProps) {
 
           {/* Legend */}
           <div className="mt-4 flex items-center justify-center gap-6 text-sm text-muted-foreground">
-            <span>Taxa de passagem entre etapas</span>
+            <span>Métricas entre etapas</span>
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-muted" />
-              <span>Percentual</span>
+              <span>Taxa/KPI</span>
             </div>
           </div>
         </CardContent>
