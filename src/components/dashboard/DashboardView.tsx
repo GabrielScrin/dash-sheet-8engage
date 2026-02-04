@@ -223,7 +223,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const { data, error } = await supabase.functions.invoke(
         `meta-api?action=campaigns&accountId=${encodeURIComponent(adAccountId)}`
       );
-      if (error) throw error;
+      if (error) {
+        const message = String((error as any)?.message || '');
+        // Backwards compatibility: older deployed edge function versions don't support action=campaigns yet.
+        if (message.toLowerCase().includes('invalid action')) return [];
+        throw error;
+      }
 
       return (data?.campaigns || []) as Array<{ id: string; name: string; effective_status?: string; status?: string }>;
     },
@@ -950,7 +955,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           title: 'Meta Ads não configurado',
           description: 'Conecte a Meta e selecione uma conta de anúncios para começar a puxar dados.',
         });
-      } else if (!metaCampaignsQuery.isLoading && metaCampaignsQuery.error) {
+      } else if (
+        !metaCampaignsQuery.isLoading &&
+        metaCampaignsQuery.error &&
+        !String((metaCampaignsQuery.error as any)?.message || '').toLowerCase().includes('invalid action')
+      ) {
         warnings.push({
           title: 'Falha ao carregar campanhas',
           description: 'Não foi possível listar campanhas dessa conta. Confirme se a Edge Function `meta-api` foi redeployada e tente novamente.',
