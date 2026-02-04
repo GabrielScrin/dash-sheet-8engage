@@ -187,6 +187,47 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
   });
 
+  const metaPlatformBreakdownQuery = useQuery({
+    queryKey: [
+      'meta-platform-breakdown',
+      adAccountId,
+      dateRange?.from ? dateRange.from.toISOString() : null,
+      dateRange?.to ? dateRange.to.toISOString() : null,
+      selectedCampaignId,
+    ],
+    queryFn: async () => {
+      if (!adAccountId) return [];
+
+      const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
+      const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
+
+      // Note: breakdowns are only used for the "Distribuição de Conteúdos" tab.
+      // We query account-level breakdowns and optionally filter by campaign on the client (campaign-level breakdowns can explode).
+      const { data, error } = await supabase.functions.invoke(
+        `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=account&timeIncrement=all&breakdowns=publisher_platform`
+      );
+      if (error) throw error;
+
+      return (data?.data || []) as Array<Record<string, any>>;
+    },
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+  });
+
+  const metaCampaignsQuery = useQuery({
+    queryKey: ['meta-campaigns', adAccountId],
+    queryFn: async () => {
+      if (!adAccountId) return [];
+
+      const { data, error } = await supabase.functions.invoke(
+        `meta-api?action=campaigns&accountId=${encodeURIComponent(adAccountId)}`
+      );
+      if (error) throw error;
+
+      return (data?.campaigns || []) as Array<{ id: string; name: string; effective_status?: string; status?: string }>;
+    },
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+  });
+
   // 3. Fetch Sheet Data from all configured sheets
   const sheetNames: string[] = Array.isArray(project?.sheet_names)
     ? (project.sheet_names as string[])
@@ -261,16 +302,17 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const campaignOptions = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
-    const map = new Map<string, string>();
-    for (const row of sourceRows) {
-      if (row?.campaign_id && row?.campaign_name) {
-        map.set(String(row.campaign_id), String(row.campaign_name));
-      }
-    }
-    return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [project?.source_type, sourceRows]);
+
+    const campaigns = (metaCampaignsQuery.data || []) as Array<{ id: string; name: string; effective_status?: string }>;
+    const activeFirst = [...campaigns].sort((a, b) => {
+      const aActive = String(a.effective_status || '').toUpperCase() === 'ACTIVE' ? 0 : 1;
+      const bActive = String(b.effective_status || '').toUpperCase() === 'ACTIVE' ? 0 : 1;
+      if (aActive !== bActive) return aActive - bActive;
+      return a.name.localeCompare(b.name, 'pt-BR');
+    });
+
+    return activeFirst.map((c) => ({ id: String(c.id), name: String(c.name) }));
+  }, [metaCampaignsQuery.data, project?.source_type]);
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return sourceRows;
@@ -636,6 +678,49 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     shareToken,
   ]);
 
+  const metaDistributionData = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return null;
+    const r: any = metaTotalsRow;
+
+    const totalReach = Number(r?.reach || 0);
+    const totalImpressions = Number(r?.impressions || 0);
+    const avgEngagement = Number(r?.ctr || 0); // using CTR as engagement proxy for ads
+
+    const videoViewsRaw = Number(r?.thruplay || 0) || Number(r?.video3s || 0);
+    const videoViews = Number.isFinite(videoViewsRaw) ? videoViewsRaw : 0;
+
+    // Followers gained is not available in Ads Insights reliably; keep 0 for now.
+    const followersGained = 0;
+
+    const platformRows = (metaPlatformBreakdownQuery.data || []) as any[];
+    const byPlatform = new Map<string, { reach: number; impressions: number; clicks: number }>();
+    for (const row of platformRows) {
+      const platform = String(row?.publisher_platform || 'Outros');
+      const current = byPlatform.get(platform) || { reach: 0, impressions: 0, clicks: 0 };
+      current.reach += Number(row?.reach || 0);
+      current.impressions += Number(row?.impressions || 0);
+      current.clicks += Number(row?.clicks || 0);
+      byPlatform.set(platform, current);
+    }
+
+    const platformBreakdown = Array.from(byPlatform.entries())
+      .map(([platform, v]) => ({
+        platform,
+        reach: v.reach,
+        engagement: v.impressions > 0 ? v.clicks / v.impressions : 0,
+      }))
+      .sort((a, b) => b.reach - a.reach);
+
+    return {
+      totalReach,
+      totalImpressions,
+      avgEngagement,
+      videoViews,
+      followersGained,
+      platformBreakdown,
+    };
+  }, [metaPlatformBreakdownQuery.data, metaTotalsRow, project?.source_type]);
+
   const metaBigNumbers = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
     const r: any = metaTotalsRow;
@@ -673,6 +758,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     metaAccountInsightsQuery.isLoading ||
     metaAccountTotalsQuery.isLoading ||
     metaCampaignTotalsQuery.isLoading ||
+    metaPlatformBreakdownQuery.isLoading ||
     metaAdsQuery.isLoading;
 
   if (isLoading) {
@@ -921,33 +1007,35 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   <BigNumberCard
                     label="Alcance Total"
-                    value={processedData.distributionData.totalReach}
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalReach || 0) : processedData.distributionData.totalReach}
                     format="number"
                   />
                   <BigNumberCard
                     label="Impressões"
-                    value={processedData.distributionData.totalImpressions}
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalImpressions || 0) : processedData.distributionData.totalImpressions}
                     format="number"
                   />
                   <BigNumberCard
                     label="Engajamento Médio"
-                    value={processedData.distributionData.avgEngagement}
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.avgEngagement || 0) : processedData.distributionData.avgEngagement}
                     format="percentage"
                   />
                   <BigNumberCard
                     label="Views de Vídeo"
-                    value={processedData.distributionData.videoViews}
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.videoViews || 0) : processedData.distributionData.videoViews}
                     format="number"
                   />
                   <BigNumberCard
                     label="Novos Seguidores"
-                    value={processedData.distributionData.followersGained}
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followersGained || 0) : processedData.distributionData.followersGained}
                     format="number"
                   />
                 </div>
               </section>
 
-              {processedData.distributionData.platformBreakdown.length > 0 && (
+              {(project?.source_type === 'meta_ads'
+                ? (metaDistributionData?.platformBreakdown || []).length > 0
+                : processedData.distributionData.platformBreakdown.length > 0) && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Breakdown por Plataforma</h3>
                   <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
@@ -960,7 +1048,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {processedData.distributionData.platformBreakdown.map((item) => (
+                        {(project?.source_type === 'meta_ads'
+                          ? (metaDistributionData?.platformBreakdown || [])
+                          : processedData.distributionData.platformBreakdown
+                        ).map((item) => (
                           <tr key={item.platform} className="hover:bg-muted/30">
                             <td className="px-4 py-3 font-medium capitalize">{item.platform}</td>
                             <td className="px-4 py-3 text-right">{item.reach.toLocaleString('pt-BR')}</td>

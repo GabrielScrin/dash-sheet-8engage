@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const action = url.searchParams.get('action'); // 'ad-accounts' | 'insights'
+    const action = url.searchParams.get('action'); // 'ad-accounts' | 'campaigns' | 'insights'
 
     // Validate JWT manually using getClaims
     const authHeader = req.headers.get('Authorization');
@@ -121,6 +121,45 @@ Deno.serve(async (req) => {
       });
     }
 
+    // --- Action: List Campaigns for an Ad Account ---
+    if (action === 'campaigns') {
+      const accountId = url.searchParams.get('accountId');
+      if (!accountId) throw new Error('Missing accountId');
+
+      // effective_status can be used to include ACTIVE even with no spend in the selected period.
+      // We'll return all and let the UI decide how to show/filter.
+      const campaigns: any[] = [];
+      let nextUrl: string | null =
+        `https://graph.facebook.com/v19.0/act_${accountId}/campaigns?fields=id,name,effective_status,status&limit=200&access_token=${ACCESS_TOKEN}`;
+
+      while (nextUrl) {
+        const res = await fetch(nextUrl);
+        const page = await res.json();
+
+        if (page.error) {
+          console.error('Meta API error:', page.error);
+          throw new Error(page.error.message);
+        }
+
+        if (Array.isArray(page.data)) campaigns.push(...page.data);
+        nextUrl = page?.paging?.next || null;
+        if (campaigns.length > 10000) break;
+      }
+
+      const normalizedCampaigns = campaigns
+        .filter((c: any) => c?.id && c?.name)
+        .map((c: any) => ({
+          id: String(c.id),
+          name: String(c.name),
+          effective_status: String(c.effective_status || ''),
+          status: String(c.status || ''),
+        }));
+
+      return new Response(JSON.stringify({ campaigns: normalizedCampaigns }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     // --- Action: Fetch Insights ---
     if (action === 'insights') {
       const accountId = url.searchParams.get('accountId');
@@ -128,6 +167,7 @@ Deno.serve(async (req) => {
       const endDate = url.searchParams.get('endDate');
       const level = url.searchParams.get('level') || 'account';
       const timeIncrement = url.searchParams.get('timeIncrement') || '1'; // '1' (daily) | 'all' (aggregated)
+      const breakdowns = url.searchParams.get('breakdowns'); // e.g. 'publisher_platform'
       const normalizedLevel = ['account', 'campaign', 'adset', 'ad'].includes(level) ? level : 'account';
 
       if (!accountId) throw new Error('Missing accountId');
@@ -151,10 +191,11 @@ Deno.serve(async (req) => {
         timeIncrement === 'all' || timeIncrement === '0' || timeIncrement === 'false'
           ? ''
           : '&time_increment=1';
+      const breakdownsParam = breakdowns ? `&breakdowns=${encodeURIComponent(breakdowns)}` : '';
       let nextUrl: string | null =
         `https://graph.facebook.com/v19.0/act_${accountId}/insights?level=${encodeURIComponent(normalizedLevel)}` +
         `${timeIncrementParam}&time_range={'since':'${startDate}','until':'${endDate}'}` +
-        `&fields=${encodeURIComponent(fields)}&limit=500&access_token=${ACCESS_TOKEN}`;
+        `${breakdownsParam}&fields=${encodeURIComponent(fields)}&limit=500&access_token=${ACCESS_TOKEN}`;
 
       while (nextUrl) {
         const res = await fetch(nextUrl);
@@ -241,6 +282,14 @@ Deno.serve(async (req) => {
         const cpl = leads > 0 ? spend / leads : 0;
         const cpa = purchases > 0 ? spend / purchases : 0;
 
+        const breakdownFields: Record<string, unknown> = {};
+        if (breakdowns) {
+          const keys = breakdowns.split(',').map((s) => s.trim()).filter(Boolean);
+          for (const key of keys) {
+            if (row?.[key] !== undefined) breakdownFields[key] = row[key];
+          }
+        }
+
         return {
           date: row.date_start,
           date_stop: row.date_stop,
@@ -272,6 +321,7 @@ Deno.serve(async (req) => {
           adset_name: row.adset_name,
           ad_id: row.ad_id,
           ad_name: row.ad_name,
+          ...breakdownFields,
         };
       });
 
