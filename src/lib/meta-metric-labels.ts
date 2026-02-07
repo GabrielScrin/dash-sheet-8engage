@@ -12,6 +12,8 @@ const BASE_METRIC_LABELS: Record<string, { label: string; format: MetricFormat }
   clicks: { label: 'Cliques', format: 'number' },
   leads: { label: 'Leads', format: 'number' },
   messages: { label: 'Mensagens', format: 'number' },
+  profile_visits: { label: 'Visitas ao Perfil', format: 'number' },
+  instagram_follows: { label: 'Seguidores do Instagram', format: 'number' },
   purchases: { label: 'Compras', format: 'number' },
   purchase_value: { label: 'Valor de Compras', format: 'currency' },
   ctr: { label: 'CTR', format: 'percentage' },
@@ -50,6 +52,12 @@ const ACTION_LABELS: Record<string, string> = {
   omni_purchase: 'Compra (Omni)',
   omni_lead: 'Lead (Omni)',
   whatsapp: 'WhatsApp',
+  profile_visit: 'Visitas ao Perfil',
+  instagram_profile_visit: 'Visitas ao Perfil (Instagram)',
+  ig_profile_visit: 'Visitas ao Perfil (Instagram)',
+  follow: 'Seguidores',
+  instagram_follow: 'Seguidores do Instagram',
+  ig_follow: 'Seguidores do Instagram',
 };
 
 const humanize = (value: string) => {
@@ -134,6 +142,8 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
   const spend = getMetricAliasValue(row, ['spend', 'investment']);
   const leads = getMetricAliasValue(row, ['leads']);
   const messages = getMetricAliasValue(row, ['messages']);
+  const profileVisits = getMetricAliasValue(row, ['profile_visits']);
+  const instagramFollows = getMetricAliasValue(row, ['instagram_follows']);
   const purchases = getMetricAliasValue(row, ['purchases']);
   const purchaseValue = getMetricAliasValue(row, ['purchase_value', 'revenue']);
   const landingViews = getMetricAliasValue(row, ['landing_views', 'landingViews']);
@@ -168,6 +178,10 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
       return spend;
     case 'sales':
       return sales;
+    case 'profile_visits':
+      return profileVisits;
+    case 'instagram_follows':
+      return instagramFollows;
     case 'revenue':
     case 'purchase_value':
       return purchaseValue;

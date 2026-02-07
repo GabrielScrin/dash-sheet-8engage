@@ -277,6 +277,8 @@ Deno.serve(async (req) => {
             'cpm',
             'leads',
             'messages',
+            'profile_visits',
+            'instagram_follows',
             'purchases',
             'purchase_value',
             'roas',
@@ -389,6 +391,18 @@ Deno.serve(async (req) => {
       const isVideo15sLike = (t: string) =>
         t.includes('video_view_15') || t.includes('video_view_15s');
 
+      const isProfileVisitLike = (t: string) =>
+        t.includes('profile_visit') ||
+        t.includes('instagram_profile_visit') ||
+        t.includes('ig_profile_visit');
+
+      const isInstagramFollowLike = (t: string) =>
+        t === 'follow' ||
+        t.includes('ig_follow') ||
+        t.includes('instagram_follow') ||
+        t.includes('profile_follow') ||
+        t.includes('follows');
+
       // Normalize Data
       const normalized = insights.map((row: any) => {
         const spend = toNumber(row.spend);
@@ -407,6 +421,8 @@ Deno.serve(async (req) => {
 
         const leads = sumActionValues(row.actions, isLeadLike);
         const messages = sumActionValues(row.actions, isMessageLike);
+        const profile_visits = sumActionValues(row.actions, isProfileVisitLike);
+        const instagram_follows = sumActionValues(row.actions, isInstagramFollowLike);
         const purchases = sumActionValues(row.actions, isPurchaseLike);
         const landing_views = sumActionValues(row.actions, isLandingViewLike);
         const checkout_views = sumActionValues(row.actions, isCheckoutLike);
@@ -481,6 +497,8 @@ Deno.serve(async (req) => {
           spend,
           leads,
           messages,
+          profile_visits,
+          instagram_follows,
           purchases,
           purchase_value,
           landing_views,

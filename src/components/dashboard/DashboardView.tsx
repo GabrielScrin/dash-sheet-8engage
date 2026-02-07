@@ -434,6 +434,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       'clicks',
       'leads',
       'messages',
+      'profile_visits',
+      'instagram_follows',
       'purchases',
       'ctr',
       'cpc',
@@ -768,6 +770,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         impressions: number;
         reach: number;
         messages: number;
+        profile_visits: number;
+        instagram_follows: number;
         landing_views: number;
         checkout_views: number;
         video_views: number;
@@ -804,6 +808,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         impressions: 0,
         reach: 0,
         messages: 0,
+        profile_visits: 0,
+        instagram_follows: 0,
         landing_views: 0,
         checkout_views: 0,
         video_views: 0,
@@ -818,6 +824,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       current.impressions += Number(row?.impressions || 0);
       current.reach += Number(row?.reach || 0);
       current.messages += Number(row?.messages || 0);
+      current.profile_visits += Number(row?.profile_visits || 0);
+      current.instagram_follows += Number(row?.instagram_follows || 0);
       current.landing_views += Number(row?.landing_views || 0);
       current.checkout_views += Number(row?.checkout_views || 0);
       current.video_views += Number(row?.thruplay || row?.video3s || 0);
@@ -873,6 +881,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         clicks: b.clicks,
         leads: b.leads,
         messages: b.messages,
+        profile_visits: b.profile_visits,
+        instagram_follows: b.instagram_follows,
         purchases: b.purchases,
         ctr,
         cpc,
@@ -911,6 +921,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         landing_views: 0,
         checkout_views: 0,
         messages: 0,
+        profile_visits: 0,
+        instagram_follows: 0,
         purchases: 0,
         purchase_value: 0,
         video3s: 0,
@@ -938,6 +950,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       current.landing_views += Number(row?.landing_views || 0);
       current.checkout_views += Number(row?.checkout_views || 0);
       current.messages += Number(row?.messages || 0);
+      current.profile_visits += Number(row?.profile_visits || 0);
+      current.instagram_follows += Number(row?.instagram_follows || 0);
       current.purchases += Number(row?.purchases || 0);
       current.purchase_value += Number(row?.purchase_value || 0);
       current.video3s += Number(row?.video3s || 0);
@@ -1076,6 +1090,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           inline_link_clicks: 0,
           leads: 0,
           messages: 0,
+          profile_visits: 0,
+          instagram_follows: 0,
           purchases: 0,
           purchase_value: 0,
           landing_views: 0,
@@ -1217,8 +1233,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     const videoViewsRaw = Number(r?.thruplay || 0) || Number(r?.video3s || 0);
     const videoViews = Number.isFinite(videoViewsRaw) ? videoViewsRaw : 0;
 
-    // Followers gained is not available in Ads Insights reliably; keep 0 for now.
-    const followersGained = 0;
+    const followersGained = Number(r?.instagram_follows || 0);
 
     const platformRows = (metaPlatformBreakdownQuery.data || []) as any[];
     const byPlatform = new Map<string, { reach: number; impressions: number; clicks: number }>();
