@@ -428,7 +428,11 @@ export default function ProjectConfig() {
                         <p className="font-medium text-blue-800">Conta Conectada: {project.source_config.ad_account_name}</p>
                         <p className="text-sm text-blue-600">ID: {project.source_config.ad_account_id}</p>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={async () => {
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="bg-white text-blue-700 border-blue-300 hover:bg-blue-100 hover:text-blue-800"
+                        onClick={async () => {
                         try {
                           const nextConfig = { ...project.source_config, ad_account_id: null, ad_account_name: null };
                           const { error } = await supabase
@@ -442,7 +446,10 @@ export default function ProjectConfig() {
                         } catch (e: any) {
                           toast({ title: 'Erro ao alterar conta', description: e.message, variant: 'destructive' });
                         }
-                      }}>Alterar</Button>
+                      }}
+                      >
+                        Alterar
+                      </Button>
                     </div>
                   )}
                 </div>

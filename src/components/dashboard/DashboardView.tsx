@@ -49,7 +49,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const { signInWithGoogle } = useAuth();
   const [activeTab, setActiveTab] = useState('perpetua');
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
@@ -203,7 +203,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       adAccountId,
       dateRange?.from ? dateRange.from.toISOString() : null,
       dateRange?.to ? dateRange.to.toISOString() : null,
-      selectedCampaignId,
+      selectedCampaignIds.slice().sort().join(','),
     ],
     queryFn: async () => {
       if (!adAccountId) return [];
@@ -344,15 +344,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return sourceRows;
-    if (!selectedCampaignId) return metaAccountRows;
-    return sourceRows.filter((r) => String(r?.campaign_id || '') === String(selectedCampaignId));
-  }, [metaAccountRows, project?.source_type, selectedCampaignId, sourceRows]);
+    if (selectedCampaignIds.length === 0) return metaAccountRows;
+    const selectedSet = new Set(selectedCampaignIds.map((id) => String(id)));
+    return sourceRows.filter((r) => selectedSet.has(String(r?.campaign_id || '')));
+  }, [metaAccountRows, project?.source_type, selectedCampaignIds, sourceRows]);
 
   const aggregatedMetaRows = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return rowsAfterCampaignFilter;
 
     // If no campaign selected, we already queried account-level rows (no aggregation needed).
-    if (!selectedCampaignId) {
+    if (selectedCampaignIds.length === 0) {
       return [...rowsAfterCampaignFilter].sort((a, b) =>
         String(a?.date || a?.date_start || '').localeCompare(String(b?.date || b?.date_start || ''))
       );
@@ -422,7 +423,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         };
       })
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  }, [project?.source_type, rowsAfterCampaignFilter, selectedCampaignId]);
+  }, [project?.source_type, rowsAfterCampaignFilter, selectedCampaignIds]);
 
   // 4. Apply Filters
   const filteredRows = useMemo(() => {
@@ -648,7 +649,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
     const byAd = new Map<string, any>();
     for (const row of rows as any[]) {
-      if (selectedCampaignId && String(row?.campaign_id || '') !== String(selectedCampaignId)) continue;
+      if (selectedCampaignIds.length > 0 && !selectedCampaignIds.includes(String(row?.campaign_id || ''))) continue;
       const id = String(row?.ad_id || row?.ad_name || '');
       if (!id) continue;
       const current = byAd.get(id) || {
@@ -673,7 +674,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       .map((a) => ({ ...a, ctr: a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0 }))
       .sort((a, b) => b.sales - a.sales)
       .slice(0, 50);
-  }, [metaAdsQuery.data, project?.source_type, selectedCampaignId]);
+  }, [metaAdsQuery.data, project?.source_type, selectedCampaignIds]);
 
   const creativeAdIds = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
@@ -801,14 +802,19 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       };
     };
 
-    if (selectedCampaignId) {
+    if (selectedCampaignIds.length > 0) {
       const campaignTotals = (metaCampaignTotalsQuery.data || []) as any[];
-      const filtered = campaignTotals.filter((r) => String(r?.campaign_id || '') === String(selectedCampaignId));
-      const campaignName =
-        filtered.find((r) => r?.campaign_name)?.campaign_name ||
-        (metaCampaignsQuery.data || []).find((c: any) => String(c?.id || '') === String(selectedCampaignId))?.name;
+      const selectedSet = new Set(selectedCampaignIds.map((id) => String(id)));
+      const filtered = campaignTotals.filter((r) => selectedSet.has(String(r?.campaign_id || '')));
+      const selectedNames = (metaCampaignsQuery.data || [])
+        .filter((c: any) => selectedSet.has(String(c?.id || '')))
+        .map((c: any) => String(c?.name || ''))
+        .filter(Boolean);
+      const campaignName = selectedNames.length === 1
+        ? selectedNames[0]
+        : `${selectedNames.length} campanhas`;
       if (!filtered.length) return null;
-      return aggregateMetaTotals(filtered, { campaign_id: selectedCampaignId, campaign_name: campaignName });
+      return aggregateMetaTotals(filtered, { campaign_id: selectedCampaignIds.join(','), campaign_name: campaignName });
     }
 
     const accountTotals = (metaAccountTotalsQuery.data || []) as any[];
@@ -819,7 +825,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     metaCampaignTotalsQuery.data,
     metaCampaignsQuery.data,
     project?.source_type,
-    selectedCampaignId,
+    selectedCampaignIds,
     shareToken,
   ]);
 
@@ -1127,8 +1133,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         onDateRangeChange={setDateRange}
         campaigns={campaignOptions}
         campaignsLoading={metaCampaignsQuery.isLoading}
-        selectedCampaignId={selectedCampaignId}
-        onCampaignChange={(id) => setSelectedCampaignId(id)}
+        selectedCampaignIds={selectedCampaignIds}
+        onCampaignChange={(ids) => setSelectedCampaignIds(ids)}
         viewMode={viewMode}
         onViewModeChange={(v) => setViewMode(v)}
       />

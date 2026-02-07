@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format, subDays, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CalendarIcon, X, ChevronDown, Check } from 'lucide-react';
@@ -31,8 +31,8 @@ interface DashboardFiltersProps {
   onDateRangeChange: (range: DateRange | undefined) => void;
   campaigns?: { id: string; name: string; effective_status?: string }[];
   campaignsLoading?: boolean;
-  selectedCampaignId?: string | null;
-  onCampaignChange?: (id: string | null) => void;
+  selectedCampaignIds?: string[];
+  onCampaignChange?: (ids: string[]) => void;
   viewMode?: 'day' | 'week' | 'month';
   onViewModeChange?: (value: 'day' | 'week' | 'month') => void;
 }
@@ -52,7 +52,7 @@ export function DashboardFilters({
   onDateRangeChange,
   campaigns = [],
   campaignsLoading = false,
-  selectedCampaignId = null,
+  selectedCampaignIds = [],
   onCampaignChange,
   viewMode = 'week',
   onViewModeChange,
@@ -61,6 +61,12 @@ export function DashboardFilters({
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [internalDateRange, setInternalDateRange] = useState<DateRange | undefined>(dateRange);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
+
+  const selectedCampaigns = useMemo(() => {
+    if (selectedCampaignIds.length === 0) return [];
+    const selectedSet = new Set(selectedCampaignIds);
+    return campaigns.filter((campaign) => selectedSet.has(campaign.id));
+  }, [campaigns, selectedCampaignIds]);
 
   useEffect(() => {
     setInternalDateRange(dateRange);
@@ -99,12 +105,13 @@ export function DashboardFilters({
     return `${format(dateRange.from, "d 'de' MMM", { locale: ptBR })} - ${format(dateRange.to, "d 'de' MMM", { locale: ptBR })}`;
   };
 
-  const selectedCampaignLabel =
-    selectedCampaignId
-      ? campaigns.find((c) => c.id === selectedCampaignId)?.name || 'Campanha selecionada'
-      : campaignsLoading
-        ? 'Carregando campanhas...'
-        : 'Todas as campanhas';
+  const selectedCampaignLabel = campaignsLoading
+    ? 'Carregando campanhas...'
+    : selectedCampaignIds.length === 0
+      ? 'Todas as campanhas'
+      : selectedCampaignIds.length === 1
+        ? campaigns.find((c) => c.id === selectedCampaignIds[0])?.name || '1 campanha selecionada'
+        : `${selectedCampaignIds.length} campanhas selecionadas`;
 
   return (
     <div className="sticky top-[7.5rem] z-30 -mx-4 bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
@@ -198,11 +205,11 @@ export function DashboardFilters({
                     <CommandItem
                       value="__all__"
                       onSelect={() => {
-                        onCampaignChange(null);
+                        onCampaignChange([]);
                         setIsCampaignOpen(false);
                       }}
                     >
-                      <Check className={cn("mr-2 h-4 w-4", !selectedCampaignId ? "opacity-100" : "opacity-0")} />
+                      <Check className={cn("mr-2 h-4 w-4", selectedCampaignIds.length === 0 ? "opacity-100" : "opacity-0")} />
                       Todas as campanhas
                     </CommandItem>
                     {campaigns.slice(0, 1000).map((c) => (
@@ -210,11 +217,14 @@ export function DashboardFilters({
                         key={c.id}
                         value={c.name}
                         onSelect={() => {
-                          onCampaignChange(c.id);
-                          setIsCampaignOpen(false);
+                          const isSelected = selectedCampaignIds.includes(c.id);
+                          const next = isSelected
+                            ? selectedCampaignIds.filter((id) => id !== c.id)
+                            : [...selectedCampaignIds, c.id];
+                          onCampaignChange(next);
                         }}
                       >
-                        <Check className={cn("mr-2 h-4 w-4", selectedCampaignId === c.id ? "opacity-100" : "opacity-0")} />
+                        <Check className={cn("mr-2 h-4 w-4", selectedCampaignIds.includes(c.id) ? "opacity-100" : "opacity-0")} />
                         <span className="truncate flex-1">{c.name}</span>
                         {String(c.effective_status || '').toUpperCase() !== 'ACTIVE' && (
                           <span className="ml-2 text-xs text-muted-foreground">Inativa</span>
@@ -226,6 +236,28 @@ export function DashboardFilters({
               </Command>
             </PopoverContent>
           </Popover>
+        )}
+
+        {onCampaignChange && selectedCampaigns.length > 0 && (
+          <div className="flex w-full flex-wrap items-center gap-2">
+            {selectedCampaigns.slice(0, 6).map((campaign) => (
+              <Badge key={campaign.id} variant="secondary" className="gap-1 pl-2">
+                <span className="max-w-[220px] truncate">{campaign.name}</span>
+                <button
+                  onClick={() =>
+                    onCampaignChange(selectedCampaignIds.filter((id) => id !== campaign.id))
+                  }
+                  className="ml-1 rounded-full p-0.5 hover:bg-muted"
+                  aria-label={`Remover campanha ${campaign.name}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+            {selectedCampaigns.length > 6 && (
+              <Badge variant="outline">+{selectedCampaigns.length - 6}</Badge>
+            )}
+          </div>
         )}
 
         {selectedCreative && (
@@ -247,7 +279,7 @@ export function DashboardFilters({
             onClick={() => {
               handlePresetChange('last_7_days');
               onCreativeChange(null);
-              onCampaignChange?.(null);
+              onCampaignChange?.([]);
             }}
           >
             Limpar filtros
