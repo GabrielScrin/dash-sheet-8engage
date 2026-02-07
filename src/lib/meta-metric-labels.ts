@@ -82,11 +82,122 @@ export const getMetaMetricLabel = (metricKey: string) => {
     return `Valor - ${translateMetaActionType(actionType)}`;
   }
 
+  if (metricKey.startsWith('cost_per_action:')) {
+    const actionType = metricKey.slice('cost_per_action:'.length);
+    return `Custo por ${translateMetaActionType(actionType)}`;
+  }
+
+  if (metricKey.startsWith('rate_per_action:')) {
+    const actionType = metricKey.slice('rate_per_action:'.length);
+    return `Taxa de ${translateMetaActionType(actionType)}`;
+  }
+
   return getBaseMetricMeta(metricKey).label;
 };
 
 export const getMetaMetricFormat = (metricKey: string): MetricFormat => {
+  if (metricKey.startsWith('cost_per_action:')) return 'currency';
+  if (metricKey.startsWith('rate_per_action:')) return 'percentage';
   if (metricKey.startsWith('action_value:')) return 'currency';
   if (metricKey.startsWith('action:')) return 'number';
   return getBaseMetricMeta(metricKey).format;
+};
+
+const safeNumber = (value: unknown) => {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const getActionCount = (row: Record<string, unknown>, actionType: string) => {
+  const map = (row.actions_agg_map || row.actions_map || {}) as Record<string, unknown>;
+  return safeNumber(map[actionType]);
+};
+
+const getActionValue = (row: Record<string, unknown>, actionType: string) => {
+  const map = (row.action_values_agg_map || row.action_values_map || {}) as Record<string, unknown>;
+  return safeNumber(map[actionType]);
+};
+
+const getMetricAliasValue = (row: Record<string, unknown>, keys: string[]) => {
+  for (const key of keys) {
+    const value = safeNumber(row[key]);
+    if (value !== 0) return value;
+  }
+  return safeNumber(row[keys[0]]);
+};
+
+export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey: string): number => {
+  const row = rowInput || {};
+  const impressions = getMetricAliasValue(row, ['impressions']);
+  const reach = getMetricAliasValue(row, ['reach']);
+  const clicks = getMetricAliasValue(row, ['clicks']);
+  const spend = getMetricAliasValue(row, ['spend', 'investment']);
+  const leads = getMetricAliasValue(row, ['leads']);
+  const messages = getMetricAliasValue(row, ['messages']);
+  const purchases = getMetricAliasValue(row, ['purchases']);
+  const purchaseValue = getMetricAliasValue(row, ['purchase_value', 'revenue']);
+  const landingViews = getMetricAliasValue(row, ['landing_views', 'landingViews']);
+  const checkoutViews = getMetricAliasValue(row, ['checkout_views', 'checkoutViews']);
+  const thruplay = getMetricAliasValue(row, ['thruplay']);
+  const video3s = getMetricAliasValue(row, ['video3s']);
+  const video15s = getMetricAliasValue(row, ['video15s']);
+  const sales = purchases > 0 ? purchases : leads;
+  const resolvedVideoViews = thruplay || video3s;
+
+  if (metricKey.startsWith('action:')) {
+    return getActionCount(row, metricKey.slice('action:'.length));
+  }
+
+  if (metricKey.startsWith('action_value:')) {
+    return getActionValue(row, metricKey.slice('action_value:'.length));
+  }
+
+  if (metricKey.startsWith('cost_per_action:')) {
+    const actionCount = getActionCount(row, metricKey.slice('cost_per_action:'.length));
+    return actionCount > 0 ? spend / actionCount : 0;
+  }
+
+  if (metricKey.startsWith('rate_per_action:')) {
+    const actionCount = getActionCount(row, metricKey.slice('rate_per_action:'.length));
+    return clicks > 0 ? (actionCount / clicks) * 100 : 0;
+  }
+
+  switch (metricKey) {
+    case 'investment':
+    case 'spend':
+      return spend;
+    case 'sales':
+      return sales;
+    case 'revenue':
+    case 'purchase_value':
+      return purchaseValue;
+    case 'conversion':
+      return clicks > 0 ? (sales / clicks) * 100 : 0;
+    case 'ctr':
+      return impressions > 0 ? (clicks / impressions) * 100 : safeNumber(row.ctr);
+    case 'cpc':
+      return clicks > 0 ? spend / clicks : safeNumber(row.cpc);
+    case 'cpm':
+      return impressions > 0 ? (spend / impressions) * 1000 : safeNumber(row.cpm);
+    case 'frequency':
+      return reach > 0 ? impressions / reach : safeNumber(row.frequency);
+    case 'roas':
+      return spend > 0 ? purchaseValue / spend : safeNumber(row.roas);
+    case 'cpl':
+      return leads > 0 ? spend / leads : safeNumber(row.cpl);
+    case 'cpa':
+      return purchases > 0 ? spend / purchases : safeNumber(row.cpa);
+    case 'video_views':
+      return resolvedVideoViews;
+    case 'hook_rate':
+      return impressions > 0 ? video3s / impressions : safeNumber(row.hook_rate);
+    case 'hold_rate':
+      return impressions > 0 ? (video15s || thruplay) / impressions : safeNumber(row.hold_rate);
+    case 'landing_views':
+      return landingViews;
+    case 'checkout_views':
+      return checkoutViews;
+    default:
+      return safeNumber(row[metricKey]);
+  }
 };

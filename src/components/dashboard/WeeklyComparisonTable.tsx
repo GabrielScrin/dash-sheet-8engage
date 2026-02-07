@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { getMetaMetricValue } from '@/lib/meta-metric-labels';
 
 interface WeeklyData {
   week: string;
@@ -93,17 +94,7 @@ export function WeeklyComparisonTable({
   };
 
   const getMetricValue = (row: WeeklyData, metricKey: string) => {
-    if (metricKey.startsWith('action:')) {
-      const actionType = metricKey.slice('action:'.length);
-      return Number(row.actions_agg_map?.[actionType] || 0);
-    }
-
-    if (metricKey.startsWith('action_value:')) {
-      const actionType = metricKey.slice('action_value:'.length);
-      return Number(row.action_values_agg_map?.[actionType] || 0);
-    }
-
-    return Number((row as Record<string, unknown>)[metricKey] || 0);
+    return getMetaMetricValue(row as Record<string, unknown>, metricKey);
   };
 
   const handleSortPeriod = () => {

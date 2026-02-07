@@ -53,6 +53,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
   const [weeklyMetricColumns, setWeeklyMetricColumns] = useState<string[]>(['sales', 'investment', 'revenue', 'roas', 'conversion']);
+  const [creativeMetricColumns, setCreativeMetricColumns] = useState<string[]>(['impressions', 'clicks', 'ctr', 'landing_views', 'sales']);
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -84,6 +85,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const sourceConfig = getSourceConfig(project?.source_config);
   const adAccountId = sourceConfig?.ad_account_id;
   const weeklyColumnsStorageKey = `meta-weekly-columns:${projectId}`;
+  const creativeColumnsStorageKey = `meta-creative-columns:${projectId}`;
 
   React.useEffect(() => {
     if (project?.source_type !== 'meta_ads') return;
@@ -109,6 +111,31 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       // noop
     }
   }, [project?.source_type, weeklyColumnsStorageKey, weeklyMetricColumns]);
+
+  React.useEffect(() => {
+    if (project?.source_type !== 'meta_ads') return;
+    try {
+      const raw = window.localStorage.getItem(creativeColumnsStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const normalized = parsed.map((value: unknown) => String(value)).filter(Boolean);
+      if (normalized.length > 0) {
+        setCreativeMetricColumns((prev) => (prev.join('|') === normalized.join('|') ? prev : normalized));
+      }
+    } catch {
+      // noop
+    }
+  }, [creativeColumnsStorageKey, project?.source_type]);
+
+  React.useEffect(() => {
+    if (project?.source_type !== 'meta_ads') return;
+    try {
+      window.localStorage.setItem(creativeColumnsStorageKey, JSON.stringify(creativeMetricColumns));
+    } catch {
+      // noop
+    }
+  }, [creativeColumnsStorageKey, creativeMetricColumns, project?.source_type]);
 
   const metaAccountInsightsQuery = useQuery({
     queryKey: [
@@ -415,6 +442,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       'landing_views',
       'checkout_views',
       'video_views',
+      'video3s',
+      'video15s',
+      'thruplay',
+      'hook_rate',
+      'hold_rate',
     ];
 
     const catalogActionKeys = (metaMetricsCatalogQuery.data?.actions || [])
@@ -441,14 +473,23 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
     const discoveredActionKeys = Array.from(discoveredActionTypes).map((actionType) => `action:${actionType}`);
     const discoveredActionValueKeys = Array.from(discoveredActionValueTypes).map((actionType) => `action_value:${actionType}`);
+    const derivedActionSource = Array.from(new Set([
+      ...(metaMetricsCatalogQuery.data?.actions || []),
+      ...Array.from(discoveredActionTypes),
+    ]));
+    const derivedCostKeys = derivedActionSource.map((actionType) => `cost_per_action:${actionType}`);
+    const derivedRateKeys = derivedActionSource.map((actionType) => `rate_per_action:${actionType}`);
 
     const allKeys = [
       ...baseKeys,
       ...catalogActionKeys,
       ...catalogActionValueKeys,
+      ...derivedCostKeys,
+      ...derivedRateKeys,
       ...discoveredActionKeys,
       ...discoveredActionValueKeys,
       ...weeklyMetricColumns,
+      ...creativeMetricColumns,
     ];
     const unique = Array.from(new Set(allKeys));
 
@@ -457,7 +498,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       label: getMetaMetricLabel(key),
       format: getMetaMetricFormat(key),
     }));
-  }, [metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions, sourceRows, weeklyMetricColumns]);
+  }, [
+    creativeMetricColumns,
+    metaMetricsCatalogQuery.data?.action_values,
+    metaMetricsCatalogQuery.data?.actions,
+    sourceRows,
+    weeklyMetricColumns,
+  ]);
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return sourceRows;
@@ -852,24 +899,89 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       if (!id) continue;
       const current = byAd.get(id) || {
         id,
-        name: String(row?.ad_name || 'Anúncio'),
+        name: String(row?.ad_name || 'Anuncio'),
+        spend: 0,
         impressions: 0,
+        reach: 0,
         clicks: 0,
+        inline_link_clicks: 0,
         ctr: 0,
         landingViews: 0,
         checkoutViews: 0,
+        landing_views: 0,
+        checkout_views: 0,
+        messages: 0,
+        purchases: 0,
+        purchase_value: 0,
+        video3s: 0,
+        video15s: 0,
+        thruplay: 0,
+        roas: 0,
+        cpc: 0,
+        cpm: 0,
+        frequency: 0,
+        cpl: 0,
+        cpa: 0,
+        hook_rate: 0,
+        hold_rate: 0,
+        actions_map: {} as Record<string, number>,
+        action_values_map: {} as Record<string, number>,
         sales: 0,
       };
+      current.spend += Number(row?.spend || 0);
       current.impressions += Number(row?.impressions || 0);
+      current.reach = Math.max(current.reach, Number(row?.reach || 0));
       current.clicks += Number(row?.clicks || 0);
+      current.inline_link_clicks += Number(row?.inline_link_clicks || 0);
       current.landingViews += Number(row?.landing_views || 0);
       current.checkoutViews += Number(row?.checkout_views || 0);
+      current.landing_views += Number(row?.landing_views || 0);
+      current.checkout_views += Number(row?.checkout_views || 0);
+      current.messages += Number(row?.messages || 0);
+      current.purchases += Number(row?.purchases || 0);
+      current.purchase_value += Number(row?.purchase_value || 0);
+      current.video3s += Number(row?.video3s || 0);
+      current.video15s += Number(row?.video15s || 0);
+      current.thruplay += Number(row?.thruplay || 0);
+      const actionsMap = (row?.actions_map || {}) as Record<string, number>;
+      for (const [actionType, value] of Object.entries(actionsMap)) {
+        current.actions_map[actionType] = Number(current.actions_map[actionType] || 0) + Number(value || 0);
+      }
+      const actionValuesMap = (row?.action_values_map || {}) as Record<string, number>;
+      for (const [actionType, value] of Object.entries(actionValuesMap)) {
+        current.action_values_map[actionType] = Number(current.action_values_map[actionType] || 0) + Number(value || 0);
+      }
       current.sales += Number((row?.purchases && Number(row.purchases) > 0 ? row.purchases : row?.leads) || 0);
       byAd.set(id, current);
     }
 
     return Array.from(byAd.values())
-      .map((a) => ({ ...a, ctr: a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0 }))
+      .map((a) => {
+        const impressions = Number(a?.impressions || 0);
+        const clicks = Number(a?.clicks || 0);
+        const spend = Number(a?.spend || 0);
+        const reach = Number(a?.reach || 0);
+        const sales = Number(a?.sales || 0);
+        const purchases = Number(a?.purchases || 0);
+        const purchaseValue = Number(a?.purchase_value || 0);
+        const video3s = Number(a?.video3s || 0);
+        const video15s = Number(a?.video15s || 0);
+        const thruplay = Number(a?.thruplay || 0);
+        return {
+          ...a,
+          investment: spend,
+          revenue: purchaseValue,
+          ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+          cpc: clicks > 0 ? spend / clicks : 0,
+          cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
+          frequency: reach > 0 ? impressions / reach : 0,
+          roas: spend > 0 ? purchaseValue / spend : 0,
+          cpl: sales > 0 ? spend / sales : 0,
+          cpa: purchases > 0 ? spend / purchases : 0,
+          hook_rate: impressions > 0 ? video3s / impressions : 0,
+          hold_rate: impressions > 0 ? (video15s || thruplay) / impressions : 0,
+        };
+      })
       .sort((a, b) => b.sales - a.sales)
       .slice(0, 50);
   }, [metaAdsQuery.data, project?.source_type, selectedCampaignIds]);
@@ -1402,6 +1514,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                     data={project?.source_type === 'meta_ads' ? (metaCreativeDataWithThumbs as any) : processedData.creativeData}
                     selectedCreative={selectedCreative}
                     onCreativeSelect={setSelectedCreative}
+                    isMeta={project?.source_type === 'meta_ads'}
+                    metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : undefined}
+                    defaultMetricColumns={['impressions', 'clicks', 'ctr', 'landing_views', 'sales']}
+                    metricColumns={project?.source_type === 'meta_ads' ? creativeMetricColumns : undefined}
+                    onMetricColumnsChange={project?.source_type === 'meta_ads' ? setCreativeMetricColumns : undefined}
                   />
                 </section>
               )}

@@ -1,77 +1,157 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpDown, ArrowUp, ArrowDown, Filter, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { getMetaMetricValue } from '@/lib/meta-metric-labels';
 
 interface CreativeData {
   id: string;
   name: string;
   thumbnail?: string;
   link?: string;
-  impressions: number;
-  clicks: number;
-  ctr: number;
-  landingViews: number;
-  checkoutViews: number;
-  sales: number;
+  [key: string]: unknown;
+  actions_map?: Record<string, number>;
+  action_values_map?: Record<string, number>;
+  actions_agg_map?: Record<string, number>;
+  action_values_agg_map?: Record<string, number>;
+}
+
+interface MetricOption {
+  key: string;
+  label: string;
+  format: 'number' | 'currency' | 'percentage' | 'decimal';
 }
 
 interface CreativePerformanceTableProps {
   data: CreativeData[];
   selectedCreative: string | null;
   onCreativeSelect: (id: string | null) => void;
+  isMeta?: boolean;
+  metricOptions?: MetricOption[];
+  defaultMetricColumns?: string[];
+  metricColumns?: string[];
+  onMetricColumnsChange?: (columns: string[]) => void;
 }
 
-type SortField = keyof CreativeData;
 type SortDirection = 'asc' | 'desc';
+type SortTarget = { type: 'name' } | { type: 'metric'; index: number };
 
-export function CreativePerformanceTable({ 
-  data, 
-  selectedCreative, 
-  onCreativeSelect 
+const fallbackMetricOptions: MetricOption[] = [
+  { key: 'impressions', label: 'Impressoes', format: 'number' },
+  { key: 'clicks', label: 'Cliques', format: 'number' },
+  { key: 'ctr', label: 'CTR', format: 'percentage' },
+  { key: 'landing_views', label: 'LP Views', format: 'number' },
+  { key: 'checkout_views', label: 'Checkout', format: 'number' },
+  { key: 'sales', label: 'Vendas', format: 'number' },
+];
+
+const fallbackDefaultMetricColumns = ['impressions', 'clicks', 'ctr', 'landing_views', 'sales'];
+
+export function CreativePerformanceTable({
+  data,
+  selectedCreative,
+  onCreativeSelect,
+  isMeta = false,
+  metricOptions = fallbackMetricOptions,
+  defaultMetricColumns = fallbackDefaultMetricColumns,
+  metricColumns,
+  onMetricColumnsChange,
 }: CreativePerformanceTableProps) {
-  const [sortField, setSortField] = useState<SortField>('sales');
+  const [sortTarget, setSortTarget] = useState<SortTarget>({ type: 'metric', index: 4 });
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [internalSelectedMetricColumns, setInternalSelectedMetricColumns] = useState<string[]>(defaultMetricColumns);
+  const selectedMetricColumns = metricColumns ?? internalSelectedMetricColumns;
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('desc');
+  const setSelectedMetricColumns = (updater: string[] | ((prev: string[]) => string[])) => {
+    const next =
+      typeof updater === 'function'
+        ? (updater as (prev: string[]) => string[])(selectedMetricColumns)
+        : updater;
+    onMetricColumnsChange?.(next);
+    if (metricColumns === undefined) {
+      setInternalSelectedMetricColumns(next);
     }
   };
 
-  const sortedData = [...data].sort((a, b) => {
-    const aVal = a[sortField];
-    const bVal = b[sortField];
-    const direction = sortDirection === 'asc' ? 1 : -1;
-    
-    if (typeof aVal === 'string') {
-      return aVal.localeCompare(bVal as string) * direction;
-    }
-    return ((aVal as number) - (bVal as number)) * direction;
-  });
+  useEffect(() => {
+    const availableKeys = new Set(metricOptions.map((opt) => opt.key));
+    const normalizedDefaults = defaultMetricColumns.filter((key) => availableKeys.has(key));
+    const safeDefaults = (normalizedDefaults.length > 0 ? normalizedDefaults : metricOptions.slice(0, 5).map((opt) => opt.key)).slice(0, 5);
+    setSelectedMetricColumns((prev) => {
+      const normalizedPrev = (!prev.length ? safeDefaults : prev.map((key, index) => (availableKeys.has(key) ? key : safeDefaults[index] || safeDefaults[0]))).slice(0, 5);
+      if (normalizedPrev.length === prev.length && normalizedPrev.every((value, index) => value === prev[index])) {
+        return prev;
+      }
+      return normalizedPrev;
+    });
+  }, [defaultMetricColumns, metricColumns, metricOptions]);
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 opacity-50" />;
-    return sortDirection === 'asc' 
-      ? <ArrowUp className="h-4 w-4" /> 
+  const resolveMetric = (metricKey: string) => {
+    return metricOptions.find((m) => m.key === metricKey) || metricOptions[0] || fallbackMetricOptions[0];
+  };
+
+  const visibleMetricColumns = (isMeta ? selectedMetricColumns : defaultMetricColumns).slice(0, 5);
+
+  const handleSortByName = () => {
+    if (sortTarget.type === 'name') {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortTarget({ type: 'name' });
+    setSortDirection('asc');
+  };
+
+  const handleSortByMetric = (index: number) => {
+    if (sortTarget.type === 'metric' && sortTarget.index === index) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortTarget({ type: 'metric', index });
+    setSortDirection('desc');
+  };
+
+  const sortedData = useMemo(() => {
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    return [...data].sort((a, b) => {
+      if (sortTarget.type === 'name') {
+        return String(a?.name || '').localeCompare(String(b?.name || '')) * direction;
+      }
+      const metricKey = visibleMetricColumns[sortTarget.index] || visibleMetricColumns[0] || 'sales';
+      const aVal = getMetaMetricValue(a as Record<string, unknown>, metricKey);
+      const bVal = getMetaMetricValue(b as Record<string, unknown>, metricKey);
+      return (aVal - bVal) * direction;
+    });
+  }, [data, sortDirection, sortTarget, visibleMetricColumns]);
+
+  const formatMetricValue = (value: number, formatType: 'number' | 'currency' | 'percentage' | 'decimal') => {
+    switch (formatType) {
+      case 'currency':
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+      case 'percentage':
+        return `${value.toFixed(1)}%`;
+      case 'decimal':
+        return value.toFixed(2);
+      default:
+        return Math.round(value).toLocaleString('pt-BR');
+    }
+  };
+
+  const SortIcon = ({ active }: { active: boolean }) => {
+    if (!active) return <ArrowUpDown className="h-4 w-4 opacity-50" />;
+    return sortDirection === 'asc'
+      ? <ArrowUp className="h-4 w-4" />
       : <ArrowDown className="h-4 w-4" />;
   };
-
-  const columns = [
-    { key: 'name' as const, label: 'Criativo' },
-    { key: 'impressions' as const, label: 'Impressões' },
-    { key: 'clicks' as const, label: 'Cliques' },
-    { key: 'ctr' as const, label: 'CTR' },
-    { key: 'landingViews' as const, label: 'LP Views' },
-    { key: 'checkoutViews' as const, label: 'Checkout' },
-    { key: 'sales' as const, label: 'Vendas' },
-  ];
 
   return (
     <motion.div
@@ -84,30 +164,70 @@ export function CreativePerformanceTable({
           <Table>
             <TableHeader>
               <TableRow>
-                {columns.map((col) => (
-                  <TableHead key={col.key} className="whitespace-nowrap">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="-ml-3 h-8 gap-1 font-medium"
-                      onClick={() => handleSort(col.key)}
-                    >
-                      {col.label}
-                      <SortIcon field={col.key} />
-                    </Button>
-                  </TableHead>
-                ))}
+                <TableHead className="whitespace-nowrap min-w-[300px]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 gap-1 font-medium"
+                    onClick={handleSortByName}
+                  >
+                    Criativo
+                    <SortIcon active={sortTarget.type === 'name'} />
+                  </Button>
+                </TableHead>
+
+                {visibleMetricColumns.map((metricKey, index) => {
+                  const metric = resolveMetric(metricKey);
+                  return (
+                    <TableHead key={`${metricKey}-${index}`} className="whitespace-nowrap min-w-[160px]">
+                      <div className="flex items-center gap-2">
+                        {isMeta ? (
+                          <Select
+                            value={metricKey}
+                            onValueChange={(value) => {
+                              setSelectedMetricColumns((prev) => {
+                                const next = [...prev];
+                                next[index] = value;
+                                return next;
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="h-8 w-[170px] text-xs">
+                              <SelectValue placeholder="Metrica" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {metricOptions.map((opt) => (
+                                <SelectItem key={opt.key} value={opt.key}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-sm font-medium">{metric.label}</span>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 gap-1 px-2"
+                          onClick={() => handleSortByMetric(index)}
+                        >
+                          <SortIcon active={sortTarget.type === 'metric' && sortTarget.index === index} />
+                        </Button>
+                      </div>
+                    </TableHead>
+                  );
+                })}
+
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sortedData.map((row) => (
-                <TableRow 
+                <TableRow
                   key={row.id}
                   data-state={selectedCreative === row.id ? 'selected' : undefined}
-                  className={`table-row-hover cursor-pointer ${
-                    selectedCreative === row.id ? 'bg-primary/5' : ''
-                  }`}
+                  className={`table-row-hover cursor-pointer ${selectedCreative === row.id ? 'bg-primary/5' : ''}`}
                   onClick={() => onCreativeSelect(selectedCreative === row.id ? null : row.id)}
                 >
                   <TableCell className="font-medium">
@@ -115,17 +235,16 @@ export function CreativePerformanceTable({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <div className="flex items-center gap-3">
-                            {/* Thumbnail */}
                             {row.thumbnail ? (
-                              <a 
-                                href={row.link || row.thumbnail} 
-                                target="_blank" 
+                              <a
+                                href={row.link || row.thumbnail}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 className="shrink-0"
                               >
-                                <img 
-                                  src={row.thumbnail} 
+                                <img
+                                  src={row.thumbnail}
                                   alt={row.name}
                                   className="h-10 w-10 rounded-md object-cover border hover:opacity-80 transition-opacity"
                                   onError={(e) => {
@@ -133,7 +252,7 @@ export function CreativePerformanceTable({
                                     e.currentTarget.nextElementSibling?.classList.remove('hidden');
                                   }}
                                 />
-                                <div className="hidden h-10 w-10 rounded-md bg-muted flex items-center justify-center">
+                                <div className="hidden h-10 w-10 rounded-md bg-muted items-center justify-center">
                                   <ImageIcon className="h-5 w-5 text-muted-foreground" />
                                 </div>
                               </a>
@@ -142,10 +261,9 @@ export function CreativePerformanceTable({
                                 <ImageIcon className="h-5 w-5 text-muted-foreground" />
                               </div>
                             )}
-                            
-                            {/* Name and link */}
+
                             <div className="min-w-0 flex-1">
-                              <span className="block truncate max-w-[180px]">{row.name}</span>
+                              <span className="block truncate max-w-[230px]">{row.name}</span>
                               {row.link && (
                                 <a
                                   href={row.link}
@@ -167,16 +285,24 @@ export function CreativePerformanceTable({
                       </Tooltip>
                     </TooltipProvider>
                   </TableCell>
-                  <TableCell>{row.impressions.toLocaleString('pt-BR')}</TableCell>
-                  <TableCell>{row.clicks.toLocaleString('pt-BR')}</TableCell>
-                  <TableCell>
-                    <span className={row.ctr >= 3.0 ? 'text-kpi-positive font-medium' : ''}>
-                      {row.ctr.toFixed(1)}%
-                    </span>
-                  </TableCell>
-                  <TableCell>{row.landingViews.toLocaleString('pt-BR')}</TableCell>
-                  <TableCell>{row.checkoutViews.toLocaleString('pt-BR')}</TableCell>
-                  <TableCell className="font-semibold">{row.sales}</TableCell>
+
+                  {visibleMetricColumns.map((metricKey, index) => {
+                    const metric = resolveMetric(metricKey);
+                    const rawValue = getMetaMetricValue(row as Record<string, unknown>, metric.key);
+                    const isPositiveHighlight =
+                      (metric.key === 'roas' && rawValue >= 3.5) ||
+                      (metric.key === 'ctr' && rawValue >= 2.5) ||
+                      (metric.key === 'hook_rate' && rawValue >= 0.2) ||
+                      (metric.key === 'hold_rate' && rawValue >= 0.1);
+                    return (
+                      <TableCell key={`${metric.key}-${index}`}>
+                        <span className={isPositiveHighlight ? 'text-kpi-positive font-medium' : ''}>
+                          {formatMetricValue(rawValue, metric.format)}
+                        </span>
+                      </TableCell>
+                    );
+                  })}
+
                   <TableCell>
                     {selectedCreative === row.id && (
                       <Filter className="h-4 w-4 text-primary" />
