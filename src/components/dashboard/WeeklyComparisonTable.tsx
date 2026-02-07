@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+ï»¿import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -74,7 +74,7 @@ const metricOptions: Array<{ key: MetricKey; label: string; format: 'number' | '
   { key: 'revenue', label: 'Faturamento', format: 'currency' },
   { key: 'roas', label: 'ROAS', format: 'decimal' },
   { key: 'conversion', label: 'Taxa Conv.', format: 'percentage' },
-  { key: 'impressions', label: 'Impressões', format: 'number' },
+  { key: 'impressions', label: 'Impressoes', format: 'number' },
   { key: 'reach', label: 'Alcance', format: 'number' },
   { key: 'clicks', label: 'Cliques', format: 'number' },
   { key: 'leads', label: 'Leads', format: 'number' },
@@ -83,10 +83,10 @@ const metricOptions: Array<{ key: MetricKey; label: string; format: 'number' | '
   { key: 'ctr', label: 'CTR', format: 'percentage' },
   { key: 'cpc', label: 'CPC', format: 'currency' },
   { key: 'cpm', label: 'CPM', format: 'currency' },
-  { key: 'frequency', label: 'Frequência', format: 'decimal' },
+  { key: 'frequency', label: 'Frequencia', format: 'decimal' },
   { key: 'landing_views', label: 'LP Views', format: 'number' },
   { key: 'checkout_views', label: 'Checkout', format: 'number' },
-  { key: 'video_views', label: 'Views Vídeo', format: 'number' },
+  { key: 'video_views', label: 'Views Video', format: 'number' },
 ];
 
 const defaultMetricColumns: MetricKey[] = ['sales', 'investment', 'revenue', 'roas', 'conversion'];
@@ -180,16 +180,16 @@ export function WeeklyComparisonTable({
                       className="-ml-3 h-8 gap-1 font-medium"
                       onClick={handleSortPeriod}
                     >
-                      {viewMode === 'day' ? 'Dia' : viewMode === 'month' ? 'Mês' : 'Semana'}
+                      {viewMode === 'day' ? 'Dia' : viewMode === 'month' ? 'Mes' : 'Semana'}
                       <SortIcon active={sortTarget.type === 'period'} />
                     </Button>
                     {isMeta && onViewModeChange && (
                       <Select value={viewMode} onValueChange={(v) => onViewModeChange(v as 'day' | 'week' | 'month')}>
                         <SelectTrigger className="h-8 w-[95px] text-xs">
-                          <SelectValue placeholder="Visão" />
+                          <SelectValue placeholder="Visao" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="day">Diária</SelectItem>
+                          <SelectItem value="day">Diaria</SelectItem>
                           <SelectItem value="week">Semanal</SelectItem>
                           <SelectItem value="month">Mensal</SelectItem>
                         </SelectContent>
@@ -213,7 +213,7 @@ export function WeeklyComparisonTable({
                             }}
                           >
                             <SelectTrigger className="h-8 w-[130px] text-xs">
-                              <SelectValue placeholder="Métrica" />
+                              <SelectValue placeholder="Metrica" />
                             </SelectTrigger>
                             <SelectContent>
                               {metricOptions.map((opt) => (
@@ -268,3 +268,4 @@ export function WeeklyComparisonTable({
     </motion.div>
   );
 }
+
