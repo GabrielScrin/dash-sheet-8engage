@@ -30,6 +30,12 @@ const BASE_METRIC_LABELS: Record<string, { label: string; format: MetricFormat }
   hold_rate: { label: 'Hold Rate', format: 'percentage' },
   cpl: { label: 'CPL', format: 'currency' },
   cpa: { label: 'CPA', format: 'currency' },
+  cost_per_profile_visit: { label: 'Custo por Visita ao Perfil', format: 'currency' },
+  cost_per_message: { label: 'Custo por Mensagem', format: 'currency' },
+  cost_per_lead: { label: 'Custo por Lead', format: 'currency' },
+  cost_per_purchase: { label: 'Custo por Compra', format: 'currency' },
+  cost_per_result: { label: 'Custo por Resultado', format: 'currency' },
+  connect_rate: { label: 'Connect Rate', format: 'percentage' },
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -152,6 +158,7 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
   const video3s = getMetricAliasValue(row, ['video3s']);
   const video15s = getMetricAliasValue(row, ['video15s']);
   const sales = purchases > 0 ? purchases : leads;
+  const results = purchases > 0 ? purchases : (leads > 0 ? leads : (messages > 0 ? messages : profileVisits));
   const resolvedVideoViews = thruplay || video3s;
 
   if (metricKey.startsWith('action:')) {
@@ -201,6 +208,18 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
       return leads > 0 ? spend / leads : safeNumber(row.cpl);
     case 'cpa':
       return purchases > 0 ? spend / purchases : safeNumber(row.cpa);
+    case 'cost_per_profile_visit':
+      return profileVisits > 0 ? spend / profileVisits : 0;
+    case 'cost_per_message':
+      return messages > 0 ? spend / messages : 0;
+    case 'cost_per_lead':
+      return leads > 0 ? spend / leads : 0;
+    case 'cost_per_purchase':
+      return purchases > 0 ? spend / purchases : 0;
+    case 'cost_per_result':
+      return results > 0 ? spend / results : 0;
+    case 'connect_rate':
+      return impressions > 0 ? (landingViews / impressions) * 100 : 0;
     case 'video_views':
       return resolvedVideoViews;
     case 'hook_rate':
