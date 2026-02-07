@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
         t === 'purchase' || t.includes('purchase');
 
       const isLandingViewLike = (t: string) =>
-        t === 'landing_page_view' || t.includes('landing_page_view');
+        t === 'landing_page_view';
 
       const isCheckoutLike = (t: string) =>
         t === 'initiate_checkout' ||
@@ -384,10 +384,7 @@ Deno.serve(async (req) => {
 
       const isVideo3sLike = (t: string) =>
         t === 'video_view' ||
-        t.includes('video_play') ||
-        t.includes('thruplay') ||
-        t.includes('video_view') ||
-        t.includes('video_view_3s');
+        t === 'video_view_3s';
 
       const isVideo15sLike = (t: string) =>
         t.includes('video_view_15') || t.includes('video_view_15s');
@@ -439,8 +436,8 @@ Deno.serve(async (req) => {
         const videoP75 = sumMetricArrayValues(row.video_p75_watched_actions);
         const thruplayRaw = sumMetricArrayValues(row.video_thruplay_watched_actions);
 
-        // Fallback strategy to avoid zeroing video metrics on accounts where actions don't include video_view_*.
-        const video3s = video3sFromActions > 0 ? video3sFromActions : videoPlay;
+        // Fallback: only use video_play_actions if no specific action type matched AND no thruplay exists.
+        const video3s = video3sFromActions > 0 ? video3sFromActions : 0;
         const video15s = video15sFromActions > 0 ? video15sFromActions : videoP25;
         const thruplay = thruplayRaw > 0 ? thruplayRaw : videoP50 || videoP75;
 
