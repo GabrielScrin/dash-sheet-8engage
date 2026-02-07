@@ -87,7 +87,7 @@ export default function Login() {
             >
               <img src="/cr8-logo.svg" alt="CR8 Logo" className="h-9 w-9 object-contain" />
             </motion.div>
-            <h1 className="text-3xl font-bold tracking-tight">CR8 DataView</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Engage DashView</h1>
             <p className="mt-2 text-muted-foreground">
               Dashboards inteligentes para suas planilhas
             </p>

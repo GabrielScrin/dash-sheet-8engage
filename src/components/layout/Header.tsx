@@ -52,7 +52,7 @@ export function Header({ showAuth = true }: HeaderProps) {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
               <img src="/cr8-logo.svg" alt="CR8 Logo" className="h-6 w-6 object-contain" />
             </div>
-            <span className="text-xl font-semibold tracking-tight">CR8 DataView</span>
+            <span className="text-xl font-semibold tracking-tight">Engage DashView</span>
           </motion.div>
         </Link>
 
