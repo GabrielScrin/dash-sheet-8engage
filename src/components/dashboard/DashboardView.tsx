@@ -582,7 +582,20 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
     const byBucket = new Map<
       string,
-      { bucket: string; spend: number; clicks: number; leads: number; purchases: number; purchase_value: number }
+      {
+        bucket: string;
+        spend: number;
+        clicks: number;
+        leads: number;
+        purchases: number;
+        purchase_value: number;
+        impressions: number;
+        reach: number;
+        messages: number;
+        landing_views: number;
+        checkout_views: number;
+        video_views: number;
+      }
     >();
 
     for (const row of filteredRows as any[]) {
@@ -603,12 +616,31 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         key = format(weekStart, 'yyyy-MM-dd');
       }
 
-      const current = byBucket.get(key) || { bucket: key, spend: 0, clicks: 0, leads: 0, purchases: 0, purchase_value: 0 };
+      const current = byBucket.get(key) || {
+        bucket: key,
+        spend: 0,
+        clicks: 0,
+        leads: 0,
+        purchases: 0,
+        purchase_value: 0,
+        impressions: 0,
+        reach: 0,
+        messages: 0,
+        landing_views: 0,
+        checkout_views: 0,
+        video_views: 0,
+      };
       current.spend += Number(row?.spend || 0);
       current.clicks += Number(row?.clicks || 0);
       current.leads += Number(row?.leads || 0);
       current.purchases += Number(row?.purchases || 0);
       current.purchase_value += Number(row?.purchase_value || 0);
+      current.impressions += Number(row?.impressions || 0);
+      current.reach += Number(row?.reach || 0);
+      current.messages += Number(row?.messages || 0);
+      current.landing_views += Number(row?.landing_views || 0);
+      current.checkout_views += Number(row?.checkout_views || 0);
+      current.video_views += Number(row?.thruplay || row?.video3s || 0);
       byBucket.set(key, current);
     }
 
@@ -623,21 +655,44 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const revenue = b.purchase_value;
       const roas = investment > 0 ? revenue / investment : 0;
       const conversion = b.clicks > 0 ? (sales / b.clicks) * 100 : 0;
+      const ctr = b.impressions > 0 ? (b.clicks / b.impressions) * 100 : 0;
+      const cpc = b.clicks > 0 ? b.spend / b.clicks : 0;
+      const cpm = b.impressions > 0 ? (b.spend / b.impressions) * 1000 : 0;
+      const frequency = b.reach > 0 ? b.impressions / b.reach : 0;
+      const periodDate =
+        viewMode === 'month'
+          ? new Date(`${b.bucket}-01T00:00:00`)
+          : new Date(`${b.bucket}T00:00:00`);
 
       const label =
         viewMode === 'day'
-          ? format(new Date(`${b.bucket}T00:00:00`), "dd/MM")
+          ? format(periodDate, "dd/MM")
           : viewMode === 'month'
-            ? format(new Date(`${b.bucket}-01T00:00:00`), "MMM/yy", { locale: ptBR })
+            ? format(periodDate, "MMM/yy", { locale: ptBR })
             : `Sem ${i + 1}`;
 
       return {
         week: label,
+        periodKey: b.bucket,
+        periodSort: periodDate.getTime(),
         sales,
         investment,
         revenue,
         roas,
         conversion,
+        impressions: b.impressions,
+        reach: b.reach,
+        clicks: b.clicks,
+        leads: b.leads,
+        messages: b.messages,
+        purchases: b.purchases,
+        ctr,
+        cpc,
+        cpm,
+        frequency,
+        landing_views: b.landing_views,
+        checkout_views: b.checkout_views,
+        video_views: b.video_views,
       };
     });
   }, [filteredRows, project?.source_type, viewMode]);
@@ -1183,7 +1238,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                   <h3 className="mb-4 text-lg font-semibold">
                     {viewMode === 'day' ? 'Visão Diária' : viewMode === 'month' ? 'Visão Mensal' : 'Visão Semanal'}
                   </h3>
-                  <WeeklyComparisonTable data={project?.source_type === 'meta_ads' ? (metaWeeklyData as any) : processedData.weeklyData} />
+                  <WeeklyComparisonTable
+                    data={project?.source_type === 'meta_ads' ? (metaWeeklyData as any) : processedData.weeklyData}
+                    isMeta={project?.source_type === 'meta_ads'}
+                    viewMode={viewMode}
+                    onViewModeChange={(v) => setViewMode(v)}
+                  />
                 </section>
               )}
 
