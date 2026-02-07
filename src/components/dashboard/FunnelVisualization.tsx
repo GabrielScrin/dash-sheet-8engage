@@ -85,10 +85,11 @@ export function FunnelVisualization({ data }: FunnelVisualizationProps) {
   const barHeight = 48;
   const barGap = 32;
   const maxBarWidth = 400;
-  const labelWidth = 140;
-  const valueWidth = 100;
+  const labelWidth = 240;
+  const badgeAreaWidth = 152;
   const minBarWidth = 28;
   const scalePower = 0.6; // less literal, more aesthetic
+  const svgWidth = labelWidth + maxBarWidth + badgeAreaWidth + 40;
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -117,8 +118,9 @@ export function FunnelVisualization({ data }: FunnelVisualizationProps) {
           <div className="overflow-x-auto">
             <svg
               ref={svgRef}
-              viewBox={`0 0 720 ${svgHeight}`}
-              className="w-full min-w-[600px]"
+              viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+              className="w-full"
+              style={{ minWidth: `${Math.max(720, svgWidth)}px` }}
               role="img"
               aria-label="Funil de conversão"
             >

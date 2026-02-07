@@ -30,6 +30,11 @@ Deno.serve(async (req) => {
     }, 0);
   };
 
+  const sumMetricArrayValues = (items: any[] | undefined) => {
+    if (!Array.isArray(items)) return 0;
+    return items.reduce((sum, item) => sum + toInt(item?.value), 0);
+  };
+
   try {
     const url = new URL(req.url);
     const action = url.searchParams.get('action'); // 'ad-accounts' | 'campaigns' | 'insights' | 'ad-thumbnails' | 'metrics-catalog'
@@ -307,7 +312,7 @@ Deno.serve(async (req) => {
       console.log('Fetching insights for account:', accountId, 'level:', normalizedLevel);
 
       const base =
-        'date_start,date_stop,impressions,reach,frequency,clicks,inline_link_clicks,spend,cpm,ctr,cpc,actions,action_values,purchase_roas,video_thruplay_watched_actions';
+        'date_start,date_stop,impressions,reach,frequency,clicks,inline_link_clicks,spend,cpm,ctr,cpc,actions,action_values,purchase_roas,video_thruplay_watched_actions,video_play_actions,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p95_watched_actions,video_p100_watched_actions';
       const fields =
         normalizedLevel === 'campaign'
           ? `campaign_id,campaign_name,${base}`
@@ -379,6 +384,8 @@ Deno.serve(async (req) => {
 
       const isVideo3sLike = (t: string) =>
         t === 'video_view' ||
+        t.includes('video_play') ||
+        t.includes('thruplay') ||
         t.includes('video_view') ||
         t.includes('video_view_3s');
 
@@ -424,11 +431,18 @@ Deno.serve(async (req) => {
           : 0;
         const roas = roasFromValue > 0 ? roasFromValue : roasFromMetaField;
 
-        const video3s = sumActionValues(row.actions, isVideo3sLike);
-        const video15s = sumActionValues(row.actions, isVideo15sLike);
-        const thruplay = Array.isArray(row.video_thruplay_watched_actions)
-          ? row.video_thruplay_watched_actions.reduce((sum: number, r: any) => sum + toInt(r?.value), 0)
-          : 0;
+        const video3sFromActions = sumActionValues(row.actions, isVideo3sLike);
+        const video15sFromActions = sumActionValues(row.actions, isVideo15sLike);
+        const videoPlay = sumMetricArrayValues(row.video_play_actions);
+        const videoP25 = sumMetricArrayValues(row.video_p25_watched_actions);
+        const videoP50 = sumMetricArrayValues(row.video_p50_watched_actions);
+        const videoP75 = sumMetricArrayValues(row.video_p75_watched_actions);
+        const thruplayRaw = sumMetricArrayValues(row.video_thruplay_watched_actions);
+
+        // Fallback strategy to avoid zeroing video metrics on accounts where actions don't include video_view_*.
+        const video3s = video3sFromActions > 0 ? video3sFromActions : videoPlay;
+        const video15s = video15sFromActions > 0 ? video15sFromActions : videoP25;
+        const thruplay = thruplayRaw > 0 ? thruplayRaw : videoP50 || videoP75;
 
         const cpl = leads > 0 ? spend / leads : 0;
         const cpa = purchases > 0 ? spend / purchases : 0;
