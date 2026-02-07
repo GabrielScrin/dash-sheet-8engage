@@ -3,6 +3,8 @@ import { format, subDays, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CalendarIcon, X, ChevronDown, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -15,14 +17,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
 
 interface DashboardFiltersProps {
   selectedCreative: string | null;
@@ -62,12 +56,28 @@ export function DashboardFilters({
   const [internalDateRange, setInternalDateRange] = useState<DateRange | undefined>(dateRange);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
   const [localSelectedCampaignIds, setLocalSelectedCampaignIds] = useState<string[]>(selectedCampaignIds);
+  const [campaignSearch, setCampaignSearch] = useState('');
 
   const selectedCampaigns = useMemo(() => {
     if (localSelectedCampaignIds.length === 0) return [];
     const selectedSet = new Set(localSelectedCampaignIds);
     return campaigns.filter((campaign) => selectedSet.has(campaign.id));
   }, [campaigns, localSelectedCampaignIds]);
+
+  const filteredCampaigns = useMemo(() => {
+    const term = campaignSearch.trim().toLowerCase();
+    if (!term) return campaigns;
+    return campaigns.filter((campaign) => String(campaign?.name || '').toLowerCase().includes(term));
+  }, [campaignSearch, campaigns]);
+
+  const toggleCampaign = (campaignId: string) => {
+    setLocalSelectedCampaignIds((prev) => {
+      const isSelected = prev.includes(campaignId);
+      const next = isSelected ? prev.filter((id) => id !== campaignId) : [...prev, campaignId];
+      onCampaignChange?.(next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     setInternalDateRange(dateRange);
@@ -201,49 +211,49 @@ export function DashboardFilters({
                 <ChevronDown className="h-4 w-4 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[320px] p-0" align="start">
-              <Command>
-                <CommandInput placeholder="Buscar campanha..." />
-                <CommandList>
-                  <CommandEmpty>Nenhuma campanha encontrada.</CommandEmpty>
-                  <CommandGroup>
-                    <CommandItem
-                      value="__all__"
-                      onSelect={() => {
-                        setLocalSelectedCampaignIds([]);
-                        onCampaignChange([]);
-                        setIsCampaignOpen(false);
-                      }}
-                    >
-                      <Check className={cn("mr-2 h-4 w-4", localSelectedCampaignIds.length === 0 ? "opacity-100" : "opacity-0")} />
-                      Todas as campanhas
-                    </CommandItem>
-                    {campaigns.slice(0, 1000).map((c) => (
-                      <CommandItem
-                        key={c.id}
-                        value={c.name}
-                        onSelect={() => {
-                          setLocalSelectedCampaignIds((prev) => {
-                            const isSelected = prev.includes(c.id);
-                            const next = isSelected
-                              ? prev.filter((id) => id !== c.id)
-                              : [...prev, c.id];
-                            onCampaignChange(next);
-                            return next;
-                          });
-                          setIsCampaignOpen(true);
-                        }}
+            <PopoverContent className="w-[360px] p-2" align="start">
+              <div className="space-y-2">
+                <Input
+                  value={campaignSearch}
+                  onChange={(event) => setCampaignSearch(event.target.value)}
+                  placeholder="Buscar campanha..."
+                  className="h-9"
+                />
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted"
+                  onClick={() => {
+                    setLocalSelectedCampaignIds([]);
+                    onCampaignChange([]);
+                    setIsCampaignOpen(false);
+                  }}
+                >
+                  <Check className={cn('h-4 w-4', localSelectedCampaignIds.length === 0 ? 'opacity-100' : 'opacity-0')} />
+                  <span>Todas as campanhas</span>
+                </button>
+                <div className="max-h-[280px] overflow-y-auto rounded-md border">
+                  {filteredCampaigns.length === 0 && (
+                    <div className="px-3 py-4 text-sm text-muted-foreground">Nenhuma campanha encontrada.</div>
+                  )}
+                  {filteredCampaigns.slice(0, 2000).map((campaign) => {
+                    const checked = localSelectedCampaignIds.includes(campaign.id);
+                    const isActive = String(campaign.effective_status || '').toUpperCase() === 'ACTIVE';
+
+                    return (
+                      <button
+                        key={campaign.id}
+                        type="button"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                        onClick={() => toggleCampaign(campaign.id)}
                       >
-                        <Check className={cn("mr-2 h-4 w-4", localSelectedCampaignIds.includes(c.id) ? "opacity-100" : "opacity-0")} />
-                        <span className="truncate flex-1">{c.name}</span>
-                        {String(c.effective_status || '').toUpperCase() !== 'ACTIVE' && (
-                          <span className="ml-2 text-xs text-muted-foreground">Inativa</span>
-                        )}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
+                        <Checkbox checked={checked} />
+                        <span className="flex-1 truncate">{campaign.name}</span>
+                        {!isActive && <span className="text-xs text-muted-foreground">Inativa</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
         )}

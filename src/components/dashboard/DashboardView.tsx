@@ -252,7 +252,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const { data, error } = await supabase.functions.invoke(
         `meta-api?action=metrics-catalog&accountId=${encodeURIComponent(adAccountId)}`
       );
-      if (error) throw error;
+      if (error) {
+        const message = String((error as any)?.message || '').toLowerCase();
+        if (message.includes('invalid action')) {
+          return { actions: [], action_values: [] };
+        }
+        throw error;
+      }
 
       const catalog = data?.catalog || {};
       return {
@@ -369,7 +375,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       'revenue',
       'roas',
       'conversion',
-      'spend',
       'impressions',
       'reach',
       'clicks',
@@ -385,15 +390,38 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       'video_views',
     ];
 
-    const actionKeys = (metaMetricsCatalogQuery.data?.actions || [])
+    const catalogActionKeys = (metaMetricsCatalogQuery.data?.actions || [])
       .filter((value) => value && value.trim().length > 0)
       .map((actionType) => `action:${actionType}`);
 
-    const actionValueKeys = (metaMetricsCatalogQuery.data?.action_values || [])
+    const catalogActionValueKeys = (metaMetricsCatalogQuery.data?.action_values || [])
       .filter((value) => value && value.trim().length > 0)
       .map((actionType) => `action_value:${actionType}`);
 
-    const allKeys = [...baseKeys, ...actionKeys, ...actionValueKeys];
+    const discoveredActionTypes = new Set<string>();
+    const discoveredActionValueTypes = new Set<string>();
+    const source = (filteredRows || []) as any[];
+    for (const row of source) {
+      const actionsMap = (row?.actions_map || row?.actions_agg_map || {}) as Record<string, number>;
+      const actionValuesMap = (row?.action_values_map || row?.action_values_agg_map || {}) as Record<string, number>;
+      for (const actionType of Object.keys(actionsMap)) {
+        if (actionType) discoveredActionTypes.add(actionType);
+      }
+      for (const actionType of Object.keys(actionValuesMap)) {
+        if (actionType) discoveredActionValueTypes.add(actionType);
+      }
+    }
+
+    const discoveredActionKeys = Array.from(discoveredActionTypes).map((actionType) => `action:${actionType}`);
+    const discoveredActionValueKeys = Array.from(discoveredActionValueTypes).map((actionType) => `action_value:${actionType}`);
+
+    const allKeys = [
+      ...baseKeys,
+      ...catalogActionKeys,
+      ...catalogActionValueKeys,
+      ...discoveredActionKeys,
+      ...discoveredActionValueKeys,
+    ];
     const unique = Array.from(new Set(allKeys));
 
     return unique.map((key) => ({
@@ -401,7 +429,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       label: getMetaMetricLabel(key),
       format: getMetaMetricFormat(key),
     }));
-  }, [metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions]);
+  }, [filteredRows, metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions]);
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return sourceRows;
@@ -1103,7 +1131,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     const roas = spend > 0 ? purchaseValue / spend : Number(r?.roas || 0);
 
     return [
-      { label: 'Gasto', value: spend, format: 'currency' as const },
+      { label: 'Investimento', value: spend, format: 'currency' as const },
       { label: 'Impressões', value: impressions, format: 'number' as const },
       { label: 'Cliques', value: clicks, format: 'number' as const },
       { label: resultsLabel, value: results, format: 'number' as const },
