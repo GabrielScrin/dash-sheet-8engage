@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Settings, ArrowLeft, AlertCircle } from 'lucide-react';
+import { useParams, Link } from 'react-router-dom';
+import { Settings, ArrowLeft, AlertCircle, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/layout/Header';
 import { DashboardView } from '@/components/dashboard/DashboardView';
@@ -17,7 +17,6 @@ interface Project {
 export default function ProjectPreview() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
-  const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -98,12 +97,20 @@ export default function ProjectPreview() {
               Preview
             </span>
           </div>
-          <Button variant="outline" size="sm" asChild>
-            <Link to={`/app/projects/${id}/config`}>
-              <Settings className="mr-2 h-4 w-4" />
-              Configurar
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/app/projects/${id}/config?step=4`}>
+                <Share2 className="mr-2 h-4 w-4" />
+                Compartilhar
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/app/projects/${id}/config`}>
+                <Settings className="mr-2 h-4 w-4" />
+                Configurar
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 

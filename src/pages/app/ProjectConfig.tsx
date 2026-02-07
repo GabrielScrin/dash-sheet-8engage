@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, ChevronRight, FileSpreadsheet, Columns, BarChart3, Share2, Eye, Database, Link2, Facebook } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,16 +30,25 @@ interface Project {
   source_config: any;
 }
 
-const steps = [
+type SourceType = 'sheet' | 'meta_ads' | null;
+
+const allSteps = [
   { id: 1, name: 'Fonte', icon: Database, description: 'Escolha a origem dos dados' },
   { id: 2, name: 'Conexão', icon: Link2, description: 'Conecte sua conta ou planilha' },
   { id: 3, name: 'Colunas', icon: Columns, description: 'Mapeie e ajuste métricas' },
   { id: 4, name: 'Publicar', icon: Share2, description: 'Compartilhe seu dashboard' },
 ];
 
+const getStepsBySource = (sourceType: SourceType) => {
+  if (sourceType === 'meta_ads') return allSteps.filter((step) => [1, 2, 4].includes(step.id));
+  if (sourceType === 'sheet') return allSteps;
+  return allSteps.filter((step) => step.id === 1);
+};
+
 export default function ProjectConfig() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +60,12 @@ export default function ProjectConfig() {
   const [adAccountSearch, setAdAccountSearch] = useState('');
   const [metaCheckStartedAt, setMetaCheckStartedAt] = useState<number | null>(null);
 
+  const flowSteps = useMemo(() => getStepsBySource(project?.source_type ?? null), [project?.source_type]);
+  const currentStepMeta = useMemo(
+    () => flowSteps.find((step) => step.id === currentStep) || flowSteps[0] || allSteps[0],
+    [flowSteps, currentStep]
+  );
+
   const fetchAdAccounts = async ({ silent }: { silent?: boolean } = {}) => {
     setLoadingAccounts(true);
     setMetaCheckStartedAt(Date.now());
@@ -61,7 +76,7 @@ export default function ProjectConfig() {
       setAdAccounts(data?.accounts || []);
       setAdAccountSearch('');
     } catch (e: any) {
-      const message = e?.message || 'Erro ao listar contas de anÃºncios';
+      const message = e?.message || 'Erro ao listar contas de anuncios';
       setMetaConnected(false);
       setAdAccounts([]);
       if (!silent && !message.toLowerCase().includes('meta account not connected')) {
@@ -77,6 +92,16 @@ export default function ProjectConfig() {
       fetchProject();
     }
   }, [id]);
+
+  useEffect(() => {
+    if (!project) return;
+    const requestedStep = Number(searchParams.get('step'));
+    if (!Number.isFinite(requestedStep)) return;
+    if (!flowSteps.some((step) => step.id === requestedStep)) return;
+    if (requestedStep !== currentStep) {
+      setCurrentStep(requestedStep);
+    }
+  }, [project, searchParams, flowSteps, currentStep]);
 
   useEffect(() => {
     if (currentStep === 2 && project?.source_type === 'meta_ads' && !project.source_config?.ad_account_id) {
@@ -96,6 +121,20 @@ export default function ProjectConfig() {
 
     return () => window.clearTimeout(id);
   }, [metaConnected, metaCheckStartedAt]);
+
+  const getInitialStepForProject = (projectData: Project) => {
+    const forcedStep = Number(searchParams.get('step'));
+    const availableSteps = getStepsBySource(projectData.source_type ?? null);
+    const availableIds = availableSteps.map((step) => step.id);
+
+    if (Number.isFinite(forcedStep) && availableIds.includes(forcedStep)) {
+      return forcedStep;
+    }
+
+    if (!projectData.source_type) return 1;
+    if (projectData.source_type === 'meta_ads') return 2;
+    return projectData.spreadsheet_id && projectData.sheet_name ? 3 : 2;
+  };
 
   const fetchProject = async () => {
     try {
@@ -122,14 +161,7 @@ export default function ProjectConfig() {
       };
       setProject(projectData);
 
-      // Determine current step based on project state
-      if (!projectData.source_type) {
-        setCurrentStep(1);
-      } else if (projectData.source_type === 'meta_ads') {
-        setCurrentStep(projectData.source_config?.ad_account_id ? 3 : 2);
-      } else {
-        setCurrentStep(projectData.spreadsheet_id && projectData.sheet_name ? 3 : 2);
-      }
+      setCurrentStep(getInitialStepForProject(projectData));
     } catch (error: any) {
       toast({
         title: 'Erro ao carregar projeto',
@@ -550,6 +582,28 @@ export default function ProjectConfig() {
     }
   };
 
+  const getStepIndex = (stepId: number) => flowSteps.findIndex((step) => step.id === stepId);
+  const currentFlowIndex = getStepIndex(currentStep);
+  const hasPreviousStep = currentFlowIndex > 0;
+  const hasNextStep = currentFlowIndex >= 0 && currentFlowIndex < flowSteps.length - 1;
+
+  const goToPreviousStep = () => {
+    if (!hasPreviousStep) return;
+    setCurrentStep(flowSteps[currentFlowIndex - 1].id);
+  };
+
+  const goToNextStep = () => {
+    if (!project) return;
+
+    if (project.source_type === 'meta_ads' && currentStep === 2) {
+      navigate(`/app/projects/${project.id}/preview`);
+      return;
+    }
+
+    if (!hasNextStep) return;
+    setCurrentStep(flowSteps[currentFlowIndex + 1].id);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -584,10 +638,9 @@ export default function ProjectConfig() {
             </CardHeader>
             <CardContent className="p-0">
               <nav className="space-y-1 px-4 pb-4">
-                {steps.map((step) => {
-                  const isComplete = step.id < currentStep ||
-                    (step.id === 1 && !!project?.spreadsheet_id) ||
-                    (step.id === 2 && !!project?.sheet_name);
+                {flowSteps.map((step) => {
+                  const stepIndex = getStepIndex(step.id);
+                  const isComplete = stepIndex >= 0 && stepIndex < currentFlowIndex;
                   const isCurrent = step.id === currentStep;
 
                   return (
@@ -631,13 +684,10 @@ export default function ProjectConfig() {
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-3">
-                  {(() => {
-                    const StepIcon = steps[currentStep - 1].icon;
-                    return <StepIcon className="h-6 w-6 text-primary" />;
-                  })()}
+                  <currentStepMeta.icon className="h-6 w-6 text-primary" />
                   <div>
-                    <CardTitle>{steps[currentStep - 1].name}</CardTitle>
-                    <CardDescription>{steps[currentStep - 1].description}</CardDescription>
+                    <CardTitle>{currentStepMeta.name}</CardTitle>
+                    <CardDescription>{currentStepMeta.description}</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -660,8 +710,8 @@ export default function ProjectConfig() {
             <div className="flex items-center justify-between">
               <Button
                 variant="outline"
-                onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
-                disabled={currentStep === 1}
+                onClick={goToPreviousStep}
+                disabled={!hasPreviousStep}
               >
                 Anterior
               </Button>
@@ -679,9 +729,9 @@ export default function ProjectConfig() {
                   <Eye className="h-4 w-4" />
                   Preview
                 </Button>
-                {currentStep < steps.length ? (
+                {hasNextStep ? (
                   <Button
-                    onClick={() => setCurrentStep(Math.min(steps.length, currentStep + 1))}
+                    onClick={goToNextStep}
                     className="gap-2"
                   >
                     Próximo
