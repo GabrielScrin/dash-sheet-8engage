@@ -53,7 +53,7 @@ export function DashboardFilters({
 }: DashboardFiltersProps) {
   const [preset, setPreset] = useState('last_7_days');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [internalDateRange, setInternalDateRange] = useState<DateRange | undefined>(dateRange);
+  const [draftDateRange, setDraftDateRange] = useState<DateRange | undefined>(dateRange);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
   const [draftCampaignIds, setDraftCampaignIds] = useState<string[]>(selectedCampaignIds);
   const [campaignSearch, setCampaignSearch] = useState('');
@@ -78,7 +78,7 @@ export function DashboardFilters({
   };
 
   useEffect(() => {
-    setInternalDateRange(dateRange);
+    setDraftDateRange(dateRange);
   }, [dateRange]);
 
   useEffect(() => {
@@ -115,7 +115,7 @@ export function DashboardFilters({
 
     if (newRange) {
       onDateRangeChange(newRange);
-      setInternalDateRange(newRange);
+      setDraftDateRange(newRange);
     }
   };
 
@@ -137,7 +137,15 @@ export function DashboardFilters({
     <div className="sticky top-[7.5rem] z-30 -mx-4 bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
       <div className="flex flex-wrap items-center gap-3">
         {/* Date Range */}
-        <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+        <Popover
+          open={isCalendarOpen}
+          onOpenChange={(open) => {
+            setIsCalendarOpen(open);
+            if (open) {
+              setDraftDateRange(dateRange);
+            }
+          }}
+        >
           <PopoverTrigger asChild>
             <Button
               variant="outline"
@@ -175,15 +183,37 @@ export function DashboardFilters({
                 initialFocus
                 mode="range"
                 defaultMonth={dateRange?.from}
-                selected={dateRange}
+                selected={draftDateRange}
                 onSelect={(range) => {
-                  onDateRangeChange(range);
-                  setInternalDateRange(range);
+                  setDraftDateRange(range);
                   setPreset('custom');
                 }}
                 numberOfMonths={2}
                 locale={ptBR}
               />
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t p-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setDraftDateRange(dateRange);
+                  setIsCalendarOpen(false);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  onDateRangeChange(draftDateRange);
+                  setIsCalendarOpen(false);
+                }}
+              >
+                Salvar
+              </Button>
             </div>
           </PopoverContent>
         </Popover>
