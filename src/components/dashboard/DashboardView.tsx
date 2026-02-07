@@ -249,22 +249,22 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     queryFn: async () => {
       if (!adAccountId) return { actions: [], action_values: [] };
 
-      const { data, error } = await supabase.functions.invoke(
-        `meta-api?action=metrics-catalog&accountId=${encodeURIComponent(adAccountId)}`
-      );
-      if (error) {
-        const message = String((error as any)?.message || '').toLowerCase();
-        if (message.includes('invalid action')) {
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          `meta-api?action=metrics-catalog&accountId=${encodeURIComponent(adAccountId)}`
+        );
+        if (error) {
           return { actions: [], action_values: [] };
         }
-        throw error;
-      }
 
-      const catalog = data?.catalog || {};
-      return {
-        actions: Array.isArray(catalog.actions) ? catalog.actions : [],
-        action_values: Array.isArray(catalog.action_values) ? catalog.action_values : [],
-      } as { actions: string[]; action_values: string[] };
+        const catalog = data?.catalog || {};
+        return {
+          actions: Array.isArray(catalog.actions) ? catalog.actions : [],
+          action_values: Array.isArray(catalog.action_values) ? catalog.action_values : [],
+        } as { actions: string[]; action_values: string[] };
+      } catch {
+        return { actions: [], action_values: [] };
+      }
     },
     enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
   });
@@ -400,7 +400,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
     const discoveredActionTypes = new Set<string>();
     const discoveredActionValueTypes = new Set<string>();
-    const source = (filteredRows || []) as any[];
+    const source = (sourceRows || []) as any[];
     for (const row of source) {
       const actionsMap = (row?.actions_map || row?.actions_agg_map || {}) as Record<string, number>;
       const actionValuesMap = (row?.action_values_map || row?.action_values_agg_map || {}) as Record<string, number>;
@@ -429,7 +429,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       label: getMetaMetricLabel(key),
       format: getMetaMetricFormat(key),
     }));
-  }, [filteredRows, metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions]);
+  }, [metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions, sourceRows]);
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return sourceRows;
