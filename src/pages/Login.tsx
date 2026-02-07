@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Shield, Zap, Table2 } from 'lucide-react';
+import { Shield, Zap, Table2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -83,11 +83,11 @@ export default function Login() {
               initial={{ scale: 0.8 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-              className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg"
+              className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 shadow-lg"
             >
-              <LayoutDashboard className="h-8 w-8" />
+              <img src="/cr8-logo.svg" alt="CR8 Logo" className="h-9 w-9 object-contain" />
             </motion.div>
-            <h1 className="text-3xl font-bold tracking-tight">DataView</h1>
+            <h1 className="text-3xl font-bold tracking-tight">CR8 DataView</h1>
             <p className="mt-2 text-muted-foreground">
               Dashboards inteligentes para suas planilhas
             </p>
