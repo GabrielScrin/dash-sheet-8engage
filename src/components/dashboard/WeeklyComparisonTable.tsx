@@ -34,6 +34,8 @@ interface WeeklyComparisonTableProps {
   onViewModeChange?: (value: 'day' | 'week' | 'month') => void;
   metricOptions?: MetricOption[];
   defaultMetricColumns?: string[];
+  metricColumns?: string[];
+  onMetricColumnsChange?: (columns: string[]) => void;
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -58,21 +60,33 @@ export function WeeklyComparisonTable({
   onViewModeChange,
   metricOptions = fallbackMetricOptions,
   defaultMetricColumns = fallbackDefaultMetricColumns,
+  metricColumns,
+  onMetricColumnsChange,
 }: WeeklyComparisonTableProps) {
   const [sortTarget, setSortTarget] = useState<SortTarget>({ type: 'period' });
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [selectedMetricColumns, setSelectedMetricColumns] = useState<string[]>(defaultMetricColumns);
+  const [internalSelectedMetricColumns, setInternalSelectedMetricColumns] = useState<string[]>(defaultMetricColumns);
+  const selectedMetricColumns = metricColumns ?? internalSelectedMetricColumns;
+  const setSelectedMetricColumns = (updater: string[] | ((prev: string[]) => string[])) => {
+    const next = typeof updater === 'function' ? (updater as (prev: string[]) => string[])(selectedMetricColumns) : updater;
+    onMetricColumnsChange?.(next);
+    if (metricColumns === undefined) {
+      setInternalSelectedMetricColumns(next);
+    }
+  };
 
   useEffect(() => {
     const availableKeys = new Set(metricOptions.map((opt) => opt.key));
     const normalizedDefaults = defaultMetricColumns.filter((key) => availableKeys.has(key));
     const safeDefaults = (normalizedDefaults.length > 0 ? normalizedDefaults : metricOptions.slice(0, 5).map((opt) => opt.key)).slice(0, 5);
     setSelectedMetricColumns((prev) => {
-      if (!prev.length) return safeDefaults;
-      const normalizedPrev = prev.map((key, index) => (availableKeys.has(key) ? key : safeDefaults[index] || safeDefaults[0])).slice(0, 5);
+      const normalizedPrev = (!prev.length ? safeDefaults : prev.map((key, index) => (availableKeys.has(key) ? key : safeDefaults[index] || safeDefaults[0]))).slice(0, 5);
+      if (normalizedPrev.length === prev.length && normalizedPrev.every((value, index) => value === prev[index])) {
+        return prev;
+      }
       return normalizedPrev;
     });
-  }, [defaultMetricColumns, metricOptions]);
+  }, [defaultMetricColumns, metricOptions, metricColumns]);
 
   const resolveMetric = (metricKey: string) => {
     return metricOptions.find((m) => m.key === metricKey) || metricOptions[0] || fallbackMetricOptions[0];

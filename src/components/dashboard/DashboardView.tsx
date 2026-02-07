@@ -52,6 +52,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
+  const [weeklyMetricColumns, setWeeklyMetricColumns] = useState<string[]>(['sales', 'investment', 'revenue', 'roas', 'conversion']);
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -1360,6 +1361,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                     onViewModeChange={(v) => setViewMode(v)}
                     metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : undefined}
                     defaultMetricColumns={['sales', 'investment', 'revenue', 'roas', 'conversion']}
+                    metricColumns={project?.source_type === 'meta_ads' ? weeklyMetricColumns : undefined}
+                    onMetricColumnsChange={project?.source_type === 'meta_ads' ? setWeeklyMetricColumns : undefined}
                   />
                 </section>
               )}
