@@ -83,6 +83,32 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const sourceConfig = getSourceConfig(project?.source_config);
   const adAccountId = sourceConfig?.ad_account_id;
+  const weeklyColumnsStorageKey = `meta-weekly-columns:${projectId}`;
+
+  React.useEffect(() => {
+    if (project?.source_type !== 'meta_ads') return;
+    try {
+      const raw = window.localStorage.getItem(weeklyColumnsStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const normalized = parsed.map((value: unknown) => String(value)).filter(Boolean);
+      if (normalized.length > 0) {
+        setWeeklyMetricColumns((prev) => (prev.join('|') === normalized.join('|') ? prev : normalized));
+      }
+    } catch {
+      // noop
+    }
+  }, [project?.source_type, weeklyColumnsStorageKey]);
+
+  React.useEffect(() => {
+    if (project?.source_type !== 'meta_ads') return;
+    try {
+      window.localStorage.setItem(weeklyColumnsStorageKey, JSON.stringify(weeklyMetricColumns));
+    } catch {
+      // noop
+    }
+  }, [project?.source_type, weeklyColumnsStorageKey, weeklyMetricColumns]);
 
   const metaAccountInsightsQuery = useQuery({
     queryKey: [
@@ -422,6 +448,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       ...catalogActionValueKeys,
       ...discoveredActionKeys,
       ...discoveredActionValueKeys,
+      ...weeklyMetricColumns,
     ];
     const unique = Array.from(new Set(allKeys));
 
@@ -430,7 +457,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       label: getMetaMetricLabel(key),
       format: getMetaMetricFormat(key),
     }));
-  }, [metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions, sourceRows]);
+  }, [metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions, sourceRows, weeklyMetricColumns]);
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return sourceRows;
