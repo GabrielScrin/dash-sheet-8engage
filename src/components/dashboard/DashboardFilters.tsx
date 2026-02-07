@@ -55,14 +55,14 @@ export function DashboardFilters({
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [internalDateRange, setInternalDateRange] = useState<DateRange | undefined>(dateRange);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
-  const [localSelectedCampaignIds, setLocalSelectedCampaignIds] = useState<string[]>(selectedCampaignIds);
+  const [draftCampaignIds, setDraftCampaignIds] = useState<string[]>(selectedCampaignIds);
   const [campaignSearch, setCampaignSearch] = useState('');
 
   const selectedCampaigns = useMemo(() => {
-    if (localSelectedCampaignIds.length === 0) return [];
-    const selectedSet = new Set(localSelectedCampaignIds);
+    if (selectedCampaignIds.length === 0) return [];
+    const selectedSet = new Set(selectedCampaignIds);
     return campaigns.filter((campaign) => selectedSet.has(campaign.id));
-  }, [campaigns, localSelectedCampaignIds]);
+  }, [campaigns, selectedCampaignIds]);
 
   const filteredCampaigns = useMemo(() => {
     const term = campaignSearch.trim().toLowerCase();
@@ -70,12 +70,10 @@ export function DashboardFilters({
     return campaigns.filter((campaign) => String(campaign?.name || '').toLowerCase().includes(term));
   }, [campaignSearch, campaigns]);
 
-  const toggleCampaign = (campaignId: string) => {
-    setLocalSelectedCampaignIds((prev) => {
+  const toggleCampaignDraft = (campaignId: string) => {
+    setDraftCampaignIds((prev) => {
       const isSelected = prev.includes(campaignId);
-      const next = isSelected ? prev.filter((id) => id !== campaignId) : [...prev, campaignId];
-      onCampaignChange?.(next);
-      return next;
+      return isSelected ? prev.filter((id) => id !== campaignId) : [...prev, campaignId];
     });
   };
 
@@ -84,8 +82,15 @@ export function DashboardFilters({
   }, [dateRange]);
 
   useEffect(() => {
-    setLocalSelectedCampaignIds(selectedCampaignIds);
+    setDraftCampaignIds(selectedCampaignIds);
   }, [selectedCampaignIds]);
+
+  const arraysEqual = (left: string[], right: string[]) => {
+    if (left.length !== right.length) return false;
+    const a = [...left].sort();
+    const b = [...right].sort();
+    return a.every((value, index) => value === b[index]);
+  };
 
   const handlePresetChange = (value: string) => {
     setPreset(value);
@@ -122,11 +127,11 @@ export function DashboardFilters({
 
   const selectedCampaignLabel = campaignsLoading
     ? 'Carregando campanhas...'
-    : localSelectedCampaignIds.length === 0
+    : selectedCampaignIds.length === 0
       ? 'Todas as campanhas'
-      : localSelectedCampaignIds.length === 1
-        ? campaigns.find((c) => c.id === localSelectedCampaignIds[0])?.name || '1 campanha selecionada'
-        : `${localSelectedCampaignIds.length} campanhas selecionadas`;
+      : selectedCampaignIds.length === 1
+        ? campaigns.find((c) => c.id === selectedCampaignIds[0])?.name || '1 campanha selecionada'
+        : `${selectedCampaignIds.length} campanhas selecionadas`;
 
   return (
     <div className="sticky top-[7.5rem] z-30 -mx-4 bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
@@ -200,7 +205,17 @@ export function DashboardFilters({
 
         {/* Active Filters */}
         {onCampaignChange && (
-          <Popover open={isCampaignOpen} onOpenChange={setIsCampaignOpen}>
+          <Popover
+            open={isCampaignOpen}
+            onOpenChange={(open) => {
+              setIsCampaignOpen(open);
+              if (open) {
+                setDraftCampaignIds(selectedCampaignIds);
+              } else {
+                setCampaignSearch('');
+              }
+            }}
+          >
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
@@ -223,12 +238,12 @@ export function DashboardFilters({
                   type="button"
                   className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted"
                   onClick={() => {
-                    setLocalSelectedCampaignIds([]);
+                    setDraftCampaignIds([]);
                     onCampaignChange([]);
                     setIsCampaignOpen(false);
                   }}
                 >
-                  <Check className={cn('h-4 w-4', localSelectedCampaignIds.length === 0 ? 'opacity-100' : 'opacity-0')} />
+                  <Check className={cn('h-4 w-4', selectedCampaignIds.length === 0 ? 'opacity-100' : 'opacity-0')} />
                   <span>Todas as campanhas</span>
                 </button>
                 <div className="max-h-[280px] overflow-y-auto rounded-md border">
@@ -236,7 +251,7 @@ export function DashboardFilters({
                     <div className="px-3 py-4 text-sm text-muted-foreground">Nenhuma campanha encontrada.</div>
                   )}
                   {filteredCampaigns.slice(0, 2000).map((campaign) => {
-                    const checked = localSelectedCampaignIds.includes(campaign.id);
+                    const checked = draftCampaignIds.includes(campaign.id);
                     const isActive = String(campaign.effective_status || '').toUpperCase() === 'ACTIVE';
 
                     return (
@@ -244,7 +259,7 @@ export function DashboardFilters({
                         key={campaign.id}
                         type="button"
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-                        onClick={() => toggleCampaign(campaign.id)}
+                        onClick={() => toggleCampaignDraft(campaign.id)}
                       >
                         <Checkbox checked={checked} />
                         <span className="flex-1 truncate">{campaign.name}</span>
@@ -252,6 +267,30 @@ export function DashboardFilters({
                       </button>
                     );
                   })}
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDraftCampaignIds(selectedCampaignIds);
+                      setIsCampaignOpen(false);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={arraysEqual(draftCampaignIds, selectedCampaignIds)}
+                    onClick={() => {
+                      onCampaignChange(draftCampaignIds);
+                      setIsCampaignOpen(false);
+                    }}
+                  >
+                    Salvar
+                  </Button>
                 </div>
               </div>
             </PopoverContent>
@@ -265,8 +304,8 @@ export function DashboardFilters({
                 <span className="max-w-[220px] truncate">{campaign.name}</span>
                 <button
                   onClick={() => {
-                    const next = localSelectedCampaignIds.filter((id) => id !== campaign.id);
-                    setLocalSelectedCampaignIds(next);
+                    const next = selectedCampaignIds.filter((id) => id !== campaign.id);
+                    setDraftCampaignIds(next);
                     onCampaignChange(next);
                   }}
                   className="ml-1 rounded-full p-0.5 hover:bg-muted"
@@ -301,7 +340,7 @@ export function DashboardFilters({
             onClick={() => {
               handlePresetChange('last_7_days');
               onCreativeChange(null);
-              setLocalSelectedCampaignIds([]);
+              setDraftCampaignIds([]);
               onCampaignChange?.([]);
             }}
           >
