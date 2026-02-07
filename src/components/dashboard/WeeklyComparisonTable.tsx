@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -16,24 +16,15 @@ interface WeeklyData {
   week: string;
   periodKey?: string;
   periodSort?: number;
-  sales: number;
-  investment: number;
-  revenue: number;
-  roas: number;
-  conversion: number;
-  impressions?: number;
-  reach?: number;
-  clicks?: number;
-  leads?: number;
-  messages?: number;
-  purchases?: number;
-  ctr?: number;
-  cpc?: number;
-  cpm?: number;
-  frequency?: number;
-  landing_views?: number;
-  checkout_views?: number;
-  video_views?: number;
+  [key: string]: unknown;
+  actions_agg_map?: Record<string, number>;
+  action_values_agg_map?: Record<string, number>;
+}
+
+interface MetricOption {
+  key: string;
+  label: string;
+  format: 'number' | 'currency' | 'percentage' | 'decimal';
 }
 
 interface WeeklyComparisonTableProps {
@@ -41,6 +32,8 @@ interface WeeklyComparisonTableProps {
   isMeta?: boolean;
   viewMode?: 'day' | 'week' | 'month';
   onViewModeChange?: (value: 'day' | 'week' | 'month') => void;
+  metricOptions?: MetricOption[];
+  defaultMetricColumns?: string[];
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -48,60 +41,56 @@ type SortTarget =
   | { type: 'period' }
   | { type: 'metric'; index: number };
 
-type MetricKey =
-  | 'sales'
-  | 'investment'
-  | 'revenue'
-  | 'roas'
-  | 'conversion'
-  | 'impressions'
-  | 'reach'
-  | 'clicks'
-  | 'leads'
-  | 'messages'
-  | 'purchases'
-  | 'ctr'
-  | 'cpc'
-  | 'cpm'
-  | 'frequency'
-  | 'landing_views'
-  | 'checkout_views'
-  | 'video_views';
-
-const metricOptions: Array<{ key: MetricKey; label: string; format: 'number' | 'currency' | 'percentage' | 'decimal' }> = [
+const fallbackMetricOptions: MetricOption[] = [
   { key: 'sales', label: 'Vendas', format: 'number' },
   { key: 'investment', label: 'Investimento', format: 'currency' },
   { key: 'revenue', label: 'Faturamento', format: 'currency' },
   { key: 'roas', label: 'ROAS', format: 'decimal' },
-  { key: 'conversion', label: 'Taxa Conv.', format: 'percentage' },
-  { key: 'impressions', label: 'Impressoes', format: 'number' },
-  { key: 'reach', label: 'Alcance', format: 'number' },
-  { key: 'clicks', label: 'Cliques', format: 'number' },
-  { key: 'leads', label: 'Leads', format: 'number' },
-  { key: 'messages', label: 'Mensagens', format: 'number' },
-  { key: 'purchases', label: 'Compras', format: 'number' },
-  { key: 'ctr', label: 'CTR', format: 'percentage' },
-  { key: 'cpc', label: 'CPC', format: 'currency' },
-  { key: 'cpm', label: 'CPM', format: 'currency' },
-  { key: 'frequency', label: 'Frequencia', format: 'decimal' },
-  { key: 'landing_views', label: 'LP Views', format: 'number' },
-  { key: 'checkout_views', label: 'Checkout', format: 'number' },
-  { key: 'video_views', label: 'Views Video', format: 'number' },
+  { key: 'conversion', label: 'Taxa de Conversao', format: 'percentage' },
 ];
 
-const defaultMetricColumns: MetricKey[] = ['sales', 'investment', 'revenue', 'roas', 'conversion'];
+const fallbackDefaultMetricColumns = ['sales', 'investment', 'revenue', 'roas', 'conversion'];
 
 export function WeeklyComparisonTable({
   data,
   isMeta = false,
   viewMode = 'week',
   onViewModeChange,
+  metricOptions = fallbackMetricOptions,
+  defaultMetricColumns = fallbackDefaultMetricColumns,
 }: WeeklyComparisonTableProps) {
   const [sortTarget, setSortTarget] = useState<SortTarget>({ type: 'period' });
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [selectedMetricColumns, setSelectedMetricColumns] = useState<MetricKey[]>(defaultMetricColumns);
+  const [selectedMetricColumns, setSelectedMetricColumns] = useState<string[]>(defaultMetricColumns);
 
-  const resolveMetric = (metric: MetricKey) => metricOptions.find((m) => m.key === metric) || metricOptions[0];
+  useEffect(() => {
+    const availableKeys = new Set(metricOptions.map((opt) => opt.key));
+    const normalizedDefaults = defaultMetricColumns.filter((key) => availableKeys.has(key));
+    const safeDefaults = (normalizedDefaults.length > 0 ? normalizedDefaults : metricOptions.slice(0, 5).map((opt) => opt.key)).slice(0, 5);
+    setSelectedMetricColumns((prev) => {
+      if (!prev.length) return safeDefaults;
+      const normalizedPrev = prev.map((key, index) => (availableKeys.has(key) ? key : safeDefaults[index] || safeDefaults[0])).slice(0, 5);
+      return normalizedPrev;
+    });
+  }, [defaultMetricColumns, metricOptions]);
+
+  const resolveMetric = (metricKey: string) => {
+    return metricOptions.find((m) => m.key === metricKey) || metricOptions[0] || fallbackMetricOptions[0];
+  };
+
+  const getMetricValue = (row: WeeklyData, metricKey: string) => {
+    if (metricKey.startsWith('action:')) {
+      const actionType = metricKey.slice('action:'.length);
+      return Number(row.actions_agg_map?.[actionType] || 0);
+    }
+
+    if (metricKey.startsWith('action_value:')) {
+      const actionType = metricKey.slice('action_value:'.length);
+      return Number(row.action_values_agg_map?.[actionType] || 0);
+    }
+
+    return Number((row as Record<string, unknown>)[metricKey] || 0);
+  };
 
   const handleSortPeriod = () => {
     if (sortTarget.type === 'period') {
@@ -136,12 +125,12 @@ export function WeeklyComparisonTable({
         return a.week.localeCompare(b.week) * direction;
       }
 
-      const metricKey = selectedMetricColumns[sortTarget.index] || defaultMetricColumns[0];
-      const aVal = Number((a as Record<string, unknown>)[metricKey] || 0);
-      const bVal = Number((b as Record<string, unknown>)[metricKey] || 0);
+      const metricKey = selectedMetricColumns[sortTarget.index] || defaultMetricColumns[0] || 'sales';
+      const aVal = getMetricValue(a, metricKey);
+      const bVal = getMetricValue(b, metricKey);
       return (aVal - bVal) * direction;
     });
-  }, [data, selectedMetricColumns, sortDirection, sortTarget]);
+  }, [data, defaultMetricColumns, selectedMetricColumns, sortDirection, sortTarget]);
 
   const formatMetricValue = (value: number, formatType: 'number' | 'currency' | 'percentage' | 'decimal') => {
     switch (formatType) {
@@ -160,6 +149,8 @@ export function WeeklyComparisonTable({
     if (!active) return <ArrowUpDown className="h-4 w-4 opacity-50" />;
     return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />;
   };
+
+  const visibleMetricColumns = (isMeta ? selectedMetricColumns : defaultMetricColumns).slice(0, 5);
 
   return (
     <motion.div
@@ -198,7 +189,7 @@ export function WeeklyComparisonTable({
                   </div>
                 </TableHead>
 
-                {(isMeta ? selectedMetricColumns : defaultMetricColumns).map((metricKey, index) => {
+                {visibleMetricColumns.map((metricKey, index) => {
                   const metric = resolveMetric(metricKey);
                   return (
                     <TableHead key={`${metricKey}-${index}`} className="whitespace-nowrap min-w-[155px]">
@@ -207,12 +198,14 @@ export function WeeklyComparisonTable({
                           <Select
                             value={metricKey}
                             onValueChange={(value) => {
-                              const next = [...selectedMetricColumns];
-                              next[index] = value as MetricKey;
-                              setSelectedMetricColumns(next);
+                              setSelectedMetricColumns((prev) => {
+                                const next = [...prev];
+                                next[index] = value;
+                                return next;
+                              });
                             }}
                           >
-                            <SelectTrigger className="h-8 w-[130px] text-xs">
+                            <SelectTrigger className="h-8 w-[160px] text-xs">
                               <SelectValue placeholder="Metrica" />
                             </SelectTrigger>
                             <SelectContent>
@@ -244,9 +237,9 @@ export function WeeklyComparisonTable({
               {sortedData.map((row, index) => (
                 <TableRow key={`${row.periodKey || row.week}-${index}`} className="table-row-hover">
                   <TableCell className="font-medium">{row.week}</TableCell>
-                  {(isMeta ? selectedMetricColumns : defaultMetricColumns).map((metricKey, colIndex) => {
+                  {visibleMetricColumns.map((metricKey, colIndex) => {
                     const metric = resolveMetric(metricKey);
-                    const rawValue = Number((row as Record<string, unknown>)[metric.key] || 0);
+                    const rawValue = getMetricValue(row, metric.key);
                     const isPositiveHighlight =
                       (metric.key === 'roas' && rawValue >= 3.5) ||
                       (metric.key === 'conversion' && rawValue >= 4.0);
@@ -268,4 +261,3 @@ export function WeeklyComparisonTable({
     </motion.div>
   );
 }
-

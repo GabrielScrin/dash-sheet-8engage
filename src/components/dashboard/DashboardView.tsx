@@ -20,6 +20,7 @@ import { useColumnMappings } from '@/hooks/useColumnMappings';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { processDashboardData } from '@/lib/dashboard-utils';
+import { getMetaMetricFormat, getMetaMetricLabel } from '@/lib/meta-metric-labels';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format, startOfMonth, startOfWeek, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -243,6 +244,25 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
   });
 
+  const metaMetricsCatalogQuery = useQuery({
+    queryKey: ['meta-metrics-catalog', adAccountId],
+    queryFn: async () => {
+      if (!adAccountId) return { actions: [], action_values: [] };
+
+      const { data, error } = await supabase.functions.invoke(
+        `meta-api?action=metrics-catalog&accountId=${encodeURIComponent(adAccountId)}`
+      );
+      if (error) throw error;
+
+      const catalog = data?.catalog || {};
+      return {
+        actions: Array.isArray(catalog.actions) ? catalog.actions : [],
+        action_values: Array.isArray(catalog.action_values) ? catalog.action_values : [],
+      } as { actions: string[]; action_values: string[] };
+    },
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+  });
+
   // 3. Fetch Sheet Data from all configured sheets
   const sheetNames: string[] = Array.isArray(project?.sheet_names)
     ? (project.sheet_names as string[])
@@ -342,6 +362,47 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     return activeFirst.map((c) => ({ id: String(c.id), name: String(c.name), effective_status: c.effective_status }));
   }, [metaCampaignTotalsQuery.data, metaCampaignsQuery.data, project?.source_type]);
 
+  const metaWeeklyMetricOptions = useMemo(() => {
+    const baseKeys = [
+      'sales',
+      'investment',
+      'revenue',
+      'roas',
+      'conversion',
+      'spend',
+      'impressions',
+      'reach',
+      'clicks',
+      'leads',
+      'messages',
+      'purchases',
+      'ctr',
+      'cpc',
+      'cpm',
+      'frequency',
+      'landing_views',
+      'checkout_views',
+      'video_views',
+    ];
+
+    const actionKeys = (metaMetricsCatalogQuery.data?.actions || [])
+      .filter((value) => value && value.trim().length > 0)
+      .map((actionType) => `action:${actionType}`);
+
+    const actionValueKeys = (metaMetricsCatalogQuery.data?.action_values || [])
+      .filter((value) => value && value.trim().length > 0)
+      .map((actionType) => `action_value:${actionType}`);
+
+    const allKeys = [...baseKeys, ...actionKeys, ...actionValueKeys];
+    const unique = Array.from(new Set(allKeys));
+
+    return unique.map((key) => ({
+      key,
+      label: getMetaMetricLabel(key),
+      format: getMetaMetricFormat(key),
+    }));
+  }, [metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions]);
+
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return sourceRows;
     if (selectedCampaignIds.length === 0) return metaAccountRows;
@@ -378,6 +439,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         video3s: 0,
         video15s: 0,
         thruplay: 0,
+        actions_map: {} as Record<string, number>,
+        action_values_map: {} as Record<string, number>,
       };
       current.impressions += Number(row?.impressions || 0);
       current.reach = Math.max(current.reach, Number(row?.reach || 0));
@@ -392,6 +455,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       current.video3s += Number(row?.video3s || 0);
       current.video15s += Number(row?.video15s || 0);
       current.thruplay += Number(row?.thruplay || 0);
+      const actionsMap = (row?.actions_map || {}) as Record<string, number>;
+      for (const [actionType, value] of Object.entries(actionsMap)) {
+        current.actions_map[actionType] = Number(current.actions_map[actionType] || 0) + Number(value || 0);
+      }
+      const actionValuesMap = (row?.action_values_map || {}) as Record<string, number>;
+      for (const [actionType, value] of Object.entries(actionValuesMap)) {
+        current.action_values_map[actionType] = Number(current.action_values_map[actionType] || 0) + Number(value || 0);
+      }
       byDate.set(date, current);
     }
 
@@ -420,6 +491,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           cpa: purchases > 0 ? spend / purchases : 0,
           hook_rate: impressions > 0 ? video3s / impressions : 0,
           hold_rate: impressions > 0 ? (video15s || thruplay) / impressions : 0,
+          actions_map: r.actions_map || {},
+          action_values_map: r.action_values_map || {},
         };
       })
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -595,6 +668,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         landing_views: number;
         checkout_views: number;
         video_views: number;
+        actions_agg_map: Record<string, number>;
+        action_values_agg_map: Record<string, number>;
       }
     >();
 
@@ -629,6 +704,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         landing_views: 0,
         checkout_views: 0,
         video_views: 0,
+        actions_agg_map: {},
+        action_values_agg_map: {},
       };
       current.spend += Number(row?.spend || 0);
       current.clicks += Number(row?.clicks || 0);
@@ -641,6 +718,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       current.landing_views += Number(row?.landing_views || 0);
       current.checkout_views += Number(row?.checkout_views || 0);
       current.video_views += Number(row?.thruplay || row?.video3s || 0);
+      const actionsMap = (row?.actions_map || {}) as Record<string, number>;
+      for (const [actionType, value] of Object.entries(actionsMap)) {
+        current.actions_agg_map[actionType] = Number(current.actions_agg_map[actionType] || 0) + Number(value || 0);
+      }
+      const actionValuesMap = (row?.action_values_map || {}) as Record<string, number>;
+      for (const [actionType, value] of Object.entries(actionValuesMap)) {
+        current.action_values_agg_map[actionType] = Number(current.action_values_agg_map[actionType] || 0) + Number(value || 0);
+      }
       byBucket.set(key, current);
     }
 
@@ -693,6 +778,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         landing_views: b.landing_views,
         checkout_views: b.checkout_views,
         video_views: b.video_views,
+        actions_agg_map: b.actions_agg_map,
+        action_values_agg_map: b.action_values_agg_map,
       };
     });
   }, [filteredRows, project?.source_type, viewMode]);
@@ -1243,6 +1330,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                     isMeta={project?.source_type === 'meta_ads'}
                     viewMode={viewMode}
                     onViewModeChange={(v) => setViewMode(v)}
+                    metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : undefined}
+                    defaultMetricColumns={['sales', 'investment', 'revenue', 'roas', 'conversion']}
                   />
                 </section>
               )}

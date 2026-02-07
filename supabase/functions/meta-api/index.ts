@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const action = url.searchParams.get('action'); // 'ad-accounts' | 'campaigns' | 'insights' | 'ad-thumbnails'
+    const action = url.searchParams.get('action'); // 'ad-accounts' | 'campaigns' | 'insights' | 'ad-thumbnails' | 'metrics-catalog'
 
     // Validate JWT manually using getClaims
     const authHeader = req.headers.get('Authorization');
@@ -208,6 +208,89 @@ Deno.serve(async (req) => {
       });
     }
 
+    // --- Action: Fetch Metrics Catalog (including custom actions) ---
+    if (action === 'metrics-catalog') {
+      const accountId = url.searchParams.get('accountId');
+      if (!accountId) throw new Error('Missing accountId');
+
+      const now = new Date();
+      const defaultEndDate = now.toISOString().slice(0, 10);
+      const start = new Date(now);
+      start.setDate(start.getDate() - 90);
+      const defaultStartDate = start.toISOString().slice(0, 10);
+
+      const startDate = url.searchParams.get('startDate') || defaultStartDate;
+      const endDate = url.searchParams.get('endDate') || defaultEndDate;
+
+      const actionTypes = new Set<string>();
+      const actionValueTypes = new Set<string>();
+      let nextUrl: string | null =
+        `https://graph.facebook.com/v19.0/act_${accountId}/insights?level=account` +
+        `&time_increment=all&time_range={'since':'${startDate}','until':'${endDate}'}` +
+        `&fields=${encodeURIComponent('actions,action_values')}&limit=500&access_token=${ACCESS_TOKEN}`;
+
+      while (nextUrl) {
+        const res: Response = await fetch(nextUrl);
+        const page: { data?: any[]; paging?: { next?: string }; error?: { message: string } } = await res.json();
+
+        if (page.error) {
+          console.error('Meta API error:', page.error);
+          throw new Error(page.error.message);
+        }
+
+        for (const row of page.data || []) {
+          const actions = Array.isArray(row?.actions) ? row.actions : [];
+          const actionValues = Array.isArray(row?.action_values) ? row.action_values : [];
+
+          for (const actionItem of actions) {
+            const actionType = String(actionItem?.action_type || '').trim();
+            if (actionType) actionTypes.add(actionType);
+          }
+
+          for (const actionValueItem of actionValues) {
+            const actionType = String(actionValueItem?.action_type || '').trim();
+            if (actionType) actionValueTypes.add(actionType);
+          }
+        }
+
+        nextUrl = page?.paging?.next || null;
+      }
+
+      return new Response(JSON.stringify({
+        catalog: {
+          actions: Array.from(actionTypes).sort((a, b) => a.localeCompare(b)),
+          action_values: Array.from(actionValueTypes).sort((a, b) => a.localeCompare(b)),
+          base_metrics: [
+            'spend',
+            'impressions',
+            'reach',
+            'frequency',
+            'clicks',
+            'inline_link_clicks',
+            'ctr',
+            'cpc',
+            'cpm',
+            'leads',
+            'messages',
+            'purchases',
+            'purchase_value',
+            'roas',
+            'cpl',
+            'cpa',
+            'landing_views',
+            'checkout_views',
+            'video3s',
+            'video15s',
+            'thruplay',
+            'hook_rate',
+            'hold_rate',
+          ],
+        }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     // --- Action: Fetch Insights ---
     if (action === 'insights') {
       const accountId = url.searchParams.get('accountId');
@@ -350,6 +433,24 @@ Deno.serve(async (req) => {
         const cpl = leads > 0 ? spend / leads : 0;
         const cpa = purchases > 0 ? spend / purchases : 0;
 
+        const actionsMap = Array.isArray(row.actions)
+          ? row.actions.reduce((acc: Record<string, number>, item: any) => {
+            const actionType = String(item?.action_type || '').trim();
+            if (!actionType) return acc;
+            acc[actionType] = (acc[actionType] || 0) + toInt(item?.value);
+            return acc;
+          }, {})
+          : {};
+
+        const actionValuesMap = Array.isArray(row.action_values)
+          ? row.action_values.reduce((acc: Record<string, number>, item: any) => {
+            const actionType = String(item?.action_type || '').trim();
+            if (!actionType) return acc;
+            acc[actionType] = (acc[actionType] || 0) + toNumber(item?.value);
+            return acc;
+          }, {})
+          : {};
+
         const breakdownFields: Record<string, unknown> = {};
         if (breakdowns) {
           const keys = breakdowns.split(',').map((s) => s.trim()).filter(Boolean);
@@ -384,6 +485,8 @@ Deno.serve(async (req) => {
           thruplay,
           hook_rate: impressions > 0 ? video3s / impressions : 0,
           hold_rate: impressions > 0 ? (video15s || thruplay) / impressions : 0,
+          actions_map: actionsMap,
+          action_values_map: actionValuesMap,
           campaign_id: row.campaign_id,
           campaign_name: row.campaign_name,
           adset_id: row.adset_id,
