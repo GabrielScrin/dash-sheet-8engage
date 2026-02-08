@@ -52,8 +52,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
-  const [weeklyMetricColumns, setWeeklyMetricColumns] = useState<string[]>(['cost_per_result', 'ctr', 'cpc', 'cpm', 'connect_rate']);
-  const [creativeMetricColumns, setCreativeMetricColumns] = useState<string[]>(['cost_per_purchase', 'cost_per_lead', 'cost_per_message', 'ctr', 'cpc']);
+  const [weeklyMetricColumns, setWeeklyMetricColumns] = useState<string[]>(['result', 'impressions', 'reach', 'cpc', 'ctr']);
+  const [creativeMetricColumns, setCreativeMetricColumns] = useState<string[]>(['post_engagement', 'hook_rate', 'hold_rate', 'cpc', 'cost_per_result']);
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -298,6 +298,27 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
   });
 
+  const metaMetricsCatalogQuery = useQuery({
+    queryKey: ['meta-metrics-catalog', adAccountId],
+    queryFn: async () => {
+      if (!adAccountId) return { actions: [], action_values: [] };
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          `meta-api?action=metrics-catalog&accountId=${encodeURIComponent(adAccountId)}`
+        );
+        if (error) return { actions: [], action_values: [] };
+        const catalog = data?.catalog || {};
+        return {
+          actions: Array.isArray(catalog.actions) ? catalog.actions : [],
+          action_values: Array.isArray(catalog.action_values) ? catalog.action_values : [],
+        } as { actions: string[]; action_values: string[] };
+      } catch {
+        return { actions: [], action_values: [] };
+      }
+    },
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+  });
+
   // 3. Fetch Sheet Data from all configured sheets
   const sheetNames: string[] = Array.isArray(project?.sheet_names)
     ? (project.sheet_names as string[])
@@ -399,23 +420,64 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const metaWeeklyMetricOptions = useMemo(() => {
     const curatedKeys = [
-      'cost_per_profile_visit',
-      'cost_per_message',
-      'cost_per_lead',
+      'impressions',
+      'result',
+      'reach',
+      'messages',
+      'hook_rate',
+      'hold_rate',
+      'profile_visits',
+      'inline_link_clicks',
       'cpc',
       'cpm',
       'ctr',
+      'post_engagement',
+      'cost_per_profile_visit',
+      'cost_per_message',
+      'cost_per_lead',
       'cost_per_purchase',
       'cost_per_result',
       'connect_rate',
     ];
 
-    return curatedKeys.map((key) => ({
+    const discoveredActionTypes = new Set<string>();
+    const discoveredActionValueTypes = new Set<string>();
+    for (const row of (sourceRows || []) as any[]) {
+      const actionsMap = (row?.actions_map || row?.actions_agg_map || {}) as Record<string, number>;
+      const actionValuesMap = (row?.action_values_map || row?.action_values_agg_map || {}) as Record<string, number>;
+      for (const actionType of Object.keys(actionsMap)) {
+        if (actionType) discoveredActionTypes.add(actionType);
+      }
+      for (const actionType of Object.keys(actionValuesMap)) {
+        if (actionType) discoveredActionValueTypes.add(actionType);
+      }
+    }
+
+    const catalogActionTypes = metaMetricsCatalogQuery.data?.actions || [];
+    const catalogActionValueTypes = metaMetricsCatalogQuery.data?.action_values || [];
+
+    const actionTypes = Array.from(new Set([...catalogActionTypes, ...Array.from(discoveredActionTypes)]));
+    const actionValueTypes = Array.from(new Set([...catalogActionValueTypes, ...Array.from(discoveredActionValueTypes)]));
+
+    const resultActionKeys = actionTypes.map((actionType) => `result_action:${actionType}`);
+    const actionKeys = actionTypes.map((actionType) => `action:${actionType}`);
+    const actionValueKeys = actionValueTypes.map((actionType) => `action_value:${actionType}`);
+
+    const allKeys = Array.from(new Set([
+      ...curatedKeys,
+      ...resultActionKeys,
+      ...actionKeys,
+      ...actionValueKeys,
+      ...weeklyMetricColumns,
+      ...creativeMetricColumns,
+    ]));
+
+    return allKeys.map((key) => ({
       key,
       label: getMetaMetricLabel(key),
       format: getMetaMetricFormat(key),
     }));
-  }, []);
+  }, [creativeMetricColumns, metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions, sourceRows, weeklyMetricColumns]);
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return sourceRows;
@@ -446,6 +508,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         inline_link_clicks: 0,
         spend: 0,
         leads: 0,
+        messages: 0,
+        profile_visits: 0,
+        instagram_follows: 0,
         purchases: 0,
         purchase_value: 0,
         landing_views: 0,
@@ -462,6 +527,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       current.inline_link_clicks += Number(row?.inline_link_clicks || 0);
       current.spend += Number(row?.spend || 0);
       current.leads += Number(row?.leads || 0);
+      current.messages += Number(row?.messages || 0);
+      current.profile_visits += Number(row?.profile_visits || 0);
+      current.instagram_follows += Number(row?.instagram_follows || 0);
       current.purchases += Number(row?.purchases || 0);
       current.purchase_value += Number(row?.purchase_value || 0);
       current.landing_views += Number(row?.landing_views || 0);
@@ -1423,7 +1491,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                     viewMode={viewMode}
                     onViewModeChange={(v) => setViewMode(v)}
                     metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : undefined}
-                    defaultMetricColumns={['cost_per_result', 'ctr', 'cpc', 'cpm', 'connect_rate']}
+                    defaultMetricColumns={['result', 'impressions', 'reach', 'cpc', 'ctr']}
                     metricColumns={project?.source_type === 'meta_ads' ? weeklyMetricColumns : undefined}
                     onMetricColumnsChange={project?.source_type === 'meta_ads' ? setWeeklyMetricColumns : undefined}
                   />
@@ -1440,7 +1508,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                     onCreativeSelect={setSelectedCreative}
                     isMeta={project?.source_type === 'meta_ads'}
                     metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : undefined}
-                    defaultMetricColumns={['cost_per_purchase', 'cost_per_lead', 'cost_per_message', 'ctr', 'cpc']}
+                    defaultMetricColumns={['post_engagement', 'hook_rate', 'hold_rate', 'cpc', 'cost_per_result']}
                     metricColumns={project?.source_type === 'meta_ads' ? creativeMetricColumns : undefined}
                     onMetricColumnsChange={project?.source_type === 'meta_ads' ? setCreativeMetricColumns : undefined}
                   />

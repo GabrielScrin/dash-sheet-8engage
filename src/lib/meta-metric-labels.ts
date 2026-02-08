@@ -14,6 +14,7 @@ const BASE_METRIC_LABELS: Record<string, { label: string; format: MetricFormat }
   messages: { label: 'Mensagens', format: 'number' },
   profile_visits: { label: 'Visitas ao Perfil', format: 'number' },
   instagram_follows: { label: 'Seguidores do Instagram', format: 'number' },
+  result: { label: 'Resultado da Campanha', format: 'number' },
   purchases: { label: 'Compras', format: 'number' },
   purchase_value: { label: 'Valor de Compras', format: 'currency' },
   ctr: { label: 'CTR', format: 'percentage' },
@@ -21,6 +22,7 @@ const BASE_METRIC_LABELS: Record<string, { label: string; format: MetricFormat }
   cpm: { label: 'CPM', format: 'currency' },
   frequency: { label: 'Frequencia', format: 'decimal' },
   inline_link_clicks: { label: 'Cliques no Link', format: 'number' },
+  post_engagement: { label: 'Engajamento com o Post', format: 'number' },
   landing_views: { label: 'Visualizacoes de Pagina', format: 'number' },
   checkout_views: { label: 'Inicio de Checkout', format: 'number' },
   video3s: { label: 'Views Video 3s', format: 'number' },
@@ -87,6 +89,10 @@ export const translateMetaActionType = (actionType: string) => {
 };
 
 export const getMetaMetricLabel = (metricKey: string) => {
+  if (metricKey.startsWith('result_action:')) {
+    return `Resultado - ${translateMetaActionType(metricKey.slice('result_action:'.length))}`;
+  }
+
   if (metricKey.startsWith('action:')) {
     return translateMetaActionType(metricKey.slice('action:'.length));
   }
@@ -110,6 +116,7 @@ export const getMetaMetricLabel = (metricKey: string) => {
 };
 
 export const getMetaMetricFormat = (metricKey: string): MetricFormat => {
+  if (metricKey.startsWith('result_action:')) return 'number';
   if (metricKey.startsWith('cost_per_action:')) return 'currency';
   if (metricKey.startsWith('rate_per_action:')) return 'percentage';
   if (metricKey.startsWith('action_value:')) return 'currency';
@@ -125,6 +132,14 @@ const safeNumber = (value: unknown) => {
 const getActionCount = (row: Record<string, unknown>, actionType: string) => {
   const map = (row.actions_agg_map || row.actions_map || {}) as Record<string, unknown>;
   return safeNumber(map[actionType]);
+};
+
+const getActionCountByMatcher = (row: Record<string, unknown>, matcher: (actionType: string) => boolean) => {
+  const map = (row.actions_agg_map || row.actions_map || {}) as Record<string, unknown>;
+  return Object.entries(map).reduce((sum, [actionType, value]) => {
+    if (!matcher(actionType.toLowerCase())) return sum;
+    return sum + safeNumber(value);
+  }, 0);
 };
 
 const getActionValue = (row: Record<string, unknown>, actionType: string) => {
@@ -159,7 +174,15 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
   const video15s = getMetricAliasValue(row, ['video15s']);
   const sales = purchases > 0 ? purchases : leads;
   const results = purchases > 0 ? purchases : (leads > 0 ? leads : (messages > 0 ? messages : profileVisits));
+  const postEngagement = getMetricAliasValue(row, ['post_engagement']) || getActionCountByMatcher(
+    row,
+    (actionType) => actionType.includes('post_engagement') || actionType.includes('post_reaction'),
+  );
   const resolvedVideoViews = thruplay || video3s;
+
+  if (metricKey.startsWith('result_action:')) {
+    return getActionCount(row, metricKey.slice('result_action:'.length));
+  }
 
   if (metricKey.startsWith('action:')) {
     return getActionCount(row, metricKey.slice('action:'.length));
@@ -185,6 +208,8 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
       return spend;
     case 'sales':
       return sales;
+    case 'result':
+      return results;
     case 'profile_visits':
       return profileVisits;
     case 'instagram_follows':
@@ -220,6 +245,8 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
       return results > 0 ? spend / results : 0;
     case 'connect_rate':
       return impressions > 0 ? (landingViews / impressions) * 100 : 0;
+    case 'post_engagement':
+      return postEngagement;
     case 'video_views':
       return resolvedVideoViews;
     case 'hook_rate':
