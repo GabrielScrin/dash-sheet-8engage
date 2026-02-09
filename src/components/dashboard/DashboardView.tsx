@@ -40,6 +40,31 @@ function getSourceConfig(config: unknown): MetaSourceConfig | null {
   return null;
 }
 
+const normalizeKey = (value: string) => value.trim().toLowerCase().replace(/[\s_\-]+/g, '');
+
+const findColumnKey = (rows: Array<Record<string, unknown>>, candidates: string[]) => {
+  if (!rows.length) return null;
+  const candidateSet = new Set(candidates.map(normalizeKey));
+  const sampleKeys = Object.keys(rows[0] || {});
+  for (const key of sampleKeys) {
+    if (candidateSet.has(normalizeKey(key))) return key;
+  }
+  return null;
+};
+
+const parseSheetNumber = (value: unknown) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (value === null || value === undefined) return 0;
+  const raw = String(value).trim();
+  if (!raw) return 0;
+  const cleaned = raw.replace(/[R$\s%]/g, '');
+  const normalized = cleaned.includes(',') && cleaned.includes('.')
+    ? (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.') ? cleaned.replace(/\./g, '').replace(',', '.') : cleaned.replace(/,/g, ''))
+    : cleaned.replace(',', '.');
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 interface DashboardViewProps {
   projectId: string;
   isPreview?: boolean;
@@ -54,6 +79,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
   const [weeklyMetricColumns, setWeeklyMetricColumns] = useState<string[]>(['result', 'impressions', 'reach', 'cpc', 'ctr']);
   const [creativeMetricColumns, setCreativeMetricColumns] = useState<string[]>(['post_engagement', 'hook_rate', 'hold_rate', 'cpc', 'cost_per_result']);
+  const [sheetBigNumberColumns, setSheetBigNumberColumns] = useState<string[]>([]);
+  const [sheetWeeklyMetricColumns, setSheetWeeklyMetricColumns] = useState<string[]>([]);
+  const [sheetCreativeMetricColumns, setSheetCreativeMetricColumns] = useState<string[]>([]);
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -86,6 +114,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const adAccountId = sourceConfig?.ad_account_id;
   const weeklyColumnsStorageKey = `meta-weekly-columns:${projectId}`;
   const creativeColumnsStorageKey = `meta-creative-columns:${projectId}`;
+  const sheetBigNumbersStorageKey = `sheet-big-numbers:${projectId}`;
+  const sheetWeeklyStorageKey = `sheet-weekly-columns:${projectId}`;
+  const sheetCreativeStorageKey = `sheet-creative-columns:${projectId}`;
 
   React.useEffect(() => {
     if (project?.source_type !== 'meta_ads') return;
@@ -136,6 +167,67 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       // noop
     }
   }, [creativeColumnsStorageKey, creativeMetricColumns, project?.source_type]);
+
+  React.useEffect(() => {
+    if (project?.source_type === 'meta_ads') return;
+    const available = sheetMetricOptions.map((option) => option.key);
+    if (!available.length) return;
+
+    const readStored = (key: string) => {
+      try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) return [] as string[];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.map((v: unknown) => String(v)).filter(Boolean) : [];
+      } catch {
+        return [] as string[];
+      }
+    };
+
+    const clampToAvailable = (values: string[], fallbackCount: number) => {
+      const filtered = values.filter((value) => available.includes(value));
+      if (filtered.length > 0) return filtered.slice(0, fallbackCount);
+      return available.slice(0, fallbackCount);
+    };
+
+    setSheetBigNumberColumns((prev) => {
+      if (prev.length > 0) return clampToAvailable(prev, 6);
+      return clampToAvailable(readStored(sheetBigNumbersStorageKey), 6);
+    });
+    setSheetWeeklyMetricColumns((prev) => {
+      if (prev.length > 0) return clampToAvailable(prev, 5);
+      return clampToAvailable(readStored(sheetWeeklyStorageKey), 5);
+    });
+    setSheetCreativeMetricColumns((prev) => {
+      if (prev.length > 0) return clampToAvailable(prev, 5);
+      return clampToAvailable(readStored(sheetCreativeStorageKey), 5);
+    });
+  }, [
+    project?.source_type,
+    sheetBigNumbersStorageKey,
+    sheetCreativeStorageKey,
+    sheetMetricOptions,
+    sheetWeeklyStorageKey,
+  ]);
+
+  React.useEffect(() => {
+    if (project?.source_type === 'meta_ads') return;
+    try {
+      window.localStorage.setItem(sheetBigNumbersStorageKey, JSON.stringify(sheetBigNumberColumns));
+      window.localStorage.setItem(sheetWeeklyStorageKey, JSON.stringify(sheetWeeklyMetricColumns));
+      window.localStorage.setItem(sheetCreativeStorageKey, JSON.stringify(sheetCreativeMetricColumns));
+    } catch {
+      // noop
+    }
+  }, [
+    project?.source_type,
+    sheetBigNumberColumns,
+    sheetBigNumbersStorageKey,
+    sheetCreativeMetricColumns,
+    sheetCreativeStorageKey,
+    sheetWeeklyMetricColumns,
+    sheetWeeklyStorageKey,
+  ]);
 
   const metaAccountInsightsQuery = useQuery({
     queryKey: [
@@ -391,7 +483,32 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const sourceRows = (project?.source_type === 'meta_ads' ? (metaInsightsQuery.data || []) : (allSheetsQuery.data || [])) as any[];
   const metaAccountRows = (metaAccountInsightsQuery.data || []) as any[];
 
-  const campaignOptions = useMemo(() => {
+  const sheetDateColumnKey = useMemo(
+    () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['date', 'data', 'day', 'dia']),
+    [sourceRows],
+  );
+  const sheetAdNameColumnKey = useMemo(
+    () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['adname', 'ad name', 'nome do anuncio', 'anuncio']),
+    [sourceRows],
+  );
+  const sheetCampaignColumnKey = useMemo(
+    () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['campaign name', 'campaign', 'nome da campanha', 'campanha']),
+    [sourceRows],
+  );
+
+  const sheetMetricOptions = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return [];
+    const keys = Object.keys((sourceRows as Array<Record<string, unknown>>)[0] || {});
+    const excluded = new Set([sheetDateColumnKey, sheetAdNameColumnKey, sheetCampaignColumnKey].filter(Boolean).map(String));
+    const metricKeys = keys.filter((key) => !excluded.has(key));
+    return metricKeys.map((key) => ({
+      key,
+      label: key,
+      format: 'number' as const,
+    }));
+  }, [project?.source_type, sheetAdNameColumnKey, sheetCampaignColumnKey, sheetDateColumnKey, sourceRows]);
+
+  const metaCampaignOptions = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
 
     const campaigns = (metaCampaignsQuery.data || []) as Array<{ id: string; name: string; effective_status?: string }>;
@@ -417,6 +534,21 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
     return activeFirst.map((c) => ({ id: String(c.id), name: String(c.name), effective_status: c.effective_status }));
   }, [metaCampaignTotalsQuery.data, metaCampaignsQuery.data, project?.source_type]);
+
+  const sheetCampaignOptions = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return [];
+    if (!sheetCampaignColumnKey) return [];
+    const values = new Set<string>();
+    for (const row of sourceRows as Array<Record<string, unknown>>) {
+      const value = String(row?.[sheetCampaignColumnKey] ?? '').trim();
+      if (value) values.add(value);
+    }
+    return Array.from(values)
+      .map((name) => ({ id: name, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [project?.source_type, sheetCampaignColumnKey, sourceRows]);
+
+  const campaignOptions = project?.source_type === 'meta_ads' ? metaCampaignOptions : sheetCampaignOptions;
 
   const metaWeeklyMetricOptions = useMemo(() => {
     const curatedKeys = [
@@ -480,11 +612,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   }, [creativeMetricColumns, metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions, sourceRows, weeklyMetricColumns]);
 
   const rowsAfterCampaignFilter = useMemo(() => {
-    if (project?.source_type !== 'meta_ads') return sourceRows;
+    if (project?.source_type !== 'meta_ads') {
+      if (!sheetCampaignColumnKey || selectedCampaignIds.length === 0) return sourceRows;
+      const selectedSet = new Set(selectedCampaignIds.map((id) => String(id)));
+      return sourceRows.filter((r) => selectedSet.has(String(r?.[sheetCampaignColumnKey] ?? '').trim()));
+    }
     if (selectedCampaignIds.length === 0) return metaAccountRows;
     const selectedSet = new Set(selectedCampaignIds.map((id) => String(id)));
     return sourceRows.filter((r) => selectedSet.has(String(r?.campaign_id || '')));
-  }, [metaAccountRows, project?.source_type, selectedCampaignIds, sourceRows]);
+  }, [metaAccountRows, project?.source_type, selectedCampaignIds, sheetCampaignColumnKey, sourceRows]);
 
   const aggregatedMetaRows = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return rowsAfterCampaignFilter;
@@ -609,9 +745,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       // Creative Filter
       if (selectedCreative) {
-        const creativeKey = Object.keys(row).find(k =>
-          k.toLowerCase().includes('criativo') || k.toLowerCase().includes('creative')
-        );
+        const creativeKey =
+          (project?.source_type !== 'meta_ads' ? sheetAdNameColumnKey : null) ||
+          Object.keys(row).find(k =>
+            k.toLowerCase().includes('criativo') || k.toLowerCase().includes('creative')
+          );
         if (creativeKey && row[creativeKey] !== selectedCreative) {
           return false;
         }
@@ -619,7 +757,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       return true;
     });
-  }, [aggregatedMetaRows, dateRange, selectedCreative]);
+  }, [aggregatedMetaRows, dateRange, project?.source_type, selectedCreative, sheetAdNameColumnKey]);
 
   // 5. Process Data
   const effectiveMappings = useMemo(() => {
@@ -731,6 +869,96 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const processedData = useMemo(() => {
     return processDashboardData(filteredRows, effectiveMappings as any);
   }, [filteredRows, effectiveMappings]);
+
+  const sheetWeeklyData = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return [];
+    if (!sheetDateColumnKey) return [];
+
+    const byBucket = new Map<string, Record<string, unknown>>();
+    for (const row of filteredRows as Array<Record<string, unknown>>) {
+      const rawDate = row?.[sheetDateColumnKey];
+      if (!rawDate) continue;
+      const parsedDate = new Date(String(rawDate));
+      if (Number.isNaN(parsedDate.getTime())) continue;
+
+      let bucketKey = '';
+      if (viewMode === 'day') {
+        bucketKey = format(parsedDate, 'yyyy-MM-dd');
+      } else if (viewMode === 'month') {
+        bucketKey = format(startOfMonth(parsedDate), 'yyyy-MM');
+      } else {
+        bucketKey = format(startOfWeek(parsedDate, { weekStartsOn: 0 }), 'yyyy-MM-dd');
+      }
+
+      const current = byBucket.get(bucketKey) || { periodKey: bucketKey };
+      for (const metric of sheetMetricOptions) {
+        const currentValue = parseSheetNumber(current[metric.key]);
+        const nextValue = parseSheetNumber(row?.[metric.key]);
+        current[metric.key] = currentValue + nextValue;
+      }
+      byBucket.set(bucketKey, current);
+    }
+
+    return Array.from(byBucket.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .slice(0, 5)
+      .reverse()
+      .map(([periodKey, values], index) => {
+        const periodDate =
+          viewMode === 'month'
+            ? new Date(`${periodKey}-01T00:00:00`)
+            : new Date(`${periodKey}T00:00:00`);
+        const label =
+          viewMode === 'day'
+            ? format(periodDate, 'dd/MM')
+            : viewMode === 'month'
+              ? format(periodDate, 'MMM/yy', { locale: ptBR })
+              : `Sem ${index + 1}`;
+        return {
+          week: label,
+          periodKey,
+          periodSort: periodDate.getTime(),
+          ...values,
+        };
+      });
+  }, [filteredRows, project?.source_type, sheetDateColumnKey, sheetMetricOptions, viewMode]);
+
+  const sheetCreativeData = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return [];
+    if (!sheetAdNameColumnKey) return [];
+    const byCreative = new Map<string, Record<string, unknown>>();
+    for (const row of filteredRows as Array<Record<string, unknown>>) {
+      const creativeName = String(row?.[sheetAdNameColumnKey] ?? '').trim();
+      if (!creativeName) continue;
+      const current = byCreative.get(creativeName) || {
+        id: creativeName,
+        name: creativeName,
+      };
+      for (const metric of sheetMetricOptions) {
+        const currentValue = parseSheetNumber(current[metric.key]);
+        const nextValue = parseSheetNumber(row?.[metric.key]);
+        current[metric.key] = currentValue + nextValue;
+      }
+      byCreative.set(creativeName, current);
+    }
+    return Array.from(byCreative.values()).slice(0, 200);
+  }, [filteredRows, project?.source_type, sheetAdNameColumnKey, sheetMetricOptions]);
+
+  const sheetBigNumbers = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return [];
+    return sheetBigNumberColumns.slice(0, 6).map((metricKey, index) => {
+      const total = (filteredRows as Array<Record<string, unknown>>).reduce(
+        (sum, row) => sum + parseSheetNumber(row?.[metricKey]),
+        0,
+      );
+      return {
+        key: metricKey || `metric_${index}`,
+        label: `Métrica ${index + 1}: ${metricKey || '-'}`,
+        value: total,
+        format: 'number' as const,
+      };
+    });
+  }, [filteredRows, project?.source_type, sheetBigNumberColumns]);
 
   const metaWeeklyData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
@@ -1272,7 +1500,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     ];
   }, [metaTotalsRow, project?.source_type]);
 
-  const bigNumbersToRender = project?.source_type === 'meta_ads' ? metaBigNumbers : processedData.bigNumbers;
+  const bigNumbersToRender =
+    project?.source_type === 'meta_ads'
+      ? metaBigNumbers
+      : (sheetBigNumbers.length > 0 ? sheetBigNumbers : processedData.bigNumbers);
 
   const isLoading =
     loadingProject ||
@@ -1396,14 +1627,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         description: 'Selecione ao menos uma aba da planilha para ler os dados.',
       });
     }
-
-    if (!mappings || mappings.length === 0) {
-      warnings.push({
-        title: 'Mapeamento de colunas pendente',
-        description: 'Sem mapeamento, o dashboard continua visível, mas não sabe quais métricas exibir.',
-      });
-    }
-
     if (project.spreadsheet_id && sheetNames.length > 0 && sourceRows.length === 0 && !allSheetsQuery.isLoading) {
       warnings.push({
         title: 'Nenhum dado encontrado',
@@ -1434,7 +1657,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
         campaigns={campaignOptions}
-        campaignsLoading={metaCampaignsQuery.isLoading}
+        campaignsLoading={project?.source_type === 'meta_ads' ? metaCampaignsQuery.isLoading : false}
         selectedCampaignIds={selectedCampaignIds}
         onCampaignChange={(ids) => setSelectedCampaignIds(ids)}
         viewMode={viewMode}
@@ -1461,6 +1684,34 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               {bigNumbersToRender.length > 0 && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Indicadores Principais</h3>
+                  {project?.source_type !== 'meta_ads' && sheetMetricOptions.length > 0 && (
+                    <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                      {sheetBigNumberColumns.slice(0, 6).map((metricKey, index) => (
+                        <Select
+                          key={`sheet-big-number-${index}`}
+                          value={metricKey}
+                          onValueChange={(value) =>
+                            setSheetBigNumberColumns((prev) => {
+                              const next = [...prev];
+                              next[index] = value;
+                              return next;
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder={`Métrica ${index + 1}`} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {sheetMetricOptions.map((option) => (
+                              <SelectItem key={option.key} value={option.key}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ))}
+                    </div>
+                  )}
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                     {bigNumbersToRender.map((kpi, index) => {
                       const { label, value, previousValue, format } = kpi;
@@ -1480,37 +1731,37 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
               )}
 
               {/* Weekly Comparison */}
-              {(project?.source_type === 'meta_ads' ? metaWeeklyData.length > 0 : processedData.weeklyData.length > 0) && (
+              {(project?.source_type === 'meta_ads' ? metaWeeklyData.length > 0 : sheetWeeklyData.length > 0) && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">
                     {viewMode === 'day' ? 'Visão Diária' : viewMode === 'month' ? 'Visão Mensal' : 'Visão Semanal'}
                   </h3>
                   <WeeklyComparisonTable
-                    data={project?.source_type === 'meta_ads' ? (metaWeeklyData as any) : processedData.weeklyData}
-                    isMeta={project?.source_type === 'meta_ads'}
+                    data={project?.source_type === 'meta_ads' ? (metaWeeklyData as any) : (sheetWeeklyData as any)}
+                    isMeta
                     viewMode={viewMode}
                     onViewModeChange={(v) => setViewMode(v)}
-                    metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : undefined}
-                    defaultMetricColumns={['result', 'impressions', 'reach', 'cpc', 'ctr']}
-                    metricColumns={project?.source_type === 'meta_ads' ? weeklyMetricColumns : undefined}
-                    onMetricColumnsChange={project?.source_type === 'meta_ads' ? setWeeklyMetricColumns : undefined}
+                    metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : (sheetMetricOptions as any)}
+                    defaultMetricColumns={project?.source_type === 'meta_ads' ? ['result', 'impressions', 'reach', 'cpc', 'ctr'] : sheetMetricOptions.slice(0, 5).map((x) => x.key)}
+                    metricColumns={project?.source_type === 'meta_ads' ? weeklyMetricColumns : sheetWeeklyMetricColumns}
+                    onMetricColumnsChange={project?.source_type === 'meta_ads' ? setWeeklyMetricColumns : setSheetWeeklyMetricColumns}
                   />
                 </section>
               )}
 
               {/* Creative Performance */}
-              {(project?.source_type === 'meta_ads' ? metaCreativeDataWithThumbs.length > 0 : processedData.creativeData.length > 0) && (
+              {(project?.source_type === 'meta_ads' ? metaCreativeDataWithThumbs.length > 0 : sheetCreativeData.length > 0) && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Performance por Criativo</h3>
                   <CreativePerformanceTable
-                    data={project?.source_type === 'meta_ads' ? (metaCreativeDataWithThumbs as any) : processedData.creativeData}
+                    data={project?.source_type === 'meta_ads' ? (metaCreativeDataWithThumbs as any) : (sheetCreativeData as any)}
                     selectedCreative={selectedCreative}
                     onCreativeSelect={setSelectedCreative}
-                    isMeta={project?.source_type === 'meta_ads'}
-                    metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : undefined}
-                    defaultMetricColumns={['post_engagement', 'hook_rate', 'hold_rate', 'cpc', 'cost_per_result']}
-                    metricColumns={project?.source_type === 'meta_ads' ? creativeMetricColumns : undefined}
-                    onMetricColumnsChange={project?.source_type === 'meta_ads' ? setCreativeMetricColumns : undefined}
+                    isMeta
+                    metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : (sheetMetricOptions as any)}
+                    defaultMetricColumns={project?.source_type === 'meta_ads' ? ['post_engagement', 'hook_rate', 'hold_rate', 'cpc', 'cost_per_result'] : sheetMetricOptions.slice(0, 5).map((x) => x.key)}
+                    metricColumns={project?.source_type === 'meta_ads' ? creativeMetricColumns : sheetCreativeMetricColumns}
+                    onMetricColumnsChange={project?.source_type === 'meta_ads' ? setCreativeMetricColumns : setSheetCreativeMetricColumns}
                   />
                 </section>
               )}
@@ -1643,3 +1894,4 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     </div>
   );
 }
+
