@@ -178,6 +178,15 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
     row,
     (actionType) => actionType.includes('post_engagement') || actionType.includes('post_reaction'),
   );
+  const profileVisitsFallback = getActionCountByMatcher(
+    row,
+    (actionType) =>
+      actionType.includes('profile_visit') ||
+      actionType.includes('instagram_profile_visit') ||
+      actionType.includes('ig_profile_visit') ||
+      actionType.includes('visit_profile') ||
+      (actionType.includes('profile') && actionType.includes('visit')),
+  );
   const resolvedVideoViews = thruplay || video3s;
 
   if (metricKey.startsWith('result_action:')) {
@@ -211,7 +220,7 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
     case 'result':
       return results;
     case 'profile_visits':
-      return profileVisits;
+      return profileVisits || profileVisitsFallback;
     case 'instagram_follows':
       return instagramFollows;
     case 'revenue':

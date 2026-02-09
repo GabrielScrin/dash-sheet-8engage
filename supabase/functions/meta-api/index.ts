@@ -391,10 +391,16 @@ Deno.serve(async (req) => {
       const isVideo15sLike = (t: string) =>
         t.includes('video_view_15') || t.includes('video_view_15s');
 
-      const isProfileVisitLike = (t: string) =>
-        t.includes('profile_visit') ||
-        t.includes('instagram_profile_visit') ||
-        t.includes('ig_profile_visit');
+      const isProfileVisitLike = (t: string) => {
+        const normalized = t.toLowerCase();
+        return (
+          normalized.includes('profile_visit') ||
+          normalized.includes('instagram_profile_visit') ||
+          normalized.includes('ig_profile_visit') ||
+          normalized.includes('visit_profile') ||
+          (normalized.includes('profile') && normalized.includes('visit'))
+        );
+      };
 
       const isInstagramFollowLike = (t: string) =>
         t === 'follow' ||
