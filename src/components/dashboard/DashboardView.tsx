@@ -179,6 +179,14 @@ const looksLikeTextMetricName = (columnName: string) => {
 
 const looksLikeUrl = (value: unknown) => /^https?:\/\//i.test(String(value ?? '').trim());
 
+const pickFirstMatchingKey = (keys: string[], patterns: RegExp[]) => {
+  for (const pattern of patterns) {
+    const found = keys.find((key) => pattern.test(normalizeMetricName(key)));
+    if (found) return found;
+  }
+  return undefined;
+};
+
 const inferSheetMetricMeta = (columnName: string, sampleValues: unknown[]): { label: string; format: SheetMetricFormat } => {
   const normalized = normalizeMetricName(columnName);
   const mapped = SHEET_METRIC_NAME_MAP.find((entry) => entry.pattern.test(normalized));
@@ -611,6 +619,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['campaign name', 'campaign', 'nome da campanha', 'campanha']),
     [sourceRows],
   );
+  const sheetAdsetFilterColumnKey = useMemo(
+    () =>
+      findColumnKey(sourceRows as Array<Record<string, unknown>>, [
+        'adset name',
+        'adset',
+        'nome do conjunto',
+        'conjunto',
+      ]),
+    [sourceRows],
+  );
   const sheetPermalinkColumnKey = useMemo(
     () =>
       findColumnKey(sourceRows as Array<Record<string, unknown>>, [
@@ -647,6 +665,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         'campaign',
         'nome da campanha',
         'campanha',
+      ]),
+    [distributionSourceRows],
+  );
+  const distributionAdsetFilterColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'adset name',
+        'adset',
+        'nome do conjunto',
+        'conjunto',
       ]),
     [distributionSourceRows],
   );
@@ -723,20 +751,32 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     });
   }, [project?.source_type, sheetAdNameColumnKey, sheetCampaignColumnKey, sheetDateColumnKey, sourceRows]);
 
-  const sheetInvestmentMetricKey = useMemo(
-    () =>
-      sheetMetricOptions.find((metric) =>
-        /(spend|investment|investimento|gasto|invest)/.test(normalizeMetricName(metric.key))
-      )?.key,
-    [sheetMetricOptions],
-  );
-  const sheetRevenueMetricKey = useMemo(
-    () =>
-      sheetMetricOptions.find((metric) =>
-        /(revenue|faturamento|purchase value|valor vendido|valor de compras|vendas valor)/.test(normalizeMetricName(metric.key))
-      )?.key,
-    [sheetMetricOptions],
-  );
+  const sheetInvestmentMetricKey = useMemo(() => {
+    const keys = sheetMetricOptions.map((metric) => metric.key);
+    return pickFirstMatchingKey(keys, [
+      /\bamount spent\b/,
+      /\bspend\b/,
+      /\binvestment\b/,
+      /\binvestimento\b/,
+      /\bgasto\b/,
+      /\bcost\b/,
+    ]);
+  }, [sheetMetricOptions]);
+  const sheetRevenueMetricKey = useMemo(() => {
+    const keys = sheetMetricOptions.map((metric) => metric.key);
+    return pickFirstMatchingKey(keys, [
+      /\bwebsite purchases conversion value\b/,
+      /\bpurchase conversion value\b/,
+      /\bconversion value\b/,
+      /\bpurchase value\b/,
+      /\brevenue\b/,
+      /\bfaturamento\b/,
+      /\bvalor vendido\b/,
+      /\bvalor de compras\b/,
+      /\bvalor compra\b/,
+      /\btotal vendido\b/,
+    ]);
+  }, [sheetMetricOptions]);
   const sheetRoasMetricKey = useMemo(
     () => sheetMetricOptions.find((metric) => /\broas\b/.test(normalizeMetricName(metric.key)))?.key,
     [sheetMetricOptions],
@@ -826,10 +866,30 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         if (value) values.add(value);
       }
     }
+    if (sheetAdsetFilterColumnKey) {
+      for (const row of sourceRows as Array<Record<string, unknown>>) {
+        const value = String(row?.[sheetAdsetFilterColumnKey] ?? '').trim();
+        if (value) values.add(value);
+      }
+    }
+    if (distributionAdsetFilterColumnKey) {
+      for (const row of distributionSourceRows as Array<Record<string, unknown>>) {
+        const value = String(row?.[distributionAdsetFilterColumnKey] ?? '').trim();
+        if (value) values.add(value);
+      }
+    }
     return Array.from(values)
       .map((name) => ({ id: name, name }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [distributionCampaignColumnKey, distributionSourceRows, project?.source_type, sheetCampaignColumnKey, sourceRows]);
+  }, [
+    distributionAdsetFilterColumnKey,
+    distributionCampaignColumnKey,
+    distributionSourceRows,
+    project?.source_type,
+    sheetAdsetFilterColumnKey,
+    sheetCampaignColumnKey,
+    sourceRows,
+  ]);
 
   const campaignOptions = project?.source_type === 'meta_ads' ? metaCampaignOptions : sheetCampaignOptions;
 
@@ -896,14 +956,18 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') {
-      if (!sheetCampaignColumnKey || selectedCampaignIds.length === 0) return sourceRows;
+      if (selectedCampaignIds.length === 0) return sourceRows;
       const selectedSet = new Set(selectedCampaignIds.map((id) => String(id)));
-      return sourceRows.filter((r) => selectedSet.has(String(r?.[sheetCampaignColumnKey] ?? '').trim()));
+      return sourceRows.filter((row) => {
+        const campaign = sheetCampaignColumnKey ? String(row?.[sheetCampaignColumnKey] ?? '').trim() : '';
+        const adset = sheetAdsetFilterColumnKey ? String(row?.[sheetAdsetFilterColumnKey] ?? '').trim() : '';
+        return (campaign && selectedSet.has(campaign)) || (adset && selectedSet.has(adset));
+      });
     }
     if (selectedCampaignIds.length === 0) return metaAccountRows;
     const selectedSet = new Set(selectedCampaignIds.map((id) => String(id)));
     return sourceRows.filter((r) => selectedSet.has(String(r?.campaign_id || '')));
-  }, [metaAccountRows, project?.source_type, selectedCampaignIds, sheetCampaignColumnKey, sourceRows]);
+  }, [metaAccountRows, project?.source_type, selectedCampaignIds, sheetAdsetFilterColumnKey, sheetCampaignColumnKey, sourceRows]);
 
   const aggregatedMetaRows = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return rowsAfterCampaignFilter;
@@ -1157,9 +1221,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     if (project?.source_type === 'meta_ads') return [];
     const selectedSet = selectedCampaignIds.length > 0 ? new Set(selectedCampaignIds.map((id) => String(id))) : null;
     return (distributionSourceRows as Array<Record<string, unknown>>).filter((row) => {
-      if (selectedSet && distributionCampaignColumnKey) {
-        const campaign = String(row?.[distributionCampaignColumnKey] ?? '').trim();
-        if (!selectedSet.has(campaign)) return false;
+      if (selectedSet) {
+        const campaign = distributionCampaignColumnKey ? String(row?.[distributionCampaignColumnKey] ?? '').trim() : '';
+        const adset = distributionAdsetFilterColumnKey ? String(row?.[distributionAdsetFilterColumnKey] ?? '').trim() : '';
+        if (!(campaign && selectedSet.has(campaign)) && !(adset && selectedSet.has(adset))) return false;
       }
 
       if (dateRange?.from) {
@@ -1178,7 +1243,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       return true;
     });
-  }, [dateRange, distributionCampaignColumnKey, distributionDateColumnKey, distributionSourceRows, project?.source_type, selectedCampaignIds]);
+  }, [
+    dateRange,
+    distributionAdsetFilterColumnKey,
+    distributionCampaignColumnKey,
+    distributionDateColumnKey,
+    distributionSourceRows,
+    project?.source_type,
+    selectedCampaignIds,
+  ]);
 
   const sheetDistributionData = useMemo(() => {
     if (project?.source_type === 'meta_ads') return null;
