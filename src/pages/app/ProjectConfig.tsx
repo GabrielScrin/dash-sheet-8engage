@@ -73,7 +73,7 @@ export default function ProjectConfig() {
       setAdAccounts(data?.accounts || []);
       setAdAccountSearch('');
     } catch (e: any) {
-      const message = e?.message || 'Erro ao listar contas de anuncios';
+      const message = e?.message || 'Erro ao listar contas de anúncios';
       setMetaConnected(false);
       setAdAccounts([]);
       if (!silent && !message.toLowerCase().includes('meta account not connected')) {
@@ -765,3 +765,4 @@ export default function ProjectConfig() {
     </div>
   );
 }
+

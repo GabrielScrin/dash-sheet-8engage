@@ -67,6 +67,138 @@ const parseSheetNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal';
+
+const normalizeMetricName = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const capitalizePtBr = (value: string) =>
+  value
+    .split(' ')
+    .filter(Boolean)
+    .map((token) => {
+      const lower = token.toLowerCase();
+      if (['de', 'da', 'do', 'das', 'dos', 'por', 'para', 'com', 'sem', 'em', 'no', 'na', 'nos', 'nas', 'e'].includes(lower)) {
+        return lower;
+      }
+      if (['cpc', 'cpm', 'ctr', 'cpl', 'cpa', 'roas', 'roi', 'lp', 'id'].includes(lower)) {
+        return lower.toUpperCase();
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+
+const humanizeSheetMetricPtBr = (columnName: string) => {
+  const normalized = normalizeMetricName(columnName);
+  if (!normalized) return columnName;
+
+  const base = normalized
+    .replace(/\bcost per\b/g, 'custo por')
+    .replace(/\bper\b/g, 'por')
+    .replace(/\brate\b/g, 'taxa')
+    .replace(/\bfrequency\b/g, 'frequencia')
+    .replace(/\breach\b/g, 'alcance')
+    .replace(/\bimpressions\b/g, 'impressoes')
+    .replace(/\bclicks?\b/g, 'cliques')
+    .replace(/\bleads?\b/g, 'leads')
+    .replace(/\bmessages?\b/g, 'mensagens')
+    .replace(/\bmessage conversations started\b/g, 'conversas iniciadas')
+    .replace(/\bprofile visits?\b/g, 'visitas ao perfil')
+    .replace(/\bpost engagement\b/g, 'engajamento com o post')
+    .replace(/\binline link clicks?\b/g, 'cliques no link')
+    .replace(/\blanding page views?\b/g, 'visualizacoes da pagina de destino')
+    .replace(/\bview content\b/g, 'visualizacao de conteudo')
+    .replace(/\bcheckout initiated\b/g, 'inicio de checkout')
+    .replace(/\bpurchases?\b/g, 'compras')
+    .replace(/\brevenue\b/g, 'faturamento')
+    .replace(/\bspend\b/g, 'investimento')
+    .replace(/\bresults?\b/g, 'resultado')
+    .replace(/\bvideo views?\b/g, 'visualizacoes de video')
+    .replace(/\bthruplay\b/g, 'thruplay')
+    .replace(/\bhook rate\b/g, 'hook rate')
+    .replace(/\bhold rate\b/g, 'hold rate');
+
+  const withAccents = base
+    .replace(/\bfrequencia\b/g, 'frequência')
+    .replace(/\bimpressoes\b/g, 'impressões')
+    .replace(/\bvisualizacoes\b/g, 'visualizações')
+    .replace(/\bpagina\b/g, 'página')
+    .replace(/\bconteudo\b/g, 'conteúdo')
+    .replace(/\bconversao\b/g, 'conversão');
+
+  return capitalizePtBr(withAccents);
+};
+
+const SHEET_METRIC_NAME_MAP: Array<{ pattern: RegExp; label: string; format: SheetMetricFormat }> = [
+  { pattern: /\bfrequency\b|\bfrequencia\b/, label: 'Frequência', format: 'percentage' },
+  { pattern: /\bcpc\b|cost per click|custo por clique/, label: 'CPC (Custo por Clique)', format: 'currency' },
+  { pattern: /\bcpm\b|cost per mille|custo por mil/, label: 'CPM (Custo por Mil Impressões)', format: 'currency' },
+  { pattern: /\bctr\b|click through rate|taxa de clique/, label: 'CTR (Taxa de Cliques)', format: 'percentage' },
+  { pattern: /\broas\b/, label: 'ROAS', format: 'decimal' },
+  { pattern: /\broi\b/, label: 'ROI', format: 'percentage' },
+  { pattern: /\bspend\b|\binvestment\b|\binvestimento\b|\bgasto\b/, label: 'Investimento', format: 'currency' },
+  { pattern: /\brevenue\b|\bfaturamento\b|\bvalor vendido\b|\bsales value\b/, label: 'Faturamento', format: 'currency' },
+  { pattern: /\bimpressions\b|\bimpressoes\b/, label: 'Impressões', format: 'number' },
+  { pattern: /\breach\b|\balcance\b/, label: 'Alcance', format: 'number' },
+  { pattern: /\bclicks\b|\bcliques\b/, label: 'Cliques', format: 'number' },
+  { pattern: /\bmessages\b|\bmensagens\b/, label: 'Mensagens', format: 'number' },
+  { pattern: /\bleads?\b/, label: 'Leads', format: 'number' },
+  { pattern: /\bprofile visits?\b|\bvisitas ao perfil\b/, label: 'Visitas ao Perfil', format: 'number' },
+  { pattern: /\bpost engagement\b|\bengajamento\b/, label: 'Engajamento com o Post', format: 'number' },
+  { pattern: /cost per result|custo por resultado/, label: 'Custo por Resultado', format: 'currency' },
+  { pattern: /cost per lead|custo por lead/, label: 'Custo por Lead', format: 'currency' },
+  { pattern: /cost per message|custo por mensagem/, label: 'Custo por Mensagem', format: 'currency' },
+  { pattern: /cost per purchase|custo por compra|custo por venda/, label: 'Custo por Compra', format: 'currency' },
+  { pattern: /cost per profile visit|custo por visita ao perfil/, label: 'Custo por Visita ao Perfil', format: 'currency' },
+  { pattern: /\bresult\b|\bresultado\b/, label: 'Resultado da Campanha', format: 'number' },
+  { pattern: /\bpurchase value\b|valor de compra|valor de compras/, label: 'Valor de Compras', format: 'currency' },
+  { pattern: /\binline link clicks?\b|cliques no link/, label: 'Cliques no Link', format: 'number' },
+  { pattern: /\blanding page views?\b|lp views?|visualizacoes da pagina/, label: 'Visualizações da Página', format: 'number' },
+  { pattern: /\bcheckout\b|inicio de checkout/, label: 'Início de Checkout', format: 'number' },
+  { pattern: /\bvideo views?\b|visualizacoes de video/, label: 'Visualizações de Vídeo', format: 'number' },
+  { pattern: /\bhook rate\b|\bhook\b/, label: 'Hook Rate', format: 'percentage' },
+  { pattern: /\bhold rate\b|\bhold\b/, label: 'Hold Rate', format: 'percentage' },
+  { pattern: /\bconnect rate\b/, label: 'Connect Rate', format: 'percentage' },
+  { pattern: /\bpurchases?\b|\bvendas?\b/, label: 'Compras', format: 'number' },
+  { pattern: /\bfollows?\b|seguidores?/, label: 'Seguidores', format: 'number' },
+  { pattern: /\bview content\b|visualizacao de conteudo/, label: 'Visualização de Conteúdo', format: 'number' },
+  { pattern: /\badd to cart\b|adicao ao carrinho/, label: 'Adições ao Carrinho', format: 'number' },
+  { pattern: /\binitiate checkout\b|inicio de checkout/, label: 'Início de Checkout', format: 'number' },
+  { pattern: /\blead form\b|cadastro/, label: 'Leads do Formulário', format: 'number' },
+];
+
+const looksLikeTextMetricName = (columnName: string) => {
+  const name = normalizeMetricName(columnName);
+  return /\b(name|nome|campaign|campanha|adset|ad set|adname|ad name|anuncio|criativo|creative|titulo|title)\b/.test(name);
+};
+
+const inferSheetMetricMeta = (columnName: string, sampleValues: unknown[]): { label: string; format: SheetMetricFormat } => {
+  const normalized = normalizeMetricName(columnName);
+  const mapped = SHEET_METRIC_NAME_MAP.find((entry) => entry.pattern.test(normalized));
+  if (mapped) return { label: mapped.label, format: mapped.format };
+
+  const numericValues = sampleValues
+    .map((value) => parseSheetNumber(value))
+    .filter((value) => Number.isFinite(value) && value !== 0);
+
+  const looksLikePercentByName = /\b(rate|taxa|percent|porcentagem)\b/.test(normalized);
+  if (looksLikePercentByName) return { label: columnName, format: 'percentage' };
+
+  const looksLikeCurrencyByName =
+    /\b(cost|custo|spend|invest|investimento|gasto|revenue|faturamento|valor|amount|price|preco)\b/.test(normalized);
+  if (looksLikeCurrencyByName) return { label: columnName, format: 'currency' };
+
+  const hasDecimals = numericValues.some((value) => Math.abs(value % 1) > 0.0001);
+  if (hasDecimals) return { label: humanizeSheetMetricPtBr(columnName), format: 'decimal' };
+
+  return { label: humanizeSheetMetricPtBr(columnName), format: 'number' };
+};
+
 interface DashboardViewProps {
   projectId: string;
   isPreview?: boolean;
@@ -476,14 +608,19 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const sheetMetricOptions = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
-    const keys = Object.keys((sourceRows as Array<Record<string, unknown>>)[0] || {});
+    const rows = sourceRows as Array<Record<string, unknown>>;
+    const keys = Object.keys(rows[0] || {});
     const excluded = new Set([sheetDateColumnKey, sheetAdNameColumnKey, sheetCampaignColumnKey].filter(Boolean).map(String));
-    const metricKeys = keys.filter((key) => !excluded.has(key));
-    return metricKeys.map((key) => ({
-      key,
-      label: key,
-      format: 'number' as const,
-    }));
+    const metricKeys = keys.filter((key) => !excluded.has(key) && !looksLikeTextMetricName(key));
+    return metricKeys.map((key) => {
+      const sampleValues = rows.slice(0, 80).map((row) => row?.[key]);
+      const meta = inferSheetMetricMeta(key, sampleValues);
+      return {
+        key,
+        label: meta.label,
+        format: meta.format,
+      };
+    });
   }, [project?.source_type, sheetAdNameColumnKey, sheetCampaignColumnKey, sheetDateColumnKey, sourceRows]);
 
   React.useEffect(() => {
@@ -999,19 +1136,21 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const sheetBigNumbers = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
+    const metricMap = new Map(sheetMetricOptions.map((metric) => [metric.key, metric]));
     return sheetBigNumberColumns.slice(0, 6).map((metricKey, index) => {
+      const metricMeta = metricMap.get(metricKey);
       const total = (filteredRows as Array<Record<string, unknown>>).reduce(
         (sum, row) => sum + parseSheetNumber(row?.[metricKey]),
         0,
       );
       return {
         key: metricKey || `metric_${index}`,
-        label: `Métrica ${index + 1}: ${metricKey || '-'}`,
+        label: metricMeta?.label || `Métrica ${index + 1}`,
         value: total,
-        format: 'number' as const,
+        format: (metricMeta?.format || 'number') as 'number' | 'currency' | 'percentage' | 'decimal',
       };
     });
-  }, [filteredRows, project?.source_type, sheetBigNumberColumns]);
+  }, [filteredRows, project?.source_type, sheetBigNumberColumns, sheetMetricOptions]);
 
   const metaWeeklyData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
