@@ -30,6 +30,8 @@ import { useAuth } from '@/contexts/AuthContext';
 // Helper to safely type source_config from Json
 interface MetaSourceConfig {
   ad_account_id?: string;
+  sheet_perpetua?: string | null;
+  sheet_distribuicao?: string | null;
   [key: string]: unknown;
 }
 
@@ -167,48 +169,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       // noop
     }
   }, [creativeColumnsStorageKey, creativeMetricColumns, project?.source_type]);
-
-  React.useEffect(() => {
-    if (project?.source_type === 'meta_ads') return;
-    const available = sheetMetricOptions.map((option) => option.key);
-    if (!available.length) return;
-
-    const readStored = (key: string) => {
-      try {
-        const raw = window.localStorage.getItem(key);
-        if (!raw) return [] as string[];
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed.map((v: unknown) => String(v)).filter(Boolean) : [];
-      } catch {
-        return [] as string[];
-      }
-    };
-
-    const clampToAvailable = (values: string[], fallbackCount: number) => {
-      const filtered = values.filter((value) => available.includes(value));
-      if (filtered.length > 0) return filtered.slice(0, fallbackCount);
-      return available.slice(0, fallbackCount);
-    };
-
-    setSheetBigNumberColumns((prev) => {
-      if (prev.length > 0) return clampToAvailable(prev, 6);
-      return clampToAvailable(readStored(sheetBigNumbersStorageKey), 6);
-    });
-    setSheetWeeklyMetricColumns((prev) => {
-      if (prev.length > 0) return clampToAvailable(prev, 5);
-      return clampToAvailable(readStored(sheetWeeklyStorageKey), 5);
-    });
-    setSheetCreativeMetricColumns((prev) => {
-      if (prev.length > 0) return clampToAvailable(prev, 5);
-      return clampToAvailable(readStored(sheetCreativeStorageKey), 5);
-    });
-  }, [
-    project?.source_type,
-    sheetBigNumbersStorageKey,
-    sheetCreativeStorageKey,
-    sheetMetricOptions,
-    sheetWeeklyStorageKey,
-  ]);
 
   React.useEffect(() => {
     if (project?.source_type === 'meta_ads') return;
@@ -412,9 +372,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   });
 
   // 3. Fetch Sheet Data from all configured sheets
-  const sheetNames: string[] = Array.isArray(project?.sheet_names)
-    ? (project.sheet_names as string[])
-    : (project?.sheet_name ? [project.sheet_name] : []);
+  const sheetPerpetuaName =
+    String(sourceConfig?.sheet_perpetua || '') ||
+    (Array.isArray(project?.sheet_names) ? String((project?.sheet_names as string[])[0] || '') : String(project?.sheet_name || ''));
+  const sheetDistribuicaoName =
+    String(sourceConfig?.sheet_distribuicao || '') ||
+    (Array.isArray(project?.sheet_names) ? String((project?.sheet_names as string[])[1] || (project?.sheet_names as string[])[0] || '') : String(project?.sheet_name || ''));
+
+  const sheetNames: string[] = Array.from(new Set([sheetPerpetuaName, sheetDistribuicaoName].filter(Boolean)));
 
   // We'll use a custom query to fetch all sheets in parallel
   const allSheetsQuery = useQuery({
@@ -473,14 +438,27 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           }
         })
       );
+      const bySheet = sheetNames.reduce((acc, name, index) => {
+        acc[name] = results[index] || [];
+        return acc;
+      }, {} as Record<string, any[]>);
+
       const flattened = results.flat();
       console.log(`Total rows aggregated: ${flattened.length}`);
-      return flattened;
+      return { bySheet, all: flattened };
     },
     enabled: !!project?.spreadsheet_id && sheetNames.length > 0,
   });
 
-  const sourceRows = (project?.source_type === 'meta_ads' ? (metaInsightsQuery.data || []) : (allSheetsQuery.data || [])) as any[];
+  const sheetRowsByName = (allSheetsQuery.data as any)?.bySheet || {};
+  const sourceRows =
+    (project?.source_type === 'meta_ads'
+      ? (metaInsightsQuery.data || [])
+      : (sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
+  const distributionSourceRows =
+    (project?.source_type === 'meta_ads'
+      ? []
+      : (sheetRowsByName[sheetDistribuicaoName] || sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
   const metaAccountRows = (metaAccountInsightsQuery.data || []) as any[];
 
   const sheetDateColumnKey = useMemo(
@@ -507,6 +485,48 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       format: 'number' as const,
     }));
   }, [project?.source_type, sheetAdNameColumnKey, sheetCampaignColumnKey, sheetDateColumnKey, sourceRows]);
+
+  React.useEffect(() => {
+    if (project?.source_type === 'meta_ads') return;
+    const available = sheetMetricOptions.map((option) => option.key);
+    if (!available.length) return;
+
+    const readStored = (key: string) => {
+      try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) return [] as string[];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.map((v: unknown) => String(v)).filter(Boolean) : [];
+      } catch {
+        return [] as string[];
+      }
+    };
+
+    const clampToAvailable = (values: string[], fallbackCount: number) => {
+      const filtered = values.filter((value) => available.includes(value));
+      if (filtered.length > 0) return filtered.slice(0, fallbackCount);
+      return available.slice(0, fallbackCount);
+    };
+
+    setSheetBigNumberColumns((prev) => {
+      if (prev.length > 0) return clampToAvailable(prev, 6);
+      return clampToAvailable(readStored(sheetBigNumbersStorageKey), 6);
+    });
+    setSheetWeeklyMetricColumns((prev) => {
+      if (prev.length > 0) return clampToAvailable(prev, 5);
+      return clampToAvailable(readStored(sheetWeeklyStorageKey), 5);
+    });
+    setSheetCreativeMetricColumns((prev) => {
+      if (prev.length > 0) return clampToAvailable(prev, 5);
+      return clampToAvailable(readStored(sheetCreativeStorageKey), 5);
+    });
+  }, [
+    project?.source_type,
+    sheetBigNumbersStorageKey,
+    sheetCreativeStorageKey,
+    sheetMetricOptions,
+    sheetWeeklyStorageKey,
+  ]);
 
   const metaCampaignOptions = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
@@ -869,6 +889,39 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const processedData = useMemo(() => {
     return processDashboardData(filteredRows, effectiveMappings as any);
   }, [filteredRows, effectiveMappings]);
+
+  const filteredDistributionRows = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return [];
+    const selectedSet = selectedCampaignIds.length > 0 ? new Set(selectedCampaignIds.map((id) => String(id))) : null;
+    return (distributionSourceRows as Array<Record<string, unknown>>).filter((row) => {
+      if (selectedSet && sheetCampaignColumnKey) {
+        const campaign = String(row?.[sheetCampaignColumnKey] ?? '').trim();
+        if (!selectedSet.has(campaign)) return false;
+      }
+
+      if (dateRange?.from) {
+        const key = sheetDateColumnKey || Object.keys(row).find((k) => k.toLowerCase().includes('data') || k.toLowerCase().includes('date'));
+        if (key && row[key]) {
+          const rowDate = new Date(String(row[key]));
+          if (!Number.isNaN(rowDate.getTime())) {
+            const from = new Date(dateRange.from);
+            from.setHours(0, 0, 0, 0);
+            const to = dateRange.to ? new Date(dateRange.to) : new Date();
+            to.setHours(23, 59, 59, 999);
+            if (rowDate < from || rowDate > to) return false;
+          }
+        }
+      }
+
+      return true;
+    });
+  }, [dateRange, distributionSourceRows, project?.source_type, selectedCampaignIds, sheetCampaignColumnKey, sheetDateColumnKey]);
+
+  const processedDistributionData = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return null;
+    return processDashboardData(filteredDistributionRows as any[], effectiveMappings as any);
+  }, [effectiveMappings, filteredDistributionRows, project?.source_type]);
+  const sheetDistributionData = processedDistributionData?.distributionData;
 
   const sheetWeeklyData = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
@@ -1824,27 +1877,27 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   <BigNumberCard
                     label="Alcance Total"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalReach || 0) : processedData.distributionData.totalReach}
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalReach || 0) : (sheetDistributionData?.totalReach || 0)}
                     format="number"
                   />
                   <BigNumberCard
                     label="Impressões"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalImpressions || 0) : processedData.distributionData.totalImpressions}
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalImpressions || 0) : (sheetDistributionData?.totalImpressions || 0)}
                     format="number"
                   />
                   <BigNumberCard
                     label="Engajamento Médio"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.avgEngagement || 0) : processedData.distributionData.avgEngagement}
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.avgEngagement || 0) : (sheetDistributionData?.avgEngagement || 0)}
                     format="percentage"
                   />
                   <BigNumberCard
                     label="Views de Vídeo"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.videoViews || 0) : processedData.distributionData.videoViews}
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.videoViews || 0) : (sheetDistributionData?.videoViews || 0)}
                     format="number"
                   />
                   <BigNumberCard
                     label="Novos Seguidores"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followersGained || 0) : processedData.distributionData.followersGained}
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followersGained || 0) : (sheetDistributionData?.followersGained || 0)}
                     format="number"
                   />
                 </div>
@@ -1852,7 +1905,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
               {(project?.source_type === 'meta_ads'
                 ? (metaDistributionData?.platformBreakdown || []).length > 0
-                : processedData.distributionData.platformBreakdown.length > 0) && (
+                : (sheetDistributionData?.platformBreakdown || []).length > 0) && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Breakdown por Plataforma</h3>
                   <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
@@ -1867,7 +1920,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                       <tbody className="divide-y">
                         {(project?.source_type === 'meta_ads'
                           ? (metaDistributionData?.platformBreakdown || [])
-                          : processedData.distributionData.platformBreakdown
+                          : (sheetDistributionData?.platformBreakdown || [])
                         ).map((item) => (
                           <tr key={item.platform} className="hover:bg-muted/30">
                             <td className="px-4 py-3 font-medium capitalize">{item.platform}</td>

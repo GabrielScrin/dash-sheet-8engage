@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Table2, Loader2, ChevronRight, Check } from 'lucide-react';
+import { Loader2, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -17,22 +21,25 @@ interface SheetTab {
 interface SheetTabSelectorProps {
   spreadsheetId: string;
   spreadsheetName: string;
-  selectedTabs?: string[];
-  onSelect: (tabs: SheetTab[]) => void;
+  selectedPerpetua?: string | null;
+  selectedDistribuicao?: string | null;
+  onSelect: (selection: { perpetua: string; distribuicao: string }) => void;
   onBack: () => void;
 }
 
 export function SheetTabSelector({
   spreadsheetId,
   spreadsheetName,
-  selectedTabs = [],
+  selectedPerpetua = null,
+  selectedDistribuicao = null,
   onSelect,
   onBack
 }: SheetTabSelectorProps) {
   const { toast } = useToast();
   const [tabs, setTabs] = useState<SheetTab[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Set<string>>(new Set(selectedTabs));
+  const [perpetuaTab, setPerpetuaTab] = useState<string>(selectedPerpetua || '');
+  const [distribuicaoTab, setDistribuicaoTab] = useState<string>(selectedDistribuicao || '');
 
   useEffect(() => {
     const fetchTabs = async () => {
@@ -62,29 +69,25 @@ export function SheetTabSelector({
     fetchTabs();
   }, [spreadsheetId]);
 
-  const toggleTab = (tab: SheetTab) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(tab.title)) {
-        next.delete(tab.title);
-      } else {
-        next.add(tab.title);
-      }
-      return next;
-    });
-  };
+  useEffect(() => {
+    setPerpetuaTab(selectedPerpetua || '');
+  }, [selectedPerpetua]);
+
+  useEffect(() => {
+    setDistribuicaoTab(selectedDistribuicao || '');
+  }, [selectedDistribuicao]);
 
   const handleConfirm = () => {
-    const selectedTabObjects = tabs.filter(tab => selected.has(tab.title));
-    if (selectedTabObjects.length === 0) {
+    if (!perpetuaTab || !distribuicaoTab) {
       toast({
-        title: 'Selecione ao menos uma aba',
-        description: 'VocÃª precisa selecionar ao menos uma aba para continuar.',
+        title: 'Selecione as duas abas',
+        description: 'Escolha uma aba para Perpétua e outra para Distribuição.',
         variant: 'destructive',
       });
       return;
     }
-    onSelect(selectedTabObjects);
+
+    onSelect({ perpetua: perpetuaTab, distribuicao: distribuicaoTab });
   };
 
   if (loading) {
@@ -108,71 +111,55 @@ export function SheetTabSelector({
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Selecione as abas que contÃªm os dados do dashboard:
+          Escolha qual aba alimenta cada visualização do dashboard:
         </p>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="select-all"
-              checked={tabs.length > 0 && selected.size === tabs.length}
-              onCheckedChange={(checked) => {
-                if (checked) {
-                  setSelected(new Set(tabs.map(t => t.title)));
-                } else {
-                  setSelected(new Set());
-                }
-              }}
-            />
-            <Label htmlFor="select-all" className="text-sm cursor-pointer whitespace-nowrap">
-              Selecionar Todas
-            </Label>
-          </div>
-          {selected.size > 0 && (
-            <Badge variant="secondary">
-              {selected.size} aba{selected.size > 1 ? 's' : ''} selecionada{selected.size > 1 ? 's' : ''}
-            </Badge>
-          )}
-        </div>
+        <div className="text-xs text-muted-foreground">Perpétua + Distribuição</div>
       </div>
 
-      <div className="grid gap-2">
-        {tabs.map((tab) => {
-          const isSelected = selected.has(tab.title);
-          return (
-            <Card
-              key={tab.sheetId}
-              className={`cursor-pointer transition-colors hover:bg-muted ${isSelected ? 'border-primary bg-primary/5' : ''
-                }`}
-              onClick={() => toggleTab(tab)}
-            >
-              <CardContent className="flex items-center gap-3 p-4">
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={() => toggleTab(tab)}
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                  <Table2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">{tab.title}</p>
-                  <p className="text-xs text-muted-foreground">Aba {tab.index + 1}</p>
-                </div>
-                {isSelected && (
-                  <Check className="h-5 w-5 text-primary" />
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
+      <div className="grid gap-3 md:grid-cols-2">
+        <Card>
+          <CardContent className="p-4 space-y-2">
+            <p className="text-sm font-medium">Aba da visão Perpétua</p>
+            <Select value={perpetuaTab} onValueChange={setPerpetuaTab}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a aba" />
+              </SelectTrigger>
+              <SelectContent>
+                {tabs.map((tab) => (
+                  <SelectItem key={`perp-${tab.sheetId}`} value={tab.title}>
+                    {tab.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4 space-y-2">
+            <p className="text-sm font-medium">Aba da Distribuição</p>
+            <Select value={distribuicaoTab} onValueChange={setDistribuicaoTab}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a aba" />
+              </SelectTrigger>
+              <SelectContent>
+                {tabs.map((tab) => (
+                  <SelectItem key={`dist-${tab.sheetId}`} value={tab.title}>
+                    {tab.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex items-center justify-between pt-4">
         <Button variant="outline" onClick={onBack}>
           Voltar
         </Button>
-        <Button onClick={handleConfirm} disabled={selected.size === 0}>
-          Confirmar SeleÃ§Ã£o
+        <Button onClick={handleConfirm} disabled={!perpetuaTab || !distribuicaoTab}>
+          Confirmar Seleção
         </Button>
       </div>
     </div>

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronRight, FileSpreadsheet, Columns, BarChart3, Share2, Eye, Database, Link2, Facebook } from 'lucide-react';
+import { Check, ChevronRight, FileSpreadsheet, Share2, Eye, Database, Link2, Facebook } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,8 +12,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { SheetSelector } from '@/components/sheets/SheetSelector';
 import { SheetTabSelector } from '@/components/sheets/SheetTabSelector';
-import { ColumnMapper } from '@/components/config/ColumnMapper';
-import { KPIConfigurator } from '@/components/config/KPIConfigurator';
 import { ShareManager } from '@/components/config/ShareManager';
 import { AccessLogsPanel } from '@/components/dashboard/AccessLogsPanel';
 
@@ -35,13 +33,12 @@ type SourceType = 'sheet' | 'meta_ads' | null;
 const allSteps = [
   { id: 1, name: 'Fonte', icon: Database, description: 'Escolha a origem dos dados' },
   { id: 2, name: 'Conexão', icon: Link2, description: 'Conecte sua conta ou planilha' },
-  { id: 3, name: 'Colunas', icon: Columns, description: 'Mapeie e ajuste métricas' },
   { id: 4, name: 'Publicar', icon: Share2, description: 'Compartilhe seu dashboard' },
 ];
 
 const getStepsBySource = (sourceType: SourceType) => {
   if (sourceType === 'meta_ads') return allSteps.filter((step) => [1, 2, 4].includes(step.id));
-  if (sourceType === 'sheet') return allSteps;
+  if (sourceType === 'sheet') return allSteps.filter((step) => [1, 2, 4].includes(step.id));
   return allSteps.filter((step) => step.id === 1);
 };
 
@@ -132,8 +129,7 @@ export default function ProjectConfig() {
     }
 
     if (!projectData.source_type) return 1;
-    if (projectData.source_type === 'meta_ads') return 2;
-    return projectData.spreadsheet_id && projectData.sheet_name ? 3 : 2;
+    return 2;
   };
 
   const fetchProject = async () => {
@@ -183,7 +179,13 @@ export default function ProjectConfig() {
         .update({
           spreadsheet_id: spreadsheet.id,
           spreadsheet_name: spreadsheet.name,
-          sheet_name: null, // Reset sheet name when changing spreadsheet
+          sheet_name: null,
+          sheet_names: [],
+          source_config: {
+            ...(project.source_config || {}),
+            sheet_perpetua: null,
+            sheet_distribuicao: null,
+          },
         })
         .eq('id', project.id);
 
@@ -194,6 +196,12 @@ export default function ProjectConfig() {
         spreadsheet_id: spreadsheet.id,
         spreadsheet_name: spreadsheet.name,
         sheet_name: null,
+        sheet_names: [],
+        source_config: {
+          ...(project.source_config || {}),
+          sheet_perpetua: null,
+          sheet_distribuicao: null,
+        },
       });
       setSheetSelectorOpen(false);
       setCurrentStep(2);
@@ -232,15 +240,20 @@ export default function ProjectConfig() {
     }
   };
 
-  const handleTabsSelect = async (tabs: { sheetId: number; title: string }[]) => {
+  const handleTabsSelect = async ({ perpetua, distribuicao }: { perpetua: string; distribuicao: string }) => {
     if (!project) return;
     try {
-      const sheetNames = tabs.map(t => t.title);
+      const sheetNames = [perpetua, distribuicao];
       const { error } = await supabase
         .from('projects')
         .update({
-          sheet_name: sheetNames[0], // Keep backward compatibility
+          sheet_name: perpetua,
           sheet_names: sheetNames,
+          source_config: {
+            ...(project.source_config || {}),
+            sheet_perpetua: perpetua,
+            sheet_distribuicao: distribuicao,
+          },
         })
         .eq('id', project.id);
 
@@ -248,14 +261,19 @@ export default function ProjectConfig() {
 
       setProject({
         ...project,
-        sheet_name: sheetNames[0],
+        sheet_name: perpetua,
         sheet_names: sheetNames,
+        source_config: {
+          ...(project.source_config || {}),
+          sheet_perpetua: perpetua,
+          sheet_distribuicao: distribuicao,
+        },
       });
-      setCurrentStep(3);
+      setCurrentStep(2);
 
       toast({
         title: 'Abas selecionadas!',
-        description: `${sheetNames.length} aba${sheetNames.length > 1 ? 's' : ''} configurada${sheetNames.length > 1 ? 's' : ''}.`,
+        description: 'Perpétua e Distribuição configuradas com sucesso.',
       });
     } catch (error: any) {
       toast({
@@ -501,7 +519,8 @@ export default function ProjectConfig() {
                 <SheetTabSelector
                   spreadsheetId={project.spreadsheet_id}
                   spreadsheetName={project.spreadsheet_name}
-                  selectedTabs={project.sheet_names || []}
+                  selectedPerpetua={project.source_config?.sheet_perpetua || project.sheet_names?.[0] || null}
+                  selectedDistribuicao={project.source_config?.sheet_distribuicao || project.sheet_names?.[1] || project.sheet_names?.[0] || null}
                   onSelect={handleTabsSelect}
                   onBack={() => setCurrentStep(1)}
                 />
@@ -510,41 +529,7 @@ export default function ProjectConfig() {
           </div>
         );
       case 3:
-        return project?.spreadsheet_id && project?.sheet_names && project.sheet_names.length > 0 ? (
-          <div className="space-y-8">
-            <ColumnMapper
-              projectId={project.id}
-              spreadsheetId={project.spreadsheet_id}
-              sheetNames={project.sheet_names}
-            />
-
-            <div className="rounded-lg border p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <BarChart3 className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-semibold">KPIs (opcional)</h3>
-              </div>
-              <p className="text-sm text-muted-foreground mb-6">
-                Ajuste nomes, formatos e campos-alvo. Se você não configurar, o dashboard ainda aparece — só pode ficar sem métricas.
-              </p>
-              <KPIConfigurator
-                projectId={project.id}
-                spreadsheetId={project.spreadsheet_id}
-                sheetNames={project.sheet_names}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-lg border p-6 text-center">
-            <Columns className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Mapear Colunas</h3>
-            <p className="text-muted-foreground">
-              Primeiro, selecione as abas da planilha na etapa anterior.
-            </p>
-            <Button className="mt-4" onClick={() => setCurrentStep(2)}>
-              Ir para Etapa 2
-            </Button>
-          </div>
-        );
+        return null;
       case 4:
         return project?.id ? (
           <div className="space-y-6">
@@ -603,6 +588,21 @@ export default function ProjectConfig() {
     if (!project) return;
 
     if (project.source_type === 'meta_ads' && currentStep === 2) {
+      navigate(`/app/projects/${project.id}/preview`);
+      return;
+    }
+
+    if (project.source_type === 'sheet' && currentStep === 2) {
+      const hasPerpetua = Boolean(project.source_config?.sheet_perpetua);
+      const hasDistribuicao = Boolean(project.source_config?.sheet_distribuicao);
+      if (!hasPerpetua || !hasDistribuicao) {
+        toast({
+          title: 'Selecione as abas primeiro',
+          description: 'Defina uma aba para Perpétua e outra para Distribuição antes de continuar.',
+          variant: 'destructive',
+        });
+        return;
+      }
       navigate(`/app/projects/${project.id}/preview`);
       return;
     }

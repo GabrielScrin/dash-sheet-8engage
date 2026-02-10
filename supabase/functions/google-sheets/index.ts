@@ -42,20 +42,41 @@ async function refreshAccessToken(refreshToken: string): Promise<string> {
 }
 
 async function listSpreadsheets(accessToken: string) {
-  const response = await fetch(
-    "https://www.googleapis.com/drive/v3/files?q=mimeType='application/vnd.google-apps.spreadsheet'&fields=files(id,name,modifiedTime,iconLink)&orderBy=modifiedTime desc&pageSize=50",
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
+  const files: any[] = [];
+  let pageToken: string | null = null;
+
+  do {
+    const params = new URLSearchParams({
+      q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+      fields: "nextPageToken,files(id,name,modifiedTime,iconLink)",
+      orderBy: "modifiedTime desc",
+      pageSize: "100",
+      includeItemsFromAllDrives: "true",
+      supportsAllDrives: "true",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+
+    const response = await fetch(
+      `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error("Drive API error:", error);
+      throw new Error("Failed to list spreadsheets");
     }
-  );
 
-  if (!response.ok) {
-    const error = await response.text();
-    console.error("Drive API error:", error);
-    throw new Error("Failed to list spreadsheets");
-  }
+    const data = await response.json();
+    if (Array.isArray(data?.files)) files.push(...data.files);
+    pageToken = data?.nextPageToken || null;
 
-  return await response.json();
+    if (files.length >= 2000) break;
+  } while (pageToken);
+
+  return { files };
 }
 
 async function getSheetTabs(accessToken: string, spreadsheetId: string) {
