@@ -29,7 +29,7 @@ interface CreativeData {
 interface MetricOption {
   key: string;
   label: string;
-  format: 'number' | 'currency' | 'percentage' | 'decimal';
+  format: 'number' | 'currency' | 'percentage' | 'decimal' | 'link';
 }
 
 interface CreativePerformanceTableProps {
@@ -127,13 +127,19 @@ export function CreativePerformanceTable({
         return String(a?.name || '').localeCompare(String(b?.name || '')) * direction;
       }
       const metricKey = visibleMetricColumns[sortTarget.index] || visibleMetricColumns[0] || 'sales';
+      const metric = resolveMetric(metricKey);
+      if (metric?.format === 'link') {
+        const aText = String(a?.[metricKey] || '');
+        const bText = String(b?.[metricKey] || '');
+        return aText.localeCompare(bText, 'pt-BR') * direction;
+      }
       const aVal = getMetaMetricValue(a as Record<string, unknown>, metricKey);
       const bVal = getMetaMetricValue(b as Record<string, unknown>, metricKey);
       return (aVal - bVal) * direction;
     });
   }, [data, sortDirection, sortTarget, visibleMetricColumns]);
 
-  const formatMetricValue = (value: number, formatType: 'number' | 'currency' | 'percentage' | 'decimal') => {
+  const formatMetricValue = (value: number, formatType: 'number' | 'currency' | 'percentage' | 'decimal' | 'link') => {
     switch (formatType) {
       case 'currency':
         return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -141,6 +147,8 @@ export function CreativePerformanceTable({
         return `${value.toFixed(1)}%`;
       case 'decimal':
         return value.toFixed(2);
+      case 'link':
+        return String(value || '');
       default:
         return Math.round(value).toLocaleString('pt-BR');
     }
@@ -289,6 +297,8 @@ export function CreativePerformanceTable({
                   {visibleMetricColumns.map((metricKey, index) => {
                     const metric = resolveMetric(metricKey);
                     const rawValue = getMetaMetricValue(row as Record<string, unknown>, metric.key);
+                    const linkValue = String((row as Record<string, unknown>)?.[metric.key] ?? '').trim();
+                    const isLinkMetric = metric.format === 'link';
                     const isPositiveHighlight =
                       (metric.key === 'roas' && rawValue >= 3.5) ||
                       (metric.key === 'ctr' && rawValue >= 2.5) ||
@@ -296,9 +306,26 @@ export function CreativePerformanceTable({
                       (metric.key === 'hold_rate' && rawValue >= 0.1);
                     return (
                       <TableCell key={`${metric.key}-${index}`}>
-                        <span className={isPositiveHighlight ? 'text-kpi-positive font-medium' : ''}>
-                          {formatMetricValue(rawValue, metric.format)}
-                        </span>
+                        {isLinkMetric ? (
+                          linkValue ? (
+                            <a
+                              href={linkValue}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-primary hover:underline"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              Abrir link
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )
+                        ) : (
+                          <span className={isPositiveHighlight ? 'text-kpi-positive font-medium' : ''}>
+                            {formatMetricValue(rawValue, metric.format)}
+                          </span>
+                        )}
                       </TableCell>
                     );
                   })}

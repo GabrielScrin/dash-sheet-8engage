@@ -26,6 +26,8 @@ import { format, startOfMonth, startOfWeek, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { useAuth } from '@/contexts/AuthContext';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 
 // Helper to safely type source_config from Json
 interface MetaSourceConfig {
@@ -223,9 +225,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
   const [weeklyMetricColumns, setWeeklyMetricColumns] = useState<string[]>(['result', 'impressions', 'reach', 'cpc', 'ctr']);
   const [creativeMetricColumns, setCreativeMetricColumns] = useState<string[]>(['post_engagement', 'hook_rate', 'hold_rate', 'cpc', 'cost_per_result']);
+  const [metaChartMetricColumns, setMetaChartMetricColumns] = useState<string[]>(['investment', 'impressions', 'clicks', 'result']);
   const [sheetBigNumberColumns, setSheetBigNumberColumns] = useState<string[]>([]);
   const [sheetWeeklyMetricColumns, setSheetWeeklyMetricColumns] = useState<string[]>([]);
   const [sheetCreativeMetricColumns, setSheetCreativeMetricColumns] = useState<string[]>([]);
+  const [sheetChartMetricColumns, setSheetChartMetricColumns] = useState<string[]>([]);
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -258,9 +262,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const adAccountId = sourceConfig?.ad_account_id;
   const weeklyColumnsStorageKey = `meta-weekly-columns:${projectId}`;
   const creativeColumnsStorageKey = `meta-creative-columns:${projectId}`;
+  const metaChartColumnsStorageKey = `meta-chart-columns:${projectId}`;
   const sheetBigNumbersStorageKey = `sheet-big-numbers:${projectId}`;
   const sheetWeeklyStorageKey = `sheet-weekly-columns:${projectId}`;
   const sheetCreativeStorageKey = `sheet-creative-columns:${projectId}`;
+  const sheetChartStorageKey = `sheet-chart-columns:${projectId}`;
 
   React.useEffect(() => {
     if (project?.source_type !== 'meta_ads') return;
@@ -313,11 +319,37 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   }, [creativeColumnsStorageKey, creativeMetricColumns, project?.source_type]);
 
   React.useEffect(() => {
+    if (project?.source_type !== 'meta_ads') return;
+    try {
+      const raw = window.localStorage.getItem(metaChartColumnsStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const normalized = parsed.map((value: unknown) => String(value)).filter(Boolean);
+      if (normalized.length > 0) {
+        setMetaChartMetricColumns((prev) => (prev.join('|') === normalized.join('|') ? prev : normalized));
+      }
+    } catch {
+      // noop
+    }
+  }, [metaChartColumnsStorageKey, project?.source_type]);
+
+  React.useEffect(() => {
+    if (project?.source_type !== 'meta_ads') return;
+    try {
+      window.localStorage.setItem(metaChartColumnsStorageKey, JSON.stringify(metaChartMetricColumns));
+    } catch {
+      // noop
+    }
+  }, [metaChartColumnsStorageKey, metaChartMetricColumns, project?.source_type]);
+
+  React.useEffect(() => {
     if (project?.source_type === 'meta_ads') return;
     try {
       window.localStorage.setItem(sheetBigNumbersStorageKey, JSON.stringify(sheetBigNumberColumns));
       window.localStorage.setItem(sheetWeeklyStorageKey, JSON.stringify(sheetWeeklyMetricColumns));
       window.localStorage.setItem(sheetCreativeStorageKey, JSON.stringify(sheetCreativeMetricColumns));
+      window.localStorage.setItem(sheetChartStorageKey, JSON.stringify(sheetChartMetricColumns));
     } catch {
       // noop
     }
@@ -327,6 +359,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     sheetBigNumbersStorageKey,
     sheetCreativeMetricColumns,
     sheetCreativeStorageKey,
+    sheetChartMetricColumns,
+    sheetChartStorageKey,
     sheetWeeklyMetricColumns,
     sheetWeeklyStorageKey,
   ]);
@@ -782,6 +816,19 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     [sheetMetricOptions],
   );
 
+  const sheetCreativeMetricOptions = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return [];
+    const options = [...sheetMetricOptions];
+    if (sheetPermalinkColumnKey) {
+      options.push({
+        key: sheetPermalinkColumnKey,
+        label: 'Instagram Permalink URL',
+        format: 'link' as const,
+      });
+    }
+    return options;
+  }, [project?.source_type, sheetMetricOptions, sheetPermalinkColumnKey]);
+
   React.useEffect(() => {
     if (project?.source_type === 'meta_ads') return;
     const available = sheetMetricOptions.map((option) => option.key);
@@ -816,9 +863,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       if (prev.length > 0) return clampToAvailable(prev, 5);
       return clampToAvailable(readStored(sheetCreativeStorageKey), 5);
     });
+    setSheetChartMetricColumns((prev) => {
+      if (prev.length > 0) return clampToAvailable(prev, 4);
+      return clampToAvailable(readStored(sheetChartStorageKey), 4);
+    });
   }, [
     project?.source_type,
     sheetBigNumbersStorageKey,
+    sheetChartStorageKey,
     sheetCreativeStorageKey,
     sheetMetricOptions,
     sheetWeeklyStorageKey,
@@ -1391,6 +1443,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const creativeLink = sheetPermalinkColumnKey ? String(row?.[sheetPermalinkColumnKey] ?? '').trim() : '';
       const creativeThumb = sheetThumbnailColumnKey ? String(row?.[sheetThumbnailColumnKey] ?? '').trim() : '';
       if (creativeLink && !current.link) current.link = creativeLink;
+      if (sheetPermalinkColumnKey && creativeLink) current[sheetPermalinkColumnKey] = creativeLink;
       if (creativeThumb && !current.thumbnail) current.thumbnail = creativeThumb;
       for (const metric of sheetMetricOptions) {
         if (sheetRoasMetricKey && metric.key === sheetRoasMetricKey) continue;
@@ -1705,6 +1758,70 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       .sort((a, b) => b.sales - a.sales)
       .slice(0, 50);
   }, [metaAdsQuery.data, project?.source_type, selectedCampaignIds]);
+
+  const chartMetricOptions = useMemo(() => {
+    if (project?.source_type === 'meta_ads') {
+      return metaWeeklyMetricOptions.filter((option) => option.format !== 'link');
+    }
+    return sheetMetricOptions.filter((option) => option.format !== 'link');
+  }, [metaWeeklyMetricOptions, project?.source_type, sheetMetricOptions]);
+
+  const chartMetricColumns =
+    project?.source_type === 'meta_ads' ? metaChartMetricColumns : sheetChartMetricColumns;
+  const setChartMetricColumns =
+    project?.source_type === 'meta_ads' ? setMetaChartMetricColumns : setSheetChartMetricColumns;
+
+  const chartSeriesColumns = useMemo(() => {
+    const available = chartMetricOptions.map((option) => option.key);
+    if (available.length === 0) return [];
+    const preferredDefaults =
+      project?.source_type === 'meta_ads'
+        ? ['investment', 'impressions', 'clicks', 'result']
+        : available.slice(0, 4);
+    const source = chartMetricColumns.length > 0 ? chartMetricColumns : preferredDefaults;
+    const normalized = source
+      .map((key, index) => (available.includes(key) ? key : preferredDefaults[index] || available[index] || available[0]))
+      .filter(Boolean)
+      .slice(0, 4);
+    while (normalized.length < Math.min(4, available.length)) {
+      normalized.push(available[normalized.length]);
+    }
+    return normalized;
+  }, [chartMetricColumns, chartMetricOptions, project?.source_type]);
+
+  React.useEffect(() => {
+    if (chartSeriesColumns.length === 0) return;
+    setChartMetricColumns((prev) => {
+      if (prev.join('|') === chartSeriesColumns.join('|')) return prev;
+      return chartSeriesColumns;
+    });
+  }, [chartSeriesColumns, setChartMetricColumns]);
+
+  const trendRows = useMemo(() => {
+    const baseRows = (project?.source_type === 'meta_ads' ? metaWeeklyData : sheetWeeklyData) as Array<Record<string, unknown>>;
+    if (!baseRows.length || chartSeriesColumns.length === 0) return [];
+    return baseRows.map((row) => {
+      const seriesValues = chartSeriesColumns.reduce<Record<string, number>>((acc, metricKey) => {
+        acc[metricKey] = getMetaMetricValue(row, metricKey);
+        return acc;
+      }, {});
+      return {
+        period: String(row.week ?? row.periodKey ?? ''),
+        ...seriesValues,
+      };
+    });
+  }, [chartSeriesColumns, metaWeeklyData, project?.source_type, sheetWeeklyData]);
+
+  const trendChartConfig = useMemo(() => {
+    return chartSeriesColumns.reduce<Record<string, { label: string; color: string }>>((acc, metricKey, index) => {
+      const option = chartMetricOptions.find((metric) => metric.key === metricKey);
+      acc[metricKey] = {
+        label: option?.label || metricKey,
+        color: `hsl(var(--chart-${(index % 5) + 1}))`,
+      };
+      return acc;
+    }, {});
+  }, [chartMetricOptions, chartSeriesColumns]);
 
   const creativeAdIds = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
@@ -2231,6 +2348,59 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                 </section>
               )}
 
+              {trendRows.length > 0 && chartMetricOptions.length > 0 && (
+                <section>
+                  <h3 className="mb-4 text-lg font-semibold">Gráficos de Tendência</h3>
+                  <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {chartSeriesColumns.slice(0, 4).map((metricKey, index) => (
+                      <Select
+                        key={`chart-metric-${index}`}
+                        value={metricKey}
+                        onValueChange={(value) =>
+                          setChartMetricColumns((prev) => {
+                            const next = [...prev];
+                            next[index] = value;
+                            return next;
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder={`Métrica ${index + 1}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {chartMetricOptions.map((option) => (
+                            <SelectItem key={option.key} value={option.key}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ))}
+                  </div>
+                  <div className="h-[320px] rounded-lg border p-2">
+                    <ChartContainer config={trendChartConfig} className="h-full w-full">
+                      <LineChart data={trendRows} margin={{ left: 8, right: 8, top: 16, bottom: 8 }}>
+                        <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                        <XAxis dataKey="period" tickLine={false} axisLine={false} minTickGap={24} />
+                        <YAxis tickLine={false} axisLine={false} width={80} />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                        {chartSeriesColumns.slice(0, 4).map((metricKey, index) => (
+                          <Line
+                            key={metricKey}
+                            type="monotone"
+                            dataKey={metricKey}
+                            stroke={`hsl(var(--chart-${(index % 5) + 1}))`}
+                            strokeWidth={2}
+                            dot={false}
+                            activeDot={{ r: 4 }}
+                          />
+                        ))}
+                      </LineChart>
+                    </ChartContainer>
+                  </div>
+                </section>
+              )}
+
               {/* Weekly Comparison */}
               {(project?.source_type === 'meta_ads' ? metaWeeklyData.length > 0 : sheetWeeklyData.length > 0) && (
                 <section>
@@ -2259,7 +2429,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                     selectedCreative={selectedCreative}
                     onCreativeSelect={setSelectedCreative}
                     isMeta
-                    metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : (sheetMetricOptions as any)}
+                    metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : (sheetCreativeMetricOptions as any)}
                     defaultMetricColumns={project?.source_type === 'meta_ads' ? ['post_engagement', 'hook_rate', 'hold_rate', 'cpc', 'cost_per_result'] : sheetMetricOptions.slice(0, 5).map((x) => x.key)}
                     metricColumns={project?.source_type === 'meta_ads' ? creativeMetricColumns : sheetCreativeMetricColumns}
                     onMetricColumnsChange={project?.source_type === 'meta_ads' ? setCreativeMetricColumns : setSheetCreativeMetricColumns}
