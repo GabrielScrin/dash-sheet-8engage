@@ -174,8 +174,10 @@ const SHEET_METRIC_NAME_MAP: Array<{ pattern: RegExp; label: string; format: She
 
 const looksLikeTextMetricName = (columnName: string) => {
   const name = normalizeMetricName(columnName);
-  return /\b(name|nome|campaign|campanha|adset|ad set|adname|ad name|anuncio|criativo|creative|titulo|title)\b/.test(name);
+  return /\b(name|nome|campaign|campanha|adset|ad set|adname|ad name|anuncio|criativo|creative|titulo|title|url|link|permalink|thumbnail|thumb|image|imagem)\b/.test(name);
 };
+
+const looksLikeUrl = (value: unknown) => /^https?:\/\//i.test(String(value ?? '').trim());
 
 const inferSheetMetricMeta = (columnName: string, sampleValues: unknown[]): { label: string; format: SheetMetricFormat } => {
   const normalized = normalizeMetricName(columnName);
@@ -601,9 +603,101 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['adname', 'ad name', 'nome do anuncio', 'anuncio']),
     [sourceRows],
   );
+  const sheetAdsetNameColumnKey = useMemo(
+    () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['adset name', 'adset', 'nome do conjunto', 'conjunto']),
+    [sourceRows],
+  );
   const sheetCampaignColumnKey = useMemo(
     () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['campaign name', 'campaign', 'nome da campanha', 'campanha']),
     [sourceRows],
+  );
+  const sheetPermalinkColumnKey = useMemo(
+    () =>
+      findColumnKey(sourceRows as Array<Record<string, unknown>>, [
+        'instagram permalink url',
+        'instagram_permalink_url',
+        'permalink',
+        'post url',
+        'url',
+        'link',
+      ]),
+    [sourceRows],
+  );
+  const sheetThumbnailColumnKey = useMemo(
+    () =>
+      findColumnKey(sourceRows as Array<Record<string, unknown>>, [
+        'thumbnail',
+        'thumb',
+        'image',
+        'image url',
+        'image_url',
+        'creative thumbnail',
+      ]),
+    [sourceRows],
+  );
+
+  const distributionDateColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['date', 'data', 'day', 'dia']),
+    [distributionSourceRows],
+  );
+  const distributionCampaignColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'campaign name',
+        'campaign',
+        'nome da campanha',
+        'campanha',
+      ]),
+    [distributionSourceRows],
+  );
+  const distributionReachColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['reach', 'alcance']),
+    [distributionSourceRows],
+  );
+  const distributionImpressionsColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['impressions', 'impressoes']),
+    [distributionSourceRows],
+  );
+  const distributionEngagementColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'engagement',
+        'post engagement',
+        'engajamento',
+        'taxa de engajamento',
+      ]),
+    [distributionSourceRows],
+  );
+  const distributionVideoViewsColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'video views',
+        'video_view',
+        'views',
+        'visualizacoes de video',
+        'visualizacoes',
+        'thruplay',
+      ]),
+    [distributionSourceRows],
+  );
+  const distributionFollowersColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'followers',
+        'follows',
+        'instagram follows',
+        'seguidores',
+      ]),
+    [distributionSourceRows],
+  );
+  const distributionPlatformColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'platform',
+        'plataforma',
+        'publisher_platform',
+      ]),
+    [distributionSourceRows],
   );
 
   const sheetMetricOptions = useMemo(() => {
@@ -611,7 +705,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     const rows = sourceRows as Array<Record<string, unknown>>;
     const keys = Object.keys(rows[0] || {});
     const excluded = new Set([sheetDateColumnKey, sheetAdNameColumnKey, sheetCampaignColumnKey].filter(Boolean).map(String));
-    const metricKeys = keys.filter((key) => !excluded.has(key) && !looksLikeTextMetricName(key));
+    const metricKeys = keys.filter((key) => {
+      if (excluded.has(key)) return false;
+      if (looksLikeTextMetricName(key)) return false;
+      const samples = rows.slice(0, 80).map((row) => row?.[key]).filter((value) => String(value ?? '').trim().length > 0);
+      if (samples.length > 0 && samples.some((value) => looksLikeUrl(value))) return false;
+      return true;
+    });
     return metricKeys.map((key) => {
       const sampleValues = rows.slice(0, 80).map((row) => row?.[key]);
       const meta = inferSheetMetricMeta(key, sampleValues);
@@ -622,6 +722,25 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       };
     });
   }, [project?.source_type, sheetAdNameColumnKey, sheetCampaignColumnKey, sheetDateColumnKey, sourceRows]);
+
+  const sheetInvestmentMetricKey = useMemo(
+    () =>
+      sheetMetricOptions.find((metric) =>
+        /(spend|investment|investimento|gasto|invest)/.test(normalizeMetricName(metric.key))
+      )?.key,
+    [sheetMetricOptions],
+  );
+  const sheetRevenueMetricKey = useMemo(
+    () =>
+      sheetMetricOptions.find((metric) =>
+        /(revenue|faturamento|purchase value|valor vendido|valor de compras|vendas valor)/.test(normalizeMetricName(metric.key))
+      )?.key,
+    [sheetMetricOptions],
+  );
+  const sheetRoasMetricKey = useMemo(
+    () => sheetMetricOptions.find((metric) => /\broas\b/.test(normalizeMetricName(metric.key)))?.key,
+    [sheetMetricOptions],
+  );
 
   React.useEffect(() => {
     if (project?.source_type === 'meta_ads') return;
@@ -694,16 +813,23 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const sheetCampaignOptions = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
-    if (!sheetCampaignColumnKey) return [];
     const values = new Set<string>();
-    for (const row of sourceRows as Array<Record<string, unknown>>) {
-      const value = String(row?.[sheetCampaignColumnKey] ?? '').trim();
-      if (value) values.add(value);
+    if (sheetCampaignColumnKey) {
+      for (const row of sourceRows as Array<Record<string, unknown>>) {
+        const value = String(row?.[sheetCampaignColumnKey] ?? '').trim();
+        if (value) values.add(value);
+      }
+    }
+    if (distributionCampaignColumnKey) {
+      for (const row of distributionSourceRows as Array<Record<string, unknown>>) {
+        const value = String(row?.[distributionCampaignColumnKey] ?? '').trim();
+        if (value) values.add(value);
+      }
     }
     return Array.from(values)
       .map((name) => ({ id: name, name }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [project?.source_type, sheetCampaignColumnKey, sourceRows]);
+  }, [distributionCampaignColumnKey, distributionSourceRows, project?.source_type, sheetCampaignColumnKey, sourceRows]);
 
   const campaignOptions = project?.source_type === 'meta_ads' ? metaCampaignOptions : sheetCampaignOptions;
 
@@ -903,9 +1029,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       // Creative Filter
       if (selectedCreative) {
         const creativeKey =
-          (project?.source_type !== 'meta_ads' ? sheetAdNameColumnKey : null) ||
+          (project?.source_type !== 'meta_ads' ? (sheetAdNameColumnKey || sheetAdsetNameColumnKey) : null) ||
           Object.keys(row).find(k =>
-            k.toLowerCase().includes('criativo') || k.toLowerCase().includes('creative')
+            k.toLowerCase().includes('criativo') || k.toLowerCase().includes('creative') || k.toLowerCase().includes('adset')
           );
         if (creativeKey && row[creativeKey] !== selectedCreative) {
           return false;
@@ -914,7 +1040,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       return true;
     });
-  }, [aggregatedMetaRows, dateRange, project?.source_type, selectedCreative, sheetAdNameColumnKey]);
+  }, [aggregatedMetaRows, dateRange, project?.source_type, selectedCreative, sheetAdNameColumnKey, sheetAdsetNameColumnKey]);
 
   // 5. Process Data
   const effectiveMappings = useMemo(() => {
@@ -1031,13 +1157,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     if (project?.source_type === 'meta_ads') return [];
     const selectedSet = selectedCampaignIds.length > 0 ? new Set(selectedCampaignIds.map((id) => String(id))) : null;
     return (distributionSourceRows as Array<Record<string, unknown>>).filter((row) => {
-      if (selectedSet && sheetCampaignColumnKey) {
-        const campaign = String(row?.[sheetCampaignColumnKey] ?? '').trim();
+      if (selectedSet && distributionCampaignColumnKey) {
+        const campaign = String(row?.[distributionCampaignColumnKey] ?? '').trim();
         if (!selectedSet.has(campaign)) return false;
       }
 
       if (dateRange?.from) {
-        const key = sheetDateColumnKey || Object.keys(row).find((k) => k.toLowerCase().includes('data') || k.toLowerCase().includes('date'));
+        const key = distributionDateColumnKey || Object.keys(row).find((k) => k.toLowerCase().includes('data') || k.toLowerCase().includes('date'));
         if (key && row[key]) {
           const rowDate = new Date(String(row[key]));
           if (!Number.isNaN(rowDate.getTime())) {
@@ -1052,13 +1178,69 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       return true;
     });
-  }, [dateRange, distributionSourceRows, project?.source_type, selectedCampaignIds, sheetCampaignColumnKey, sheetDateColumnKey]);
+  }, [dateRange, distributionCampaignColumnKey, distributionDateColumnKey, distributionSourceRows, project?.source_type, selectedCampaignIds]);
 
-  const processedDistributionData = useMemo(() => {
+  const sheetDistributionData = useMemo(() => {
     if (project?.source_type === 'meta_ads') return null;
-    return processDashboardData(filteredDistributionRows as any[], effectiveMappings as any);
-  }, [effectiveMappings, filteredDistributionRows, project?.source_type]);
-  const sheetDistributionData = processedDistributionData?.distributionData;
+
+    const byPlatform = new Map<string, { reach: number; engagement: number; count: number }>();
+    let totalReach = 0;
+    let totalImpressions = 0;
+    let totalVideoViews = 0;
+    let totalFollowers = 0;
+    let totalEngagement = 0;
+    let engagementCount = 0;
+
+    for (const row of filteredDistributionRows as Array<Record<string, unknown>>) {
+      const reach = parseSheetNumber(distributionReachColumnKey ? row?.[distributionReachColumnKey] : 0);
+      const impressions = parseSheetNumber(distributionImpressionsColumnKey ? row?.[distributionImpressionsColumnKey] : 0);
+      const engagement = parseSheetNumber(distributionEngagementColumnKey ? row?.[distributionEngagementColumnKey] : 0);
+      const videoViews = parseSheetNumber(distributionVideoViewsColumnKey ? row?.[distributionVideoViewsColumnKey] : 0);
+      const followers = parseSheetNumber(distributionFollowersColumnKey ? row?.[distributionFollowersColumnKey] : 0);
+      const platformRaw = distributionPlatformColumnKey ? row?.[distributionPlatformColumnKey] : null;
+      const platform = String(platformRaw ?? 'Outros').trim() || 'Outros';
+
+      totalReach += reach;
+      totalImpressions += impressions;
+      totalVideoViews += videoViews;
+      totalFollowers += followers;
+
+      if (engagement > 0) {
+        totalEngagement += engagement;
+        engagementCount += 1;
+      }
+
+      const current = byPlatform.get(platform) || { reach: 0, engagement: 0, count: 0 };
+      current.reach += reach;
+      current.engagement += engagement;
+      if (engagement > 0) current.count += 1;
+      byPlatform.set(platform, current);
+    }
+
+    const platformBreakdown = Array.from(byPlatform.entries()).map(([platform, stats]) => ({
+      platform,
+      reach: stats.reach,
+      engagement: stats.count > 0 ? stats.engagement / stats.count : 0,
+    }));
+
+    return {
+      totalReach,
+      totalImpressions,
+      avgEngagement: engagementCount > 0 ? totalEngagement / engagementCount : 0,
+      videoViews: totalVideoViews,
+      followersGained: totalFollowers,
+      platformBreakdown,
+    };
+  }, [
+    distributionEngagementColumnKey,
+    distributionFollowersColumnKey,
+    distributionImpressionsColumnKey,
+    distributionPlatformColumnKey,
+    distributionReachColumnKey,
+    distributionVideoViewsColumnKey,
+    filteredDistributionRows,
+    project?.source_type,
+  ]);
 
   const sheetWeeklyData = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
@@ -1082,9 +1264,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       const current = byBucket.get(bucketKey) || { periodKey: bucketKey };
       for (const metric of sheetMetricOptions) {
+        if (sheetRoasMetricKey && metric.key === sheetRoasMetricKey) continue;
         const currentValue = parseSheetNumber(current[metric.key]);
         const nextValue = parseSheetNumber(row?.[metric.key]);
         current[metric.key] = currentValue + nextValue;
+      }
+      if (sheetRoasMetricKey && sheetInvestmentMetricKey && sheetRevenueMetricKey) {
+        const invest = parseSheetNumber(current[sheetInvestmentMetricKey]);
+        const revenue = parseSheetNumber(current[sheetRevenueMetricKey]);
+        current[sheetRoasMetricKey] = invest > 0 ? revenue / invest : 0;
       }
       byBucket.set(bucketKey, current);
     }
@@ -1111,38 +1299,78 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           ...values,
         };
       });
-  }, [filteredRows, project?.source_type, sheetDateColumnKey, sheetMetricOptions, viewMode]);
+  }, [filteredRows, project?.source_type, sheetDateColumnKey, sheetInvestmentMetricKey, sheetMetricOptions, sheetRevenueMetricKey, sheetRoasMetricKey, viewMode]);
 
   const sheetCreativeData = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
-    if (!sheetAdNameColumnKey) return [];
+    if (!sheetAdNameColumnKey && !sheetAdsetNameColumnKey) return [];
+    const creativeColumnKey = sheetAdNameColumnKey || sheetAdsetNameColumnKey;
     const byCreative = new Map<string, Record<string, unknown>>();
     for (const row of filteredRows as Array<Record<string, unknown>>) {
-      const creativeName = String(row?.[sheetAdNameColumnKey] ?? '').trim();
+      const creativeName = String((creativeColumnKey && row?.[creativeColumnKey]) ?? '').trim();
       if (!creativeName) continue;
       const current = byCreative.get(creativeName) || {
         id: creativeName,
         name: creativeName,
+        link: undefined,
+        thumbnail: undefined,
       };
+      const creativeLink = sheetPermalinkColumnKey ? String(row?.[sheetPermalinkColumnKey] ?? '').trim() : '';
+      const creativeThumb = sheetThumbnailColumnKey ? String(row?.[sheetThumbnailColumnKey] ?? '').trim() : '';
+      if (creativeLink && !current.link) current.link = creativeLink;
+      if (creativeThumb && !current.thumbnail) current.thumbnail = creativeThumb;
       for (const metric of sheetMetricOptions) {
+        if (sheetRoasMetricKey && metric.key === sheetRoasMetricKey) continue;
         const currentValue = parseSheetNumber(current[metric.key]);
         const nextValue = parseSheetNumber(row?.[metric.key]);
         current[metric.key] = currentValue + nextValue;
       }
+      if (sheetRoasMetricKey && sheetInvestmentMetricKey && sheetRevenueMetricKey) {
+        const invest = parseSheetNumber(current[sheetInvestmentMetricKey]);
+        const revenue = parseSheetNumber(current[sheetRevenueMetricKey]);
+        current[sheetRoasMetricKey] = invest > 0 ? revenue / invest : 0;
+      }
       byCreative.set(creativeName, current);
     }
     return Array.from(byCreative.values()).slice(0, 200);
-  }, [filteredRows, project?.source_type, sheetAdNameColumnKey, sheetMetricOptions]);
+  }, [
+    filteredRows,
+    project?.source_type,
+    sheetAdNameColumnKey,
+    sheetAdsetNameColumnKey,
+    sheetInvestmentMetricKey,
+    sheetMetricOptions,
+    sheetPermalinkColumnKey,
+    sheetRevenueMetricKey,
+    sheetRoasMetricKey,
+    sheetThumbnailColumnKey,
+  ]);
 
   const sheetBigNumbers = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
     const metricMap = new Map(sheetMetricOptions.map((metric) => [metric.key, metric]));
     return sheetBigNumberColumns.slice(0, 6).map((metricKey, index) => {
       const metricMeta = metricMap.get(metricKey);
-      const total = (filteredRows as Array<Record<string, unknown>>).reduce(
-        (sum, row) => sum + parseSheetNumber(row?.[metricKey]),
-        0,
-      );
+      const total =
+        sheetRoasMetricKey &&
+        metricKey === sheetRoasMetricKey &&
+        sheetInvestmentMetricKey &&
+        sheetRevenueMetricKey
+          ? (() => {
+              const investment = (filteredRows as Array<Record<string, unknown>>).reduce(
+                (sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]),
+                0,
+              );
+              const revenue = (filteredRows as Array<Record<string, unknown>>).reduce(
+                (sum, row) => sum + parseSheetNumber(row?.[sheetRevenueMetricKey]),
+                0,
+              );
+              return investment > 0 ? revenue / investment : 0;
+            })()
+          : (filteredRows as Array<Record<string, unknown>>).reduce(
+              (sum, row) => sum + parseSheetNumber(row?.[metricKey]),
+              0,
+            );
       return {
         key: metricKey || `metric_${index}`,
         label: metricMeta?.label || `Métrica ${index + 1}`,
@@ -1150,7 +1378,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         format: (metricMeta?.format || 'number') as 'number' | 'currency' | 'percentage' | 'decimal',
       };
     });
-  }, [filteredRows, project?.source_type, sheetBigNumberColumns, sheetMetricOptions]);
+  }, [
+    filteredRows,
+    project?.source_type,
+    sheetBigNumberColumns,
+    sheetInvestmentMetricKey,
+    sheetMetricOptions,
+    sheetRevenueMetricKey,
+    sheetRoasMetricKey,
+  ]);
 
   const metaWeeklyData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
