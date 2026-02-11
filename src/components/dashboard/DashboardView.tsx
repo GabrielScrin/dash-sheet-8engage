@@ -69,6 +69,35 @@ const parseSheetNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const parseSheetDateValue = (value: unknown): Date | null => {
+  if (value === null || value === undefined) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const direct = new Date(raw);
+  if (!Number.isNaN(direct.getTime())) return direct;
+
+  const br = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (br) {
+    const day = Number(br[1]);
+    const month = Number(br[2]);
+    const year = Number(br[3].length === 2 ? `20${br[3]}` : br[3]);
+    const parsed = new Date(year, month - 1, day);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  const iso = raw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    const parsed = new Date(year, month - 1, day);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  return null;
+};
+
 type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal';
 
 const normalizeMetricName = (value: string) =>
@@ -1261,22 +1290,21 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     return aggregatedMetaRows.filter(row => {
       // Date Filter
       if (dateRange?.from) {
-        // Try to find a date column
-        const dateKey = Object.keys(row).find(k =>
-          k.toLowerCase().includes('data') || k.toLowerCase().includes('date')
-        );
+        const dateKey =
+          project?.source_type === 'meta_ads'
+            ? (Object.keys(row).find((k) => k.toLowerCase().includes('data') || k.toLowerCase().includes('date') || k === 'date' || k === 'date_start') || null)
+            : (sheetDateColumnKey || Object.keys(row).find((k) => k.toLowerCase().includes('data') || k.toLowerCase().includes('date')) || null);
         if (dateKey && row[dateKey]) {
-          const rowDate = new Date(row[dateKey]);
-          if (!isNaN(rowDate.getTime())) {
-            // Normalize dates to start of day for inclusive comparison
+          const rowDate = parseSheetDateValue(row[dateKey]);
+          if (rowDate) {
             const from = new Date(dateRange.from!);
             from.setHours(0, 0, 0, 0);
-
             const to = dateRange.to ? new Date(dateRange.to) : new Date();
             to.setHours(23, 59, 59, 999);
-
             if (rowDate < from) return false;
             if (rowDate > to) return false;
+          } else if (project?.source_type !== 'meta_ads') {
+            return false;
           }
         }
       }
@@ -1295,7 +1323,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       return true;
     });
-  }, [aggregatedMetaRows, dateRange, project?.source_type, selectedCreative, sheetAdNameColumnKey, sheetAdsetNameColumnKey]);
+  }, [aggregatedMetaRows, dateRange, project?.source_type, selectedCreative, sheetAdNameColumnKey, sheetAdsetNameColumnKey, sheetDateColumnKey]);
 
   // 5. Process Data
   const effectiveMappings = useMemo(() => {
@@ -1428,13 +1456,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       if (dateRange?.from) {
         const key = distributionDateColumnKey || Object.keys(row).find((k) => k.toLowerCase().includes('data') || k.toLowerCase().includes('date'));
         if (key && row[key]) {
-          const rowDate = new Date(String(row[key]));
-          if (!Number.isNaN(rowDate.getTime())) {
+          const rowDate = parseSheetDateValue(row[key]);
+          if (rowDate) {
             const from = new Date(dateRange.from);
             from.setHours(0, 0, 0, 0);
             const to = dateRange.to ? new Date(dateRange.to) : new Date();
             to.setHours(23, 59, 59, 999);
             if (rowDate < from || rowDate > to) return false;
+          } else {
+            return false;
           }
         }
       }
@@ -1597,8 +1627,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     for (const row of filteredRows as Array<Record<string, unknown>>) {
       const rawDate = row?.[sheetDateColumnKey];
       if (!rawDate) continue;
-      const parsedDate = new Date(String(rawDate));
-      if (Number.isNaN(parsedDate.getTime())) continue;
+      const parsedDate = parseSheetDateValue(rawDate);
+      if (!parsedDate) continue;
 
       let bucketKey = '';
       if (viewMode === 'day') {
