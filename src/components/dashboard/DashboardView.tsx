@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
@@ -763,6 +763,30 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       ]),
     [distributionSourceRows],
   );
+  const distributionPermalinkColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'instagram permalink url',
+        'instagram_permalink_url',
+        'permalink',
+        'post url',
+        'url',
+        'link',
+      ]),
+    [distributionSourceRows],
+  );
+  const distributionThumbnailColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'thumbnail',
+        'thumb',
+        'image',
+        'image url',
+        'image_url',
+        'creative thumbnail',
+      ]),
+    [distributionSourceRows],
+  );
   const distributionAdNameColumnKey = useMemo(
     () =>
       findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
@@ -1446,7 +1470,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     let roasCount = 0;
     let totalCpm = 0;
     let cpmCount = 0;
-    const byCreative = new Map<string, { spend: number; impressions: number; profileVisits: number; purchases: number; checkouts: number }>();
+    const byCreative = new Map<string, { spend: number; impressions: number; profileVisits: number; purchases: number; checkouts: number; link?: string; thumbnail?: string }>();
 
     for (const row of filteredDistributionRows as Array<Record<string, unknown>>) {
       const reach = parseSheetNumber(distributionReachColumnKey ? row?.[distributionReachColumnKey] : 0);
@@ -1461,6 +1485,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const roas = parseSheetNumber(distributionRoasColumnKey ? row?.[distributionRoasColumnKey] : 0);
       const cpm = parseSheetNumber(distributionCpmColumnKey ? row?.[distributionCpmColumnKey] : 0);
       const creativeName = String(distributionAdNameColumnKey ? row?.[distributionAdNameColumnKey] : '').trim();
+      const creativeLink = String(distributionPermalinkColumnKey ? row?.[distributionPermalinkColumnKey] ?? '' : '').trim();
+      const creativeThumbnail = String(distributionThumbnailColumnKey ? row?.[distributionThumbnailColumnKey] ?? '' : '').trim();
       const platformRaw = distributionPlatformColumnKey ? row?.[distributionPlatformColumnKey] : null;
       const platform = String(platformRaw ?? 'Outros').trim() || 'Outros';
 
@@ -1493,12 +1519,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       byPlatform.set(platform, current);
 
       if (creativeName) {
-        const currentCreative = byCreative.get(creativeName) || { spend: 0, impressions: 0, profileVisits: 0, purchases: 0, checkouts: 0 };
+        const currentCreative = byCreative.get(creativeName) || { spend: 0, impressions: 0, profileVisits: 0, purchases: 0, checkouts: 0, link: undefined, thumbnail: undefined };
         currentCreative.spend += spend;
         currentCreative.impressions += impressions;
         currentCreative.profileVisits += profileVisits;
         currentCreative.purchases += purchases;
         currentCreative.checkouts += checkouts;
+        if (creativeLink && !currentCreative.link) currentCreative.link = creativeLink;
+        if (creativeThumbnail && !currentCreative.thumbnail) currentCreative.thumbnail = creativeThumbnail;
         byCreative.set(creativeName, currentCreative);
       }
     }
@@ -1533,6 +1561,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           purchases: stats.purchases,
           checkouts: stats.checkouts,
           ctr: stats.impressions > 0 ? (stats.profileVisits / stats.impressions) * 100 : 0,
+          link: stats.link,
+          thumbnail: stats.thumbnail,
         }))
         .sort((a, b) => b.profileVisits - a.profileVisits)
         .slice(0, 8),
@@ -1547,10 +1577,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     distributionImpressionsColumnKey,
     distributionProfileVisitsColumnKey,
     distributionPlatformColumnKey,
+    distributionPermalinkColumnKey,
     distributionPurchasesColumnKey,
     distributionReachColumnKey,
     distributionRoasColumnKey,
     distributionSpendColumnKey,
+    distributionThumbnailColumnKey,
     distributionVideoViewsColumnKey,
     filteredDistributionRows,
     project?.source_type,
@@ -2060,6 +2092,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           purchases: Number(row?.purchases || 0),
           checkouts: Number(row?.checkout_views || 0),
           ctr: Number(row?.ctr || 0),
+          link: String(row?.link || ''),
+          thumbnail: String(row?.thumbnail || ''),
         }));
     }
     return (sheetDistributionData?.topCreatives || []) as Array<{
@@ -2070,6 +2104,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       purchases: number;
       checkouts: number;
       ctr: number;
+      link?: string;
+      thumbnail?: string;
     }>;
   }, [metaCreativeDataWithThumbs, project?.source_type, sheetDistributionData?.topCreatives]);
 
@@ -2828,6 +2864,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                       <thead className="bg-muted/50 border-b">
                         <tr>
                           <th className="px-4 py-3 text-left font-medium">Criativo</th>
+                          <th className="px-4 py-3 text-left font-medium">Link / Prévia</th>
                           <th className="px-4 py-3 text-right font-medium">Investimento</th>
                           <th className="px-4 py-3 text-right font-medium">Impressões</th>
                           <th className="px-4 py-3 text-right font-medium">Visitas Perfil</th>
@@ -2839,6 +2876,36 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                         {distributionTopCreatives.map((item) => (
                           <tr key={item.name} className="hover:bg-muted/30">
                             <td className="px-4 py-3 font-medium">{item.name}</td>
+                            <td className="px-4 py-3">
+                              {item.link ? (
+                                <div className="flex items-center gap-2">
+                                  {item.thumbnail ? (
+                                    <a href={item.link} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                                      <img
+                                        src={item.thumbnail}
+                                        alt={item.name}
+                                        className="h-8 w-8 rounded object-cover border"
+                                      />
+                                    </a>
+                                  ) : (
+                                    <div className="h-8 w-8 rounded bg-muted flex items-center justify-center border">
+                                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                    </div>
+                                  )}
+                                  <a
+                                    href={item.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                    Ver post
+                                  </a>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">Sem link</span>
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-right">{item.spend.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                             <td className="px-4 py-3 text-right">{Math.round(item.impressions).toLocaleString('pt-BR')}</td>
                             <td className="px-4 py-3 text-right">{Math.round(item.profileVisits).toLocaleString('pt-BR')}</td>
