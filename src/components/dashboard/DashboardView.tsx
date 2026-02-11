@@ -2553,6 +2553,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const results = purchases > 0 ? purchases : leads;
     const costPerResult = results > 0 ? spend / results : 0;
     const roas = spend > 0 ? purchaseValue / spend : Number(r?.roas || 0);
+    const roi = spend > 0 ? (purchaseValue - spend) / spend : 0;
 
     return [
       { label: 'Investimento', value: spend, format: 'currency' as const },
@@ -2774,7 +2775,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                   )}
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                     {bigNumbersToRender.map((kpi, index) => {
-                      const { label, value, previousValue, format } = kpi;
+                      const { label, value, format } = kpi;
+                      const previousValue = 'previousValue' in kpi ? (kpi as any).previousValue : undefined;
                       return (
                         <BigNumberCard
                           key={label}
