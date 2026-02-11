@@ -59,6 +59,95 @@ export type Database = {
           },
         ]
       }
+      attribution_sessions: {
+        Row: {
+          ad_id: string | null
+          ad_name: string | null
+          adset_id: string | null
+          adset_name: string | null
+          campaign_id: string | null
+          campaign_name: string | null
+          client_ip: string | null
+          created_at: string
+          fbc: string | null
+          fbclid: string | null
+          fbp: string | null
+          gclid: string | null
+          id: string
+          landing_url: string | null
+          project_id: string | null
+          session_key: string
+          updated_at: string
+          user_agent: string | null
+          user_id: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+        }
+        Insert: {
+          ad_id?: string | null
+          ad_name?: string | null
+          adset_id?: string | null
+          adset_name?: string | null
+          campaign_id?: string | null
+          campaign_name?: string | null
+          client_ip?: string | null
+          created_at?: string
+          fbc?: string | null
+          fbclid?: string | null
+          fbp?: string | null
+          gclid?: string | null
+          id?: string
+          landing_url?: string | null
+          project_id?: string | null
+          session_key: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Update: {
+          ad_id?: string | null
+          ad_name?: string | null
+          adset_id?: string | null
+          adset_name?: string | null
+          campaign_id?: string | null
+          campaign_name?: string | null
+          client_ip?: string | null
+          created_at?: string
+          fbc?: string | null
+          fbclid?: string | null
+          fbp?: string | null
+          gclid?: string | null
+          id?: string
+          landing_url?: string | null
+          project_id?: string | null
+          session_key?: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attribution_sessions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       column_mappings: {
         Row: {
           created_at: string
@@ -105,6 +194,162 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "column_mappings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_connections: {
+        Row: {
+          config: Json
+          created_at: string
+          id: string
+          name: string | null
+          provider: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          id?: string
+          name?: string | null
+          provider: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          id?: string
+          name?: string | null
+          provider?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      payment_orders: {
+        Row: {
+          ad_id: string | null
+          ad_name: string | null
+          adset_id: string | null
+          adset_name: string | null
+          approved_at: string | null
+          attribution_session_id: string | null
+          campaign_id: string | null
+          campaign_name: string | null
+          created_at: string
+          currency: string | null
+          customer_email: string | null
+          customer_id: string | null
+          external_order_id: string
+          fbc: string | null
+          fbclid: string | null
+          fbp: string | null
+          fee_amount: number
+          gross_amount: number
+          id: string
+          net_amount: number
+          project_id: string | null
+          provider: string
+          raw_payload: Json
+          refunded_amount: number
+          status: string
+          tracking: Json
+          updated_at: string
+          user_id: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+        }
+        Insert: {
+          ad_id?: string | null
+          ad_name?: string | null
+          adset_id?: string | null
+          adset_name?: string | null
+          approved_at?: string | null
+          attribution_session_id?: string | null
+          campaign_id?: string | null
+          campaign_name?: string | null
+          created_at?: string
+          currency?: string | null
+          customer_email?: string | null
+          customer_id?: string | null
+          external_order_id: string
+          fbc?: string | null
+          fbclid?: string | null
+          fbp?: string | null
+          fee_amount?: number
+          gross_amount?: number
+          id?: string
+          net_amount?: number
+          project_id?: string | null
+          provider: string
+          raw_payload?: Json
+          refunded_amount?: number
+          status?: string
+          tracking?: Json
+          updated_at?: string
+          user_id: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Update: {
+          ad_id?: string | null
+          ad_name?: string | null
+          adset_id?: string | null
+          adset_name?: string | null
+          approved_at?: string | null
+          attribution_session_id?: string | null
+          campaign_id?: string | null
+          campaign_name?: string | null
+          created_at?: string
+          currency?: string | null
+          customer_email?: string | null
+          customer_id?: string | null
+          external_order_id?: string
+          fbc?: string | null
+          fbclid?: string | null
+          fbp?: string | null
+          fee_amount?: number
+          gross_amount?: number
+          id?: string
+          net_amount?: number
+          project_id?: string | null
+          provider?: string
+          raw_payload?: Json
+          refunded_amount?: number
+          status?: string
+          tracking?: Json
+          updated_at?: string
+          user_id?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_orders_attribution_session_id_fkey"
+            columns: ["attribution_session_id"]
+            isOneToOne: false
+            referencedRelation: "attribution_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_orders_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
