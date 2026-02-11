@@ -294,13 +294,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     to: new Date(),
   });
 
-  const invokeMeta = async (path: string, body?: Record<string, unknown>) => {
+  const invokeEdge = async (path: string, body?: Record<string, unknown>) => {
     const headers: Record<string, string> = {};
     if (shareToken) headers['x-share-token'] = shareToken;
     const { data, error } = await supabase.functions.invoke(path, { body, headers });
     if (error) throw error;
     return data;
   };
+  const invokeMeta = async (path: string, body?: Record<string, unknown>) => invokeEdge(path, body);
+  const invokePaymentAttribution = async (path: string, body?: Record<string, unknown>) => invokeEdge(path, body);
 
   // 1. Fetch Project Details
   const { data: projectData, isLoading: loadingProject } = useQuery({
@@ -604,6 +606,32 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       }
     },
     enabled: project?.source_type === 'meta_ads' && !!adAccountId,
+  });
+
+  const paymentAttributionSummaryQuery = useQuery({
+    queryKey: [
+      'payment-attribution-summary',
+      projectId,
+      dateRange?.from ? dateRange.from.toISOString() : null,
+      dateRange?.to ? dateRange.to.toISOString() : null,
+      selectedCampaignIds.slice().sort().join(','),
+    ],
+    queryFn: async () => {
+      if (project?.source_type !== 'meta_ads' || !projectId) return null;
+      const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
+      const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
+      const campaignIdsParam = selectedCampaignIds.length > 0
+        ? `&campaignIds=${encodeURIComponent(selectedCampaignIds.join(','))}`
+        : '';
+      try {
+        return await invokePaymentAttribution(
+          `payment-attribution?action=attribution-summary&projectId=${encodeURIComponent(projectId)}&startDate=${startDate}&endDate=${endDate}${campaignIdsParam}`
+        );
+      } catch {
+        return null;
+      }
+    },
+    enabled: project?.source_type === 'meta_ads' && !!projectId,
   });
 
   // 3. Fetch Sheet Data from all configured sheets
@@ -1956,6 +1984,20 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     });
   }, [filteredRows, project?.source_type, viewMode]);
 
+  const paymentByAdId = useMemo(() => {
+    const ads = (paymentAttributionSummaryQuery.data as any)?.ads || [];
+    const map = new Map<string, { orders: number; netRevenue: number }>();
+    for (const row of ads) {
+      const id = String(row?.id || '').trim();
+      if (!id) continue;
+      map.set(id, {
+        orders: Number(row?.orders || 0),
+        netRevenue: Number(row?.netRevenue || 0),
+      });
+    }
+    return map;
+  }, [paymentAttributionSummaryQuery.data]);
+
   const metaCreativeData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
     const rows = metaAdsQuery.data || [];
@@ -2034,9 +2076,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         const clicks = Number(a?.clicks || 0);
         const spend = Number(a?.spend || 0);
         const reach = Number(a?.reach || 0);
-        const sales = Number(a?.sales || 0);
-        const purchases = Number(a?.purchases || 0);
-        const purchaseValue = Number(a?.purchase_value || 0);
+        const fallbackSales = Number(a?.sales || 0);
+        const fallbackPurchases = Number(a?.purchases || 0);
+        const fallbackPurchaseValue = Number(a?.purchase_value || 0);
+        const paymentAgg = paymentByAdId.get(String(a?.id || ''));
+        const purchases = paymentAgg && paymentAgg.orders > 0 ? paymentAgg.orders : fallbackPurchases;
+        const purchaseValue = paymentAgg && paymentAgg.netRevenue > 0 ? paymentAgg.netRevenue : fallbackPurchaseValue;
+        const sales = purchases > 0 ? purchases : fallbackSales;
         const video3s = Number(a?.video3s || 0);
         const video15s = Number(a?.video15s || 0);
         const thruplay = Number(a?.thruplay || 0);
@@ -2057,7 +2103,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       })
       .sort((a, b) => b.sales - a.sales)
       .slice(0, 50);
-  }, [metaAdsQuery.data, project?.source_type, selectedCampaignIds]);
+  }, [metaAdsQuery.data, paymentByAdId, project?.source_type, selectedCampaignIds]);
 
   const chartMetricOptions = useMemo(() => {
     if (project?.source_type === 'meta_ads') {
@@ -2256,9 +2302,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
 
   const metaTotalsRow = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return null;
-    if (shareToken) return null;
 
-    const aggregateMetaTotals = (rows: any[], extra: Record<string, unknown> = {}) => {
+    const aggregateMetaTotals = (
+      rows: any[],
+      extra: Record<string, unknown> = {},
+      paymentSummary?: { orders?: number; netRevenue?: number },
+    ) => {
       const totals = rows.reduce(
         (acc, r) => {
           acc.spend += Number(r?.spend || 0);
@@ -2307,21 +2356,29 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       const video3s = totals.video3s;
       const video15s = totals.video15s;
       const thruplay = totals.thruplay;
+      const paymentOrders = Number(paymentSummary?.orders || 0);
+      const paymentRevenue = Number(paymentSummary?.netRevenue || 0);
+      const effectivePurchases = paymentOrders > 0 ? paymentOrders : purchases;
+      const effectivePurchaseValue = paymentRevenue > 0 ? paymentRevenue : purchaseValue;
 
       return {
         ...totals,
+        purchases: effectivePurchases,
+        purchase_value: effectivePurchaseValue,
         frequency: reach > 0 ? impressions / reach : 0,
         ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
         cpc: clicks > 0 ? spend / clicks : 0,
         cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
         cpl: leads > 0 ? spend / leads : 0,
-        cpa: purchases > 0 ? spend / purchases : 0,
-        roas: spend > 0 ? purchaseValue / spend : 0,
+        cpa: effectivePurchases > 0 ? spend / effectivePurchases : 0,
+        roas: spend > 0 ? effectivePurchaseValue / spend : 0,
         hook_rate: impressions > 0 ? video3s / impressions : 0,
         hold_rate: impressions > 0 ? (video15s || thruplay) / impressions : 0,
         ...extra,
       };
     };
+
+    const paymentSummary = (paymentAttributionSummaryQuery.data as any)?.summary || undefined;
 
     if (selectedCampaignIds.length > 0) {
       const campaignTotals = (metaCampaignTotalsQuery.data || []) as any[];
@@ -2335,19 +2392,23 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         ? selectedNames[0]
         : `${selectedNames.length} campanhas`;
       if (!filtered.length) return null;
-      return aggregateMetaTotals(filtered, { campaign_id: selectedCampaignIds.join(','), campaign_name: campaignName });
+      return aggregateMetaTotals(
+        filtered,
+        { campaign_id: selectedCampaignIds.join(','), campaign_name: campaignName },
+        paymentSummary,
+      );
     }
 
     const accountTotals = (metaAccountTotalsQuery.data || []) as any[];
     if (!accountTotals.length) return null;
-    return aggregateMetaTotals(accountTotals);
+    return aggregateMetaTotals(accountTotals, {}, paymentSummary);
   }, [
     metaAccountTotalsQuery.data,
     metaCampaignTotalsQuery.data,
     metaCampaignsQuery.data,
+    paymentAttributionSummaryQuery.data,
     project?.source_type,
     selectedCampaignIds,
-    shareToken,
   ]);
 
   const metaFunnelSteps = useMemo(() => {
@@ -2434,6 +2495,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const checkouts = Number(r?.checkout_views || 0);
     const purchaseValue = Number(r?.purchase_value || 0);
     const roas = spend > 0 ? purchaseValue / spend : Number(r?.roas || 0);
+    const roi = spend > 0 ? (purchaseValue - spend) / spend : 0;
     const profileVisits = Number(r?.profile_visits || 0);
 
     const platformRows = (metaPlatformBreakdownQuery.data || []) as any[];
@@ -2499,6 +2561,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       { label: resultsLabel, value: results, format: 'number' as const },
       { label: purchases > 0 ? 'CPA' : 'CPL', value: costPerResult, format: 'currency' as const },
       { label: 'ROAS', value: roas, format: 'decimal' as const },
+      { label: 'ROI', value: roi, format: 'percentage' as const },
     ];
   }, [metaTotalsRow, project?.source_type]);
 
@@ -2516,7 +2579,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     metaAccountTotalsQuery.isLoading ||
     metaCampaignTotalsQuery.isLoading ||
     metaPlatformBreakdownQuery.isLoading ||
-    metaAdsQuery.isLoading;
+    metaAdsQuery.isLoading ||
+    paymentAttributionSummaryQuery.isLoading;
 
   if (isLoading) {
     return (
