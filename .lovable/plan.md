@@ -1,62 +1,41 @@
 
+## Problema
+Os erros de TypeScript ocorrem porque:
+1. O tipo `SheetMetricFormat` (linha 117 de DashboardView.tsx) é definido como `'number' | 'currency' | 'percentage' | 'decimal'`, mas o código tenta atribuir `'link'` a ele na linha 1033.
+2. As comparações nas linhas 2064 e 2066 comparam `option.format !== 'link'`, mas `option.format` tem tipos que não incluem `'link'` (MetricFormat e SheetMetricFormat).
 
-# Corrigir Metricas de Video e Landing Page View na meta-api
+## Causa Raiz
+O formato `'link'` é usado para a coluna "Instagram Permalink URL" (coluna de links de criativos do sheet), mas não foi incluído na definição do tipo `SheetMetricFormat`.
 
-## Problemas Identificados
+## Solução
 
-### 1. Metricas de video infladas/incorretas
-O matcher `isVideo3sLike` inclui `thruplay` indevidamente:
-```
-t.includes('thruplay')  // ERRADO - thruplay nao e video 3s
-t.includes('video_play') // ERRADO - muito amplo
-```
-Isso faz com que valores de thruplay sejam somados como "video 3s", inflando a metrica e quebrando hook_rate.
+### Mudança 1: Expandir o tipo `SheetMetricFormat`
+**Arquivo**: `src/components/dashboard/DashboardView.tsx` (linha 117)
 
-### 2. Landing Page View contando campanhas sem pagina
-O matcher `isLandingViewLike` usa `t.includes('landing_page_view')` que captura action types como `offsite_conversion.fb_pixel_landing_page_view` (evento de pixel). Esse evento de pixel dispara em qualquer campanha com pixel instalado, mesmo sem landing page dedicada. Deve usar apenas o match exato `t === 'landing_page_view'`.
-
-## Mudancas Tecnicas
-
-### Arquivo: `supabase/functions/meta-api/index.ts`
-
-**1. Corrigir `isVideo3sLike` (linha 385-390):**
+De:
 ```typescript
-// De:
-const isVideo3sLike = (t: string) =>
-  t === 'video_view' ||
-  t.includes('video_play') ||
-  t.includes('thruplay') ||
-  t.includes('video_view') ||
-  t.includes('video_view_3s');
-
-// Para:
-const isVideo3sLike = (t: string) =>
-  t === 'video_view' ||
-  t === 'video_view_3s';
+type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal';
 ```
 
-**2. Corrigir `isLandingViewLike` (linha 376-377):**
+Para:
 ```typescript
-// De:
-const isLandingViewLike = (t: string) =>
-  t === 'landing_page_view' || t.includes('landing_page_view');
-
-// Para:
-const isLandingViewLike = (t: string) =>
-  t === 'landing_page_view';
+type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal' | 'link';
 ```
 
-**3. Corrigir fallback de video3s (linha 443):**
-O fallback `videoPlay` tambem e muito amplo. Ajustar para usar video_play_actions apenas como ultimo recurso quando nenhum action type especifico existe.
+Isso permite que o tipo aceite `'link'` como um valor válido, resolvendo o erro na linha 1033.
 
-## Sequencia de Execucao
-1. Aplicar as 3 correcoes no `meta-api/index.ts`
-2. Redeploy da Edge Function `meta-api`
-3. Verificar que as metricas retornam valores corretos
+### Mudança 2: Garantir tipagem correta nas comparações
+As linhas 2064 e 2066 comparam `option.format !== 'link'` para filtrar opções de métrica que não são links (já que links não devem aparecer em gráficos).
+
+Com a mudança acima, estas comparações funcionarão corretamente porque:
+- `metaWeeklyMetricOptions` terá elementos do tipo que inclui `'link'` 
+- `sheetMetricOptions` será tipado como `{ format: SheetMetricFormat; ... }` (que agora inclui `'link'`)
+
+## Sequência
+1. Atualizar o tipo `SheetMetricFormat` para incluir `'link'`
+2. Nenhuma outra mudança de código é necessária - as comparações funcionarão automaticamente
 
 ## Resultado Esperado
-- video3s: conta apenas `video_view` e `video_view_3s` (nao mais thruplay)
-- hook_rate: calculado corretamente com video3s limpo
-- landing_views: conta apenas o action type exato `landing_page_view`, sem pixel events
-- Campanhas sem pagina de destino mostrarao 0 landing views
-
+- Build TypeScript sem erros
+- Coluna de links Instagram continua funcionando
+- Filtro de gráficos continua excluindo links corretamente
