@@ -16,3 +16,7 @@ verify_jwt = false
 [functions.meta-api]
 enabled = true
 verify_jwt = false
+
+[functions.payment-attribution]
+enabled = true
+verify_jwt = false
