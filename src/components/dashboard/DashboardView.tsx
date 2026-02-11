@@ -114,7 +114,7 @@ const getInstagramThumbnailFromLink = (value: string | undefined) => {
   return '';
 };
 
-type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal';
+type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal' | 'link';
 
 const normalizeMetricName = (value: string) =>
   value

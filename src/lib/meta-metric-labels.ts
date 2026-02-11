@@ -1,4 +1,4 @@
-export type MetricFormat = 'number' | 'currency' | 'percentage' | 'decimal';
+export type MetricFormat = 'number' | 'currency' | 'percentage' | 'decimal' | 'link';
 
 const BASE_METRIC_LABELS: Record<string, { label: string; format: MetricFormat }> = {
   sales: { label: 'Vendas', format: 'number' },
