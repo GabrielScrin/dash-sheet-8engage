@@ -20,7 +20,7 @@ import { useColumnMappings } from '@/hooks/useColumnMappings';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { processDashboardData } from '@/lib/dashboard-utils';
-import { getMetaMetricFormat, getMetaMetricLabel } from '@/lib/meta-metric-labels';
+import { getMetaMetricFormat, getMetaMetricLabel, getMetaMetricValue } from '@/lib/meta-metric-labels';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { format, startOfMonth, startOfWeek, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';

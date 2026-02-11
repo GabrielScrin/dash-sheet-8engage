@@ -42,14 +42,14 @@ export default function MetaCallback() {
 
     if (error) {
       setStatus("error");
-      toast({ title: "ConexÃ£o com a Meta cancelada", description: error, variant: "destructive" });
+      toast({ title: "Conexão com a Meta cancelada", description: error, variant: "destructive" });
       navigate(returnTo, { replace: true });
       return;
     }
 
     if (!code) {
       setStatus("error");
-      toast({ title: "Erro na conexÃ£o com a Meta", description: "CÃ³digo de autorizaÃ§Ã£o ausente.", variant: "destructive" });
+      toast({ title: "Erro na conexão com a Meta", description: "Código de autorização ausente.", variant: "destructive" });
       navigate(returnTo, { replace: true });
       return;
     }
@@ -66,7 +66,7 @@ export default function MetaCallback() {
         return;
       }
 
-      toast({ title: "Meta conectada!", description: "Agora vocÃª pode selecionar uma conta de anÃºncios." });
+      toast({ title: "Meta conectada!", description: "Agora você pode selecionar uma conta de anúncios." });
       navigate(returnTo, { replace: true });
     })();
   }, [navigate, params, toast]);
@@ -78,10 +78,9 @@ export default function MetaCallback() {
           <CardTitle>Conectando Meta Ads</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          {status === "working" ? "Finalizando autorizaÃ§Ã£o..." : "Redirecionando..."}
+          {status === "working" ? "Finalizando autorização..." : "Redirecionando..."}
         </CardContent>
       </Card>
     </div>
   );
 }
-
