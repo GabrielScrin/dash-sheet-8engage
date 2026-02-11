@@ -98,6 +98,22 @@ const parseSheetDateValue = (value: unknown): Date | null => {
   return null;
 };
 
+const getInstagramThumbnailFromLink = (value: string | undefined) => {
+  const link = String(value || '').trim();
+  if (!link) return '';
+  try {
+    const url = new URL(link);
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length >= 2 && (parts[0] === 'p' || parts[0] === 'reel' || parts[0] === 'tv')) {
+      const shortcode = parts[1];
+      return `https://www.instagram.com/${parts[0]}/${shortcode}/media/?size=t`;
+    }
+  } catch {
+    // noop
+  }
+  return '';
+};
+
 type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal';
 
 const normalizeMetricName = (value: string) =>
@@ -2909,12 +2925,17 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                             <td className="px-4 py-3">
                               {item.link ? (
                                 <div className="flex items-center gap-2">
-                                  {item.thumbnail ? (
+                                  {item.thumbnail || getInstagramThumbnailFromLink(item.link) ? (
                                     <a href={item.link} target="_blank" rel="noopener noreferrer" className="shrink-0">
                                       <img
-                                        src={item.thumbnail}
+                                        src={item.thumbnail || getInstagramThumbnailFromLink(item.link)}
                                         alt={item.name}
                                         className="h-8 w-8 rounded object-cover border"
+                                        loading="lazy"
+                                        onError={(event) => {
+                                          event.currentTarget.style.display = 'none';
+                                          event.currentTarget.parentElement?.querySelector('.fallback-thumb')?.classList.remove('hidden');
+                                        }}
                                       />
                                     </a>
                                   ) : (
@@ -2922,6 +2943,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                                       <ImageIcon className="h-4 w-4 text-muted-foreground" />
                                     </div>
                                   )}
+                                  <div className="fallback-thumb hidden h-8 w-8 rounded bg-muted items-center justify-center border">
+                                    <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                  </div>
                                   <a
                                     href={item.link}
                                     target="_blank"
