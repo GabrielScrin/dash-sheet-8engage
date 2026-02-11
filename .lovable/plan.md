@@ -1,41 +1,35 @@
 
-## Problema
-Os erros de TypeScript ocorrem porque:
-1. O tipo `SheetMetricFormat` (linha 117 de DashboardView.tsx) é definido como `'number' | 'currency' | 'percentage' | 'decimal'`, mas o código tenta atribuir `'link'` a ele na linha 1033.
-2. As comparações nas linhas 2064 e 2066 comparam `option.format !== 'link'`, mas `option.format` tem tipos que não incluem `'link'` (MetricFormat e SheetMetricFormat).
 
-## Causa Raiz
-O formato `'link'` é usado para a coluna "Instagram Permalink URL" (coluna de links de criativos do sheet), mas não foi incluído na definição do tipo `SheetMetricFormat`.
+# Tarefas: Migration, Deploy e Secret + Correcao de Build Errors
 
-## Solução
+## 1. Rodar a migration `20260211130000_add_payment_attribution_phase1.sql`
+A migration ja existe no repositorio mas as tabelas (`payment_connections`, `attribution_sessions`, `payment_orders`) ainda nao existem no banco. Sera executada via ferramenta de migration.
 
-### Mudança 1: Expandir o tipo `SheetMetricFormat`
-**Arquivo**: `src/components/dashboard/DashboardView.tsx` (linha 117)
+## 2. Deploy da Edge Function `payment-attribution`
+Deploiar a funcao ja existente em `supabase/functions/payment-attribution/index.ts`. Tambem atualizar `supabase/config.toml` para incluir a configuracao com `verify_jwt = false` (validacao manual no codigo).
 
-De:
+## 3. Configurar secret `PAYMENT_WEBHOOK_SECRET`
+Usar a ferramenta de secrets para solicitar ao usuario o valor do segredo.
+
+## 4. Corrigir build errors em DashboardView.tsx
+
+### Erro 1: `roi` nao definido (linha 2564)
+A variavel `roi` e usada mas nunca declarada. Correcao:
 ```typescript
-type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal';
+const roi = spend > 0 ? (purchaseValue - spend) / spend : 0;
+```
+Adicionar antes da linha 2557 (return).
+
+### Erro 2: `previousValue` nao existe no tipo (linha 2777)
+O destructuring usa `previousValue` mas o tipo dos arrays `metaBigNumbers` nao inclui essa propriedade. Correcao: usar optional chaining com fallback:
+```typescript
+const previousValue = 'previousValue' in kpi ? (kpi as any).previousValue : undefined;
 ```
 
-Para:
-```typescript
-type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal' | 'link';
-```
+## Sequencia de Execucao
+1. Corrigir os 2 build errors em `DashboardView.tsx`
+2. Rodar a migration do payment attribution
+3. Adicionar config da edge function no `config.toml`
+4. Deploy da edge function `payment-attribution`
+5. Solicitar o secret `PAYMENT_WEBHOOK_SECRET`
 
-Isso permite que o tipo aceite `'link'` como um valor válido, resolvendo o erro na linha 1033.
-
-### Mudança 2: Garantir tipagem correta nas comparações
-As linhas 2064 e 2066 comparam `option.format !== 'link'` para filtrar opções de métrica que não são links (já que links não devem aparecer em gráficos).
-
-Com a mudança acima, estas comparações funcionarão corretamente porque:
-- `metaWeeklyMetricOptions` terá elementos do tipo que inclui `'link'` 
-- `sheetMetricOptions` será tipado como `{ format: SheetMetricFormat; ... }` (que agora inclui `'link'`)
-
-## Sequência
-1. Atualizar o tipo `SheetMetricFormat` para incluir `'link'`
-2. Nenhuma outra mudança de código é necessária - as comparações funcionarão automaticamente
-
-## Resultado Esperado
-- Build TypeScript sem erros
-- Coluna de links Instagram continua funcionando
-- Filtro de gráficos continua excluindo links corretamente
