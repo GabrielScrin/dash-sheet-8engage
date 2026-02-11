@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
     // Fetch project data to return with validation
     const { data: projectData, error: projectError } = await supabase
       .from('projects')
-      .select('id, name, spreadsheet_id, sheet_name, sheet_names')
+      .select('id, name, source_type, source_config, spreadsheet_id, sheet_name, sheet_names')
       .eq('id', shareToken.project_id)
       .single();
 
@@ -161,6 +161,8 @@ Deno.serve(async (req) => {
         project: {
           id: projectData.id,
           name: projectData.name,
+          source_type: projectData.source_type,
+          source_config: projectData.source_config,
           spreadsheet_id: projectData.spreadsheet_id,
           sheet_name: projectData.sheet_name,
           sheet_names: projectData.sheet_names,

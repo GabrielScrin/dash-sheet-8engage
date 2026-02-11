@@ -261,9 +261,11 @@ interface DashboardViewProps {
   projectId: string;
   isPreview?: boolean;
   shareToken?: string;
+  initialProject?: any;
+  initialMappings?: any[];
 }
 
-export function DashboardView({ projectId, isPreview = false, shareToken }: DashboardViewProps) {
+export function DashboardView({ projectId, isPreview = false, shareToken, initialProject, initialMappings }: DashboardViewProps) {
   const { signInWithGoogle } = useAuth();
   const [activeTab, setActiveTab] = useState('perpetua');
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
@@ -292,8 +294,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     to: new Date(),
   });
 
+  const invokeMeta = async (path: string, body?: Record<string, unknown>) => {
+    const headers: Record<string, string> = {};
+    if (shareToken) headers['x-share-token'] = shareToken;
+    const { data, error } = await supabase.functions.invoke(path, { body, headers });
+    if (error) throw error;
+    return data;
+  };
+
   // 1. Fetch Project Details
-  const { data: project, isLoading: loadingProject } = useQuery({
+  const { data: projectData, isLoading: loadingProject } = useQuery({
     queryKey: ['project', projectId],
     queryFn: async () => {
       // If we have a shareToken, we might need a public endpoint or bypass RLS
@@ -306,11 +316,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       if (error) throw error;
       return data;
     },
-    enabled: !!projectId,
+    enabled: !!projectId && !initialProject,
   });
+  const project = (initialProject ?? projectData) as any;
 
   // 2. Fetch Column Mappings
   const { mappings, isLoading: loadingMappings } = useColumnMappings(projectId);
+  const resolvedMappings = (shareToken && initialMappings) ? initialMappings : mappings;
 
   const sourceConfig = getSourceConfig(project?.source_config);
   const adAccountId = sourceConfig?.ad_account_id;
@@ -432,14 +444,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
       const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
 
-      const { data, error } = await supabase.functions.invoke(
+      const data = await invokeMeta(
         `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=account`
       );
-      if (error) throw error;
 
       return (data?.data || []) as Array<Record<string, any>>;
     },
-    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId,
   });
 
   const metaAccountTotalsQuery = useQuery({
@@ -455,14 +466,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
       const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
 
-      const { data, error } = await supabase.functions.invoke(
+      const data = await invokeMeta(
         `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=account&timeIncrement=all`
       );
-      if (error) throw error;
 
       return (data?.data || []) as Array<Record<string, any>>;
     },
-    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId,
   });
 
   const metaInsightsQuery = useQuery({
@@ -478,14 +488,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
       const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
 
-      const { data, error } = await supabase.functions.invoke(
+      const data = await invokeMeta(
         `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=campaign`
       );
-      if (error) throw error;
 
       return (data?.data || []) as Array<Record<string, any>>;
     },
-    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId,
   });
 
   const metaCampaignTotalsQuery = useQuery({
@@ -501,14 +510,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
       const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
 
-      const { data, error } = await supabase.functions.invoke(
+      const data = await invokeMeta(
         `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=campaign&timeIncrement=all`
       );
-      if (error) throw error;
 
       return (data?.data || []) as Array<Record<string, any>>;
     },
-    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId,
   });
 
   const metaAdsQuery = useQuery({
@@ -524,14 +532,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
       const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
 
-      const { data, error } = await supabase.functions.invoke(
+      const data = await invokeMeta(
         `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=ad`
       );
-      if (error) throw error;
 
       return (data?.data || []) as Array<Record<string, any>>;
     },
-    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId,
   });
 
   const metaPlatformBreakdownQuery = useQuery({
@@ -550,14 +557,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       // Note: breakdowns are only used for the "Distribuição de Conteúdos" tab.
       // We query account-level breakdowns and optionally filter by campaign on the client (campaign-level breakdowns can explode).
-      const { data, error } = await supabase.functions.invoke(
+      const data = await invokeMeta(
         `meta-api?action=insights&accountId=${encodeURIComponent(adAccountId)}&startDate=${startDate}&endDate=${endDate}&level=account&timeIncrement=all&breakdowns=publisher_platform`
       );
-      if (error) throw error;
 
       return (data?.data || []) as Array<Record<string, any>>;
     },
-    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId,
   });
 
   const metaCampaignsQuery = useQuery({
@@ -565,10 +571,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     queryFn: async () => {
       if (!adAccountId) return [];
 
-      const { data, error } = await supabase.functions.invoke(
-        `meta-api?action=campaigns&accountId=${encodeURIComponent(adAccountId)}`
-      );
-      if (error) {
+      let data: any;
+      try {
+        data = await invokeMeta(`meta-api?action=campaigns&accountId=${encodeURIComponent(adAccountId)}`);
+      } catch (error: any) {
         const message = String((error as any)?.message || '');
         // Backwards compatibility: older deployed edge function versions don't support action=campaigns yet.
         if (message.toLowerCase().includes('invalid action')) return [];
@@ -577,7 +583,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
       return (data?.campaigns || []) as Array<{ id: string; name: string; effective_status?: string; status?: string }>;
     },
-    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId,
   });
 
   const metaMetricsCatalogQuery = useQuery({
@@ -585,10 +591,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     queryFn: async () => {
       if (!adAccountId) return { actions: [], action_values: [] };
       try {
-        const { data, error } = await supabase.functions.invoke(
+        const data = await invokeMeta(
           `meta-api?action=metrics-catalog&accountId=${encodeURIComponent(adAccountId)}`
         );
-        if (error) return { actions: [], action_values: [] };
         const catalog = data?.catalog || {};
         return {
           actions: Array.isArray(catalog.actions) ? catalog.actions : [],
@@ -598,7 +603,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         return { actions: [], action_values: [] };
       }
     },
-    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken,
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId,
   });
 
   // 3. Fetch Sheet Data from all configured sheets
@@ -1361,7 +1366,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   // 5. Process Data
   const effectiveMappings = useMemo(() => {
-    if (project?.source_type !== 'meta_ads') return mappings || [];
+    if (project?.source_type !== 'meta_ads') return resolvedMappings || [];
 
     // For Meta Ads we can render meaningful KPIs even if the user didn't configure mappings yet.
     return [
@@ -1464,7 +1469,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         created_at: new Date().toISOString(),
       },
     ] as any[];
-  }, [mappings, adAccountId, project?.source_type, projectId]);
+  }, [resolvedMappings, adAccountId, project?.source_type, projectId]);
 
   const processedData = useMemo(() => {
     return processDashboardData(filteredRows, effectiveMappings as any);
@@ -2127,13 +2132,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     queryKey: ['meta-ad-thumbnails', adAccountId, creativeAdIds],
     queryFn: async () => {
       if (!creativeAdIds.length) return {};
-      const { data, error } = await supabase.functions.invoke('meta-api?action=ad-thumbnails', {
-        body: { adIds: creativeAdIds },
-      });
-      if (error) throw error;
+      const data = await invokeMeta('meta-api?action=ad-thumbnails', { adIds: creativeAdIds });
       return (data?.thumbnails || {}) as Record<string, { thumbnail: string | null; image: string | null }>;
     },
-    enabled: project?.source_type === 'meta_ads' && !!adAccountId && !shareToken && creativeAdIds.length > 0,
+    enabled: project?.source_type === 'meta_ads' && !!adAccountId && creativeAdIds.length > 0,
   });
 
   const metaCreativeDataWithThumbs = useMemo(() => {
@@ -2507,7 +2509,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
 
   const isLoading =
     loadingProject ||
-    loadingMappings ||
+    (loadingMappings && !(shareToken && initialMappings)) ||
     allSheetsQuery.isLoading ||
     metaInsightsQuery.isLoading ||
     metaAccountInsightsQuery.isLoading ||
@@ -2587,12 +2589,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     }
 
     if (project.source_type === 'meta_ads') {
-      if (shareToken) {
-        warnings.push({
-          title: 'Meta Ads indisponível no link compartilhado',
-          description: 'Por enquanto, o dashboard público não consegue buscar dados da Meta. Abra logado para visualizar.',
-        });
-      }
       if (!adAccountId) {
         warnings.push({
           title: 'Meta Ads não configurado',

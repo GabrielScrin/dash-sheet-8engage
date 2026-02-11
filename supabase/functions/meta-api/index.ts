@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-share-token, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 Deno.serve(async (req) => {
@@ -39,38 +39,76 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const action = url.searchParams.get('action'); // 'ad-accounts' | 'campaigns' | 'insights' | 'ad-thumbnails' | 'metrics-catalog'
 
-    // Validate JWT manually using getClaims
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const shareToken = req.headers.get('x-share-token');
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    const token = authHeader.replace('Bearer ', '');
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
-    });
+    // Use service role for database operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    let userId: string | null = null;
 
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      console.error('JWT validation failed:', claimsError);
-      return new Response(JSON.stringify({ error: 'Invalid or expired token' }), {
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '');
+      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } }
+      });
+
+      const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
+      if (claimsError || !claimsData?.claims) {
+        console.error('JWT validation failed:', claimsError);
+        return new Response(JSON.stringify({ error: 'Invalid or expired token' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      userId = claimsData.claims.sub as string;
+      console.log('Authenticated user:', userId);
+    } else if (shareToken) {
+      const { data: shareData, error: shareError } = await supabase
+        .from('share_tokens')
+        .select('project_id, is_active, expires_at')
+        .eq('token', shareToken)
+        .single();
+
+      if (shareError || !shareData || !shareData.is_active) {
+        return new Response(JSON.stringify({ error: 'Invalid share token' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (shareData.expires_at && new Date(shareData.expires_at) < new Date()) {
+        return new Response(JSON.stringify({ error: 'Share token expired' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const { data: projectData, error: projectError } = await supabase
+        .from('projects')
+        .select('user_id')
+        .eq('id', shareData.project_id)
+        .single();
+
+      if (projectError || !projectData?.user_id) {
+        return new Response(JSON.stringify({ error: 'Project owner not found' }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      userId = String(projectData.user_id);
+      console.log('Authenticated via share token for project owner:', userId);
+    } else {
+      return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    const userId = claimsData.claims.sub as string;
-    console.log('Authenticated user:', userId);
-
-    // Use service role for database operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get Meta Access Token from DB
     const { data: tokenData, error: tokenError } = await supabase
