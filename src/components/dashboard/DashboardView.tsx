@@ -276,6 +276,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
   const [sheetWeeklyMetricColumns, setSheetWeeklyMetricColumns] = useState<string[]>([]);
   const [sheetCreativeMetricColumns, setSheetCreativeMetricColumns] = useState<string[]>([]);
   const [sheetChartMetricColumns, setSheetChartMetricColumns] = useState<string[]>([]);
+  const [distributionCreativeMetricColumns, setDistributionCreativeMetricColumns] = useState<string[]>([
+    'investment',
+    'impressions',
+    'profile_visits',
+    'checkout_views',
+    'purchases',
+  ]);
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
   const [distributionPhase, setDistributionPhase] = useState<'all' | 'descoberta' | 'consideracao'>('all');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
@@ -905,6 +912,17 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       ]),
     [distributionSourceRows],
   );
+  const distributionLinkClicksColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'action link clicks',
+        'inline link clicks',
+        'link clicks',
+        'clicks',
+        'cliques',
+      ]),
+    [distributionSourceRows],
+  );
 
   const sheetMetricOptions = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
@@ -1516,7 +1534,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     let roasCount = 0;
     let totalCpm = 0;
     let cpmCount = 0;
-    const byCreative = new Map<string, { spend: number; impressions: number; profileVisits: number; purchases: number; checkouts: number; link?: string; thumbnail?: string }>();
+    const byCreative = new Map<string, { spend: number; impressions: number; clicks: number; profileVisits: number; purchases: number; checkouts: number; link?: string; thumbnail?: string }>();
 
     for (const row of filteredDistributionRows as Array<Record<string, unknown>>) {
       const reach = parseSheetNumber(distributionReachColumnKey ? row?.[distributionReachColumnKey] : 0);
@@ -1530,6 +1548,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       const purchases = parseSheetNumber(distributionPurchasesColumnKey ? row?.[distributionPurchasesColumnKey] : 0);
       const roas = parseSheetNumber(distributionRoasColumnKey ? row?.[distributionRoasColumnKey] : 0);
       const cpm = parseSheetNumber(distributionCpmColumnKey ? row?.[distributionCpmColumnKey] : 0);
+      const clicks = parseSheetNumber(distributionLinkClicksColumnKey ? row?.[distributionLinkClicksColumnKey] : 0);
       const creativeName = String(distributionAdNameColumnKey ? row?.[distributionAdNameColumnKey] : '').trim();
       const creativeLink = String(distributionPermalinkColumnKey ? row?.[distributionPermalinkColumnKey] ?? '' : '').trim();
       const creativeThumbnail = String(distributionThumbnailColumnKey ? row?.[distributionThumbnailColumnKey] ?? '' : '').trim();
@@ -1565,9 +1584,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       byPlatform.set(platform, current);
 
       if (creativeName) {
-        const currentCreative = byCreative.get(creativeName) || { spend: 0, impressions: 0, profileVisits: 0, purchases: 0, checkouts: 0, link: undefined, thumbnail: undefined };
+        const currentCreative = byCreative.get(creativeName) || { spend: 0, impressions: 0, clicks: 0, profileVisits: 0, purchases: 0, checkouts: 0, link: undefined, thumbnail: undefined };
         currentCreative.spend += spend;
         currentCreative.impressions += impressions;
+        currentCreative.clicks += clicks;
         currentCreative.profileVisits += profileVisits;
         currentCreative.purchases += purchases;
         currentCreative.checkouts += checkouts;
@@ -1603,10 +1623,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
           name,
           spend: stats.spend,
           impressions: stats.impressions,
+          clicks: stats.clicks,
           profileVisits: stats.profileVisits,
           purchases: stats.purchases,
           checkouts: stats.checkouts,
-          ctr: stats.impressions > 0 ? (stats.profileVisits / stats.impressions) * 100 : 0,
+          ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
+          cpc: stats.clicks > 0 ? stats.spend / stats.clicks : 0,
+          cpm: stats.impressions > 0 ? (stats.spend / stats.impressions) * 1000 : 0,
+          roas: 0,
           link: stats.link,
           thumbnail: stats.thumbnail,
         }))
@@ -1621,6 +1645,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     distributionEngagementColumnKey,
     distributionFollowersColumnKey,
     distributionImpressionsColumnKey,
+    distributionLinkClicksColumnKey,
     distributionProfileVisitsColumnKey,
     distributionPlatformColumnKey,
     distributionPermalinkColumnKey,
@@ -2132,12 +2157,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
         .slice(0, 8)
         .map((row: any) => ({
           name: String(row?.name || 'Criativo'),
-          spend: Number(row?.investment || row?.spend || 0),
-          impressions: Number(row?.impressions || 0),
-          profileVisits: Number(row?.profile_visits || 0),
-          purchases: Number(row?.purchases || 0),
-          checkouts: Number(row?.checkout_views || 0),
-          ctr: Number(row?.ctr || 0),
+          spend: getMetaMetricValue(row, 'investment'),
+          impressions: getMetaMetricValue(row, 'impressions'),
+          clicks: getMetaMetricValue(row, 'clicks'),
+          profileVisits: getMetaMetricValue(row, 'profile_visits'),
+          purchases: getMetaMetricValue(row, 'purchases'),
+          checkouts: getMetaMetricValue(row, 'checkout_views'),
+          ctr: getMetaMetricValue(row, 'ctr'),
+          cpc: getMetaMetricValue(row, 'cpc'),
+          cpm: getMetaMetricValue(row, 'cpm'),
+          roas: getMetaMetricValue(row, 'roas'),
           link: String(row?.link || ''),
           thumbnail: String(row?.thumbnail || ''),
         }));
@@ -2146,14 +2175,56 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       name: string;
       spend: number;
       impressions: number;
+      clicks: number;
       profileVisits: number;
       purchases: number;
       checkouts: number;
       ctr: number;
+      cpc?: number;
+      cpm?: number;
+      roas?: number;
       link?: string;
       thumbnail?: string;
     }>;
   }, [metaCreativeDataWithThumbs, project?.source_type, sheetDistributionData?.topCreatives]);
+
+  const distributionCreativeMetricOptions = useMemo(() => {
+    return [
+      { key: 'investment', label: 'Investimento', format: 'currency' as const },
+      { key: 'impressions', label: 'Impressões', format: 'number' as const },
+      { key: 'clicks', label: 'Cliques', format: 'number' as const },
+      { key: 'profile_visits', label: 'Visitas Perfil', format: 'number' as const },
+      { key: 'checkout_views', label: 'Checkout', format: 'number' as const },
+      { key: 'purchases', label: 'Vendas', format: 'number' as const },
+      { key: 'ctr', label: 'CTR', format: 'percentage' as const },
+      { key: 'cpc', label: 'CPC', format: 'currency' as const },
+      { key: 'cpm', label: 'CPM', format: 'currency' as const },
+      { key: 'roas', label: 'ROAS', format: 'decimal' as const },
+    ];
+  }, []);
+
+  const distributionCreativeColumns = useMemo(() => {
+    const available = new Set(distributionCreativeMetricOptions.map((option) => option.key));
+    const normalized = distributionCreativeMetricColumns
+      .map((key) => String(key))
+      .filter((key) => available.has(key))
+      .slice(0, 5);
+    if (normalized.length > 0) return normalized;
+    return ['investment', 'impressions', 'profile_visits', 'checkout_views', 'purchases'];
+  }, [distributionCreativeMetricColumns, distributionCreativeMetricOptions]);
+
+  const formatDistributionMetricValue = (value: number, formatType: 'number' | 'currency' | 'percentage' | 'decimal') => {
+    switch (formatType) {
+      case 'currency':
+        return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      case 'percentage':
+        return `${value.toFixed(1)}%`;
+      case 'decimal':
+        return value.toFixed(2);
+      default:
+        return Math.round(value).toLocaleString('pt-BR');
+    }
+  };
 
   const metaFunnelData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
@@ -2356,6 +2427,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
     const videoViews = Number.isFinite(videoViewsRaw) ? videoViewsRaw : 0;
 
     const followersGained = Number(r?.instagram_follows || 0);
+    const spend = Number(r?.spend || 0);
+    const purchases = Number(r?.purchases || 0);
+    const checkouts = Number(r?.checkout_views || 0);
+    const purchaseValue = Number(r?.purchase_value || 0);
+    const roas = spend > 0 ? purchaseValue / spend : Number(r?.roas || 0);
+    const profileVisits = Number(r?.profile_visits || 0);
 
     const platformRows = (metaPlatformBreakdownQuery.data || []) as any[];
     const byPlatform = new Map<string, { reach: number; impressions: number; clicks: number }>();
@@ -2386,6 +2463,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
       avgEngagement,
       videoViews,
       followersGained,
+      spend,
+      roas,
+      checkouts,
+      purchases,
+      profileVisits,
+      costPerProfileVisit: profileVisits > 0 ? spend / profileVisits : 0,
       platformBreakdown,
     };
   }, [metaPlatformBreakdownQuery.data, metaTotalsRow, project?.source_type]);
@@ -2911,11 +2994,34 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                         <tr>
                           <th className="px-4 py-3 text-left font-medium">Criativo</th>
                           <th className="px-4 py-3 text-left font-medium">Link / Prévia</th>
-                          <th className="px-4 py-3 text-right font-medium">Investimento</th>
-                          <th className="px-4 py-3 text-right font-medium">Impressões</th>
-                          <th className="px-4 py-3 text-right font-medium">Visitas Perfil</th>
-                          <th className="px-4 py-3 text-right font-medium">Checkout</th>
-                          <th className="px-4 py-3 text-right font-medium">Vendas</th>
+                          {distributionCreativeColumns.map((metricKey, index) => {
+                            const option = distributionCreativeMetricOptions.find((item) => item.key === metricKey);
+                            return (
+                              <th key={`${metricKey}-${index}`} className="px-4 py-3 text-right font-medium">
+                                <Select
+                                  value={metricKey}
+                                  onValueChange={(value) =>
+                                    setDistributionCreativeMetricColumns((prev) => {
+                                      const next = [...prev];
+                                      next[index] = value;
+                                      return next;
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-8 w-[160px] text-xs ml-auto">
+                                    <SelectValue placeholder={option?.label || 'Métrica'} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {distributionCreativeMetricOptions.map((item) => (
+                                      <SelectItem key={item.key} value={item.key}>
+                                        {item.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </th>
+                            );
+                          })}
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -2960,11 +3066,49 @@ export function DashboardView({ projectId, isPreview = false, shareToken }: Dash
                                 <span className="text-muted-foreground">Sem link</span>
                               )}
                             </td>
-                            <td className="px-4 py-3 text-right">{item.spend.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                            <td className="px-4 py-3 text-right">{Math.round(item.impressions).toLocaleString('pt-BR')}</td>
-                            <td className="px-4 py-3 text-right">{Math.round(item.profileVisits).toLocaleString('pt-BR')}</td>
-                            <td className="px-4 py-3 text-right">{Math.round(item.checkouts).toLocaleString('pt-BR')}</td>
-                            <td className="px-4 py-3 text-right">{Math.round(item.purchases).toLocaleString('pt-BR')}</td>
+                            {distributionCreativeColumns.map((metricKey) => {
+                              const option = distributionCreativeMetricOptions.find((entry) => entry.key === metricKey);
+                              let raw = 0;
+                              switch (metricKey) {
+                                case 'investment':
+                                  raw = Number(item.spend || 0);
+                                  break;
+                                case 'impressions':
+                                  raw = Number(item.impressions || 0);
+                                  break;
+                                case 'clicks':
+                                  raw = Number(item.clicks || 0);
+                                  break;
+                                case 'profile_visits':
+                                  raw = Number(item.profileVisits || 0);
+                                  break;
+                                case 'checkout_views':
+                                  raw = Number(item.checkouts || 0);
+                                  break;
+                                case 'purchases':
+                                  raw = Number(item.purchases || 0);
+                                  break;
+                                case 'ctr':
+                                  raw = Number(item.ctr || 0);
+                                  break;
+                                case 'cpc':
+                                  raw = Number(item.cpc || 0);
+                                  break;
+                                case 'cpm':
+                                  raw = Number(item.cpm || 0);
+                                  break;
+                                case 'roas':
+                                  raw = Number(item.roas || 0);
+                                  break;
+                                default:
+                                  raw = 0;
+                              }
+                              return (
+                                <td key={`${item.name}-${metricKey}`} className="px-4 py-3 text-right">
+                                  {formatDistributionMetricValue(raw, option?.format || 'number')}
+                                </td>
+                              );
+                            })}
                           </tr>
                         ))}
                       </tbody>
