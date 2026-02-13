@@ -1,4 +1,4 @@
-﻿import * as React from 'react';
+import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -431,7 +431,7 @@ export default function ProjectConfig() {
                               <CardContent className="p-4 flex justify-between items-center">
                                 <div>
                                   <p className="font-medium">{acc.name}</p>
-                                  <p className="text-xs text-muted-foreground">ID: {acc.id} â€¢ {acc.currency}</p>
+                                  <p className="text-xs text-muted-foreground">ID: {acc.id} • {acc.currency}</p>
                                 </div>
                                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
                               </CardContent>

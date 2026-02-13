@@ -24,3 +24,15 @@ jobs:
 
       - name: Deploy meta-api
         run: supabase functions deploy meta-api --project-ref $PROJECT_ID --no-verify-jwt
+
+      - name: Deploy google-sheets
+        run: supabase functions deploy google-sheets --project-ref $PROJECT_ID --no-verify-jwt
+
+      - name: Deploy validate-share-token
+        run: supabase functions deploy validate-share-token --project-ref $PROJECT_ID --no-verify-jwt
+
+      - name: Deploy create-share-token
+        run: supabase functions deploy create-share-token --project-ref $PROJECT_ID --no-verify-jwt
+
+      - name: Deploy payment-attribution
+        run: supabase functions deploy payment-attribution --project-ref $PROJECT_ID --no-verify-jwt
