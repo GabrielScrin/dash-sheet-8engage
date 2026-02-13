@@ -8,6 +8,14 @@ const corsHeaders = {
 
 type JsonRecord = Record<string, unknown>;
 
+const MAX_PAYLOAD_SIZE = 64 * 1024; // 64KB max payload
+const MAX_STRING_LENGTH = 500;
+
+const sanitizeString = (value: unknown, maxLen = MAX_STRING_LENGTH): string => {
+  if (value === null || value === undefined) return "";
+  return String(value).trim().substring(0, maxLen).replace(/[<>]/g, "");
+};
+
 const toNumber = (value: unknown) => {
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? "0"));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -108,20 +116,53 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Webhook secret is REQUIRED
+      if (!webhookSecret) {
+        return new Response(JSON.stringify({ error: "Webhook secret not configured" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const incomingSecret = req.headers.get("x-webhook-secret");
-      if (webhookSecret && incomingSecret !== webhookSecret) {
+      if (incomingSecret !== webhookSecret) {
         return new Response(JSON.stringify({ error: "Invalid webhook secret" }), {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
+      // Enforce payload size limit
+      const contentLength = Number(req.headers.get("content-length") || "0");
+      if (contentLength > MAX_PAYLOAD_SIZE) {
+        return new Response(JSON.stringify({ error: "Payload too large" }), {
+          status: 413,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const rawBody = await req.text().catch(() => "");
+      if (rawBody.length > MAX_PAYLOAD_SIZE) {
+        return new Response(JSON.stringify({ error: "Payload too large" }), {
+          status: 413,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const providerRaw = url.searchParams.get("provider") || "manual";
       const provider = ["hotmart", "eduzz", "kiwify", "manual"].includes(providerRaw) ? providerRaw : "manual";
-      const payload = (await req.json().catch(() => ({}))) as JsonRecord;
 
-      const externalOrderId =
-        String(
+      let payload: JsonRecord;
+      try {
+        payload = JSON.parse(rawBody) as JsonRecord;
+      } catch {
+        return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const externalOrderId = sanitizeString(
           deepGet(payload, [
             "order_id",
             "id",
@@ -130,8 +171,9 @@ Deno.serve(async (req) => {
             "purchase.order_id",
             "data.order_id",
             "data.id",
-          ]) ?? "",
-        ).trim();
+          ]),
+          100,
+        );
 
       if (!externalOrderId) {
         return new Response(JSON.stringify({ error: "Missing external order id" }), {
@@ -151,24 +193,26 @@ Deno.serve(async (req) => {
         deepGet(payload, ["approved_at", "purchase.approved_date", "data.approved_at", "event_date", "created_at"]) ??
           new Date().toISOString(),
       );
-      const grossAmount = toNumber(
+      const grossAmount = Math.min(Math.max(toNumber(
         deepGet(payload, ["gross_amount", "amount", "purchase.price.value", "data.amount", "value"]),
-      );
-      const netAmount = toNumber(
+      ), 0), 99999999);
+      const netAmount = Math.min(Math.max(toNumber(
         deepGet(payload, ["net_amount", "purchase.net.value", "data.net_amount", "net_value"]) ?? grossAmount,
-      );
-      const feeAmount = toNumber(deepGet(payload, ["fee_amount", "fees", "purchase.fees.value"]));
-      const refundedAmount = toNumber(deepGet(payload, ["refunded_amount", "refund_value"]));
+      ), 0), 99999999);
+      const feeAmount = Math.min(Math.max(toNumber(deepGet(payload, ["fee_amount", "fees", "purchase.fees.value"])), 0), 99999999);
+      const refundedAmount = Math.min(Math.max(toNumber(deepGet(payload, ["refunded_amount", "refund_value"])), 0), 99999999);
       const status = statusToInternal(
         deepGet(payload, ["status", "purchase.status", "event", "event_name", "data.status"]),
       );
-      const currency = String(deepGet(payload, ["currency", "purchase.price.currency_value"]) ?? "BRL");
-      const customerEmail = String(
-        deepGet(payload, ["customer_email", "buyer.email", "purchase.buyer.email", "data.customer.email"]) ?? "",
-      ).trim();
-      const customerId = String(
-        deepGet(payload, ["customer_id", "buyer.id", "purchase.buyer.id", "data.customer.id"]) ?? "",
-      ).trim();
+      const currency = sanitizeString(deepGet(payload, ["currency", "purchase.price.currency_value"]) ?? "BRL", 10);
+      const customerEmail = sanitizeString(
+        deepGet(payload, ["customer_email", "buyer.email", "purchase.buyer.email", "data.customer.email"]),
+        255,
+      );
+      const customerId = sanitizeString(
+        deepGet(payload, ["customer_id", "buyer.id", "purchase.buyer.id", "data.customer.id"]),
+        100,
+      );
 
       let attributionSessionId: string | null = null;
 
