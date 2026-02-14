@@ -184,6 +184,8 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
       actionType.includes('profile_visit') ||
       actionType.includes('instagram_profile_visit') ||
       actionType.includes('ig_profile_visit') ||
+      actionType.includes('onsite_conversion.profile') ||
+      actionType.includes('profile_view') ||
       actionType.includes('visit_profile') ||
       (actionType.includes('profile') && actionType.includes('visit')),
   );
@@ -220,7 +222,7 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
     case 'result':
       return results;
     case 'profile_visits':
-      return profileVisits || profileVisitsFallback;
+      return profileVisits || profileVisitsFallback || landingViews || getMetricAliasValue(row, ['inline_link_clicks']);
     case 'instagram_follows':
       return instagramFollows;
     case 'revenue':

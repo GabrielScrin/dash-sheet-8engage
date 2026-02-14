@@ -435,6 +435,8 @@ Deno.serve(async (req) => {
           normalized.includes('profile_visit') ||
           normalized.includes('instagram_profile_visit') ||
           normalized.includes('ig_profile_visit') ||
+          normalized.includes('profile_view') ||
+          normalized.includes('onsite_conversion.profile') ||
           normalized.includes('visit_profile') ||
           (normalized.includes('profile') && normalized.includes('visit'))
         );

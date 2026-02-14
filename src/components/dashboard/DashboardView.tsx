@@ -22,7 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { processDashboardData } from '@/lib/dashboard-utils';
 import { getMetaMetricFormat, getMetaMetricLabel, getMetaMetricValue } from '@/lib/meta-metric-labels';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { format, startOfMonth, startOfWeek, subDays } from 'date-fns';
+import { eachDayOfInterval, eachMonthOfInterval, eachWeekOfInterval, format, startOfMonth, startOfWeek, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { useAuth } from '@/contexts/AuthContext';
@@ -112,6 +112,37 @@ const getInstagramThumbnailFromLink = (value: string | undefined) => {
     // noop
   }
   return '';
+};
+
+const getPeriodKeysFromDateRange = (dateRange: DateRange | undefined, viewMode: 'day' | 'week' | 'month') => {
+  if (!dateRange?.from) return [];
+
+  const start = new Date(dateRange.from);
+  const end = new Date(dateRange.to || new Date());
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+
+  const rangeStart = start <= end ? start : end;
+  const rangeEnd = start <= end ? end : start;
+
+  if (viewMode === 'day') {
+    return eachDayOfInterval({ start: rangeStart, end: rangeEnd }).map((day) => format(day, 'yyyy-MM-dd'));
+  }
+
+  if (viewMode === 'month') {
+    return eachMonthOfInterval({
+      start: startOfMonth(rangeStart),
+      end: startOfMonth(rangeEnd),
+    }).map((month) => format(month, 'yyyy-MM'));
+  }
+
+  return eachWeekOfInterval(
+    {
+      start: startOfWeek(rangeStart, { weekStartsOn: 0 }),
+      end: startOfWeek(rangeEnd, { weekStartsOn: 0 }),
+    },
+    { weekStartsOn: 0 }
+  ).map((week) => format(week, 'yyyy-MM-dd'));
 };
 
 type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal' | 'link';
@@ -1729,11 +1760,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       byBucket.set(bucketKey, current);
     }
 
-    return Array.from(byBucket.entries())
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .slice(0, 5)
-      .reverse()
-      .map(([periodKey, values], index) => {
+    const periodKeysFromFilter = getPeriodKeysFromDateRange(dateRange, viewMode);
+    const orderedPeriodKeys =
+      periodKeysFromFilter.length > 0 ? periodKeysFromFilter : Array.from(byBucket.keys()).sort((a, b) => a.localeCompare(b));
+
+    return orderedPeriodKeys.map((periodKey, index) => {
+      const values = byBucket.get(periodKey) || { periodKey };
         const periodDate =
           viewMode === 'month'
             ? new Date(`${periodKey}-01T00:00:00`)
@@ -1751,7 +1783,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           ...values,
         };
       });
-  }, [filteredRows, project?.source_type, sheetDateColumnKey, sheetInvestmentMetricKey, sheetMetricOptions, sheetRevenueMetricKey, sheetRoasMetricKey, viewMode]);
+  }, [dateRange, filteredRows, project?.source_type, sheetDateColumnKey, sheetInvestmentMetricKey, sheetMetricOptions, sheetRevenueMetricKey, sheetRoasMetricKey, viewMode]);
 
   const sheetCreativeData = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
@@ -1927,10 +1959,32 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       byBucket.set(key, current);
     }
 
-    const buckets = Array.from(byBucket.values())
-      .sort((a, b) => b.bucket.localeCompare(a.bucket))
-      .slice(0, 5)
-      .reverse();
+    const periodKeysFromFilter = getPeriodKeysFromDateRange(dateRange, viewMode);
+    const orderedPeriodKeys =
+      periodKeysFromFilter.length > 0 ? periodKeysFromFilter : Array.from(byBucket.keys()).sort((a, b) => a.localeCompare(b));
+
+    const buckets = orderedPeriodKeys.map((bucketKey) => {
+      const bucket = byBucket.get(bucketKey);
+      if (bucket) return bucket;
+      return {
+        bucket: bucketKey,
+        spend: 0,
+        clicks: 0,
+        leads: 0,
+        purchases: 0,
+        purchase_value: 0,
+        impressions: 0,
+        reach: 0,
+        messages: 0,
+        profile_visits: 0,
+        instagram_follows: 0,
+        landing_views: 0,
+        checkout_views: 0,
+        video_views: 0,
+        actions_agg_map: {},
+        action_values_agg_map: {},
+      };
+    });
 
     return buckets.map((b, i) => {
       const sales = b.purchases > 0 ? b.purchases : b.leads;
@@ -1982,7 +2036,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         action_values_agg_map: b.action_values_agg_map,
       };
     });
-  }, [filteredRows, project?.source_type, viewMode]);
+  }, [dateRange, filteredRows, project?.source_type, viewMode]);
 
   const paymentByAdId = useMemo(() => {
     const ads = (paymentAttributionSummaryQuery.data as any)?.ads || [];
@@ -2826,13 +2880,24 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                       <LineChart data={trendRows} margin={{ left: 8, right: 8, top: 16, bottom: 8 }}>
                         <CartesianGrid vertical={false} strokeDasharray="3 3" />
                         <XAxis dataKey="period" tickLine={false} axisLine={false} minTickGap={24} />
-                        <YAxis tickLine={false} axisLine={false} width={80} />
+                        {chartSeriesColumns.slice(0, 4).map((metricKey, index) => (
+                          <YAxis
+                            key={`y-${metricKey}`}
+                            yAxisId={`y-${index}`}
+                            tickLine={false}
+                            axisLine={false}
+                            width={index === 0 ? 80 : 0}
+                            hide={index !== 0}
+                            domain={['auto', 'auto']}
+                          />
+                        ))}
                         <ChartTooltip content={<ChartTooltipContent />} />
                         {chartSeriesColumns.slice(0, 4).map((metricKey, index) => (
                           <Line
                             key={metricKey}
                             type="monotone"
                             dataKey={metricKey}
+                            yAxisId={`y-${index}`}
                             stroke={`hsl(var(--chart-${(index % 5) + 1}))`}
                             strokeWidth={2}
                             dot={false}
