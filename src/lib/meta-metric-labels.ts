@@ -261,9 +261,9 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
     case 'video_views':
       return resolvedVideoViews;
     case 'hook_rate':
-      return impressions > 0 ? video3s / impressions : safeNumber(row.hook_rate);
+      return impressions > 0 ? (video3s / impressions) * 100 : safeNumber(row.hook_rate);
     case 'hold_rate':
-      return impressions > 0 ? (video15s || thruplay) / impressions : safeNumber(row.hold_rate);
+      return impressions > 0 ? ((video15s || thruplay) / impressions) * 100 : safeNumber(row.hold_rate);
     case 'landing_views':
       return landingViews;
     case 'checkout_views':

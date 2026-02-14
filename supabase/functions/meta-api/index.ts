@@ -498,8 +498,8 @@ Deno.serve(async (req) => {
         const videoP75 = sumMetricArrayValues(row.video_p75_watched_actions);
         const thruplayRaw = sumMetricArrayValues(row.video_thruplay_watched_actions);
 
-        // Fallback: only use video_play_actions if no specific action type matched AND no thruplay exists.
-        const video3s = video3sFromActions > 0 ? video3sFromActions : 0;
+        // Fallback: if no specific 3s action comes, use video_play_actions as best-effort proxy.
+        const video3s = video3sFromActions > 0 ? video3sFromActions : videoPlay;
         const video15s = video15sFromActions > 0 ? video15sFromActions : videoP25;
         const thruplay = thruplayRaw > 0 ? thruplayRaw : videoP50 || videoP75;
 
