@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronRight, FileSpreadsheet, Share2, Eye, Database, Link2, Facebook } from 'lucide-react';
+import { Check, ChevronRight, FileSpreadsheet, Share2, Eye, Database, Link2, Facebook, Webhook } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import { SheetSelector } from '@/components/sheets/SheetSelector';
 import { SheetTabSelector } from '@/components/sheets/SheetTabSelector';
 import { ShareManager } from '@/components/config/ShareManager';
 import { AccessLogsPanel } from '@/components/dashboard/AccessLogsPanel';
+import { WebhookPanel } from '@/components/config/WebhookPanel';
 
 interface Project {
   id: string;
@@ -33,11 +34,12 @@ type SourceType = 'sheet' | 'meta_ads' | null;
 const allSteps = [
   { id: 1, name: 'Fonte', icon: Database, description: 'Escolha a origem dos dados' },
   { id: 2, name: 'Conexão', icon: Link2, description: 'Conecte sua conta ou planilha' },
+  { id: 5, name: 'Integrações', icon: Webhook, description: 'Webhooks e integrações de pagamento' },
   { id: 4, name: 'Publicar', icon: Share2, description: 'Compartilhe seu dashboard' },
 ];
 
 const getStepsBySource = (sourceType: SourceType) => {
-  if (sourceType === 'meta_ads') return allSteps.filter((step) => [1, 2, 4].includes(step.id));
+  if (sourceType === 'meta_ads') return allSteps.filter((step) => [1, 2, 5, 4].includes(step.id));
   if (sourceType === 'sheet') return allSteps.filter((step) => [1, 2, 4].includes(step.id));
   return allSteps.filter((step) => step.id === 1);
 };
@@ -530,6 +532,10 @@ export default function ProjectConfig() {
         );
       case 3:
         return null;
+      case 5:
+        return project?.id ? (
+          <WebhookPanel projectId={project.id} />
+        ) : null;
       case 4:
         return project?.id ? (
           <div className="space-y-6">
