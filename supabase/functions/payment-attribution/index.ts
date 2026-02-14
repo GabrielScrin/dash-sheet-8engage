@@ -11,6 +11,43 @@ type JsonRecord = Record<string, unknown>;
 const MAX_PAYLOAD_SIZE = 64 * 1024; // 64KB max payload
 const MAX_STRING_LENGTH = 500;
 
+// Timing-safe string comparison to prevent timing attacks on secret
+const timingSafeEqual = async (a: string, b: string): Promise<boolean> => {
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+  if (aBytes.length !== bBytes.length) {
+    // Compare with self to maintain constant time
+    await crypto.subtle.verify("HMAC", await crypto.subtle.importKey("raw", aBytes, { name: "HMAC", hash: "SHA-256" }, false, ["verify"]), new Uint8Array(32), aBytes);
+    return false;
+  }
+  const key = await crypto.subtle.importKey("raw", aBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+  const sig = await crypto.subtle.sign("HMAC", key, bBytes);
+  const expected = await crypto.subtle.sign("HMAC", key, aBytes);
+  return await crypto.subtle.verify("HMAC", key, sig, aBytes);
+};
+
+// Strip sensitive PII from raw payloads before storage
+const stripSensitiveFields = (payload: JsonRecord): JsonRecord => {
+  const sensitiveKeys = new Set([
+    "password", "senha", "credit_card", "card_number", "cvv", "cvc",
+    "card_expiry", "card_exp", "cpf", "cnpj", "rg", "ssn", "tax_id",
+    "phone", "telefone", "address", "endereco", "cep", "zip_code",
+    "bank_account", "account_number", "routing_number",
+  ]);
+  const stripped: JsonRecord = {};
+  for (const [key, value] of Object.entries(payload)) {
+    const lowerKey = key.toLowerCase();
+    if (sensitiveKeys.has(lowerKey)) continue;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      stripped[key] = stripSensitiveFields(value as JsonRecord);
+    } else {
+      stripped[key] = value;
+    }
+  }
+  return stripped;
+};
+
 const sanitizeString = (value: unknown, maxLen = MAX_STRING_LENGTH): string => {
   if (value === null || value === undefined) return "";
   return String(value).trim().substring(0, maxLen).replace(/[<>]/g, "");
@@ -125,7 +162,7 @@ Deno.serve(async (req) => {
       }
 
       const incomingSecret = req.headers.get("x-webhook-secret");
-      if (incomingSecret !== webhookSecret) {
+      if (!incomingSecret || !(await timingSafeEqual(incomingSecret, webhookSecret))) {
         return new Response(JSON.stringify({ error: "Invalid webhook secret" }), {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -254,10 +291,10 @@ Deno.serve(async (req) => {
           fbclid: tracking.fbclid,
           fbc: tracking.fbc,
           fbp: tracking.fbp,
-          customer_email: customerEmail || null,
+          customer_email: customerEmail ? customerEmail.replace(/^(.{2})(.*)(@.*)$/, "$1***$3") : null,
           customer_id: customerId || null,
           tracking,
-          raw_payload: payload,
+          raw_payload: stripSensitiveFields(payload),
         },
         { onConflict: "provider,external_order_id" },
       );
