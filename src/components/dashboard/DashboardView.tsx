@@ -1212,19 +1212,24 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const campaignOptions = project?.source_type === 'meta_ads' ? metaCampaignOptions : sheetCampaignOptions;
 
   const metaWeeklyMetricOptions = useMemo(() => {
-    const curatedKeys = [
+    const allowedKeys = [
       'impressions',
       'result',
       'reach',
       'messages',
+      'purchases',
+      'checkout_views',
+      'roi',
       'hook_rate',
       'hold_rate',
       'profile_visits',
       'inline_link_clicks',
+      'landing_views',
+      'frequency',
+      'thruplay',
       'cpc',
       'cpm',
       'ctr',
-      'post_engagement',
       'cost_per_profile_visit',
       'cost_per_message',
       'cost_per_lead',
@@ -1233,44 +1238,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       'connect_rate',
     ];
 
-    const discoveredActionTypes = new Set<string>();
-    const discoveredActionValueTypes = new Set<string>();
-    for (const row of (sourceRows || []) as any[]) {
-      const actionsMap = (row?.actions_map || row?.actions_agg_map || {}) as Record<string, number>;
-      const actionValuesMap = (row?.action_values_map || row?.action_values_agg_map || {}) as Record<string, number>;
-      for (const actionType of Object.keys(actionsMap)) {
-        if (actionType) discoveredActionTypes.add(actionType);
-      }
-      for (const actionType of Object.keys(actionValuesMap)) {
-        if (actionType) discoveredActionValueTypes.add(actionType);
-      }
-    }
-
-    const catalogActionTypes = metaMetricsCatalogQuery.data?.actions || [];
-    const catalogActionValueTypes = metaMetricsCatalogQuery.data?.action_values || [];
-
-    const actionTypes = Array.from(new Set([...catalogActionTypes, ...Array.from(discoveredActionTypes)]));
-    const actionValueTypes = Array.from(new Set([...catalogActionValueTypes, ...Array.from(discoveredActionValueTypes)]));
-
-    const resultActionKeys = actionTypes.map((actionType) => `result_action:${actionType}`);
-    const actionKeys = actionTypes.map((actionType) => `action:${actionType}`);
-    const actionValueKeys = actionValueTypes.map((actionType) => `action_value:${actionType}`);
-
-    const allKeys = Array.from(new Set([
-      ...curatedKeys,
-      ...resultActionKeys,
-      ...actionKeys,
-      ...actionValueKeys,
-      ...weeklyMetricColumns,
-      ...creativeMetricColumns,
-    ]));
-
-    return allKeys.map((key) => ({
+    return allowedKeys.map((key) => ({
       key,
       label: getMetaMetricLabel(key),
       format: getMetaMetricFormat(key),
     }));
-  }, [creativeMetricColumns, metaMetricsCatalogQuery.data?.action_values, metaMetricsCatalogQuery.data?.actions, sourceRows, weeklyMetricColumns]);
+  }, []);
 
   const rowsAfterCampaignFilter = useMemo(() => {
     if (project?.source_type !== 'meta_ads') {
@@ -2298,6 +2271,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       { key: 'profile_visits', label: 'Visitas Perfil', format: 'number' as const },
       { key: 'checkout_views', label: 'Checkout', format: 'number' as const },
       { key: 'purchases', label: 'Vendas', format: 'number' as const },
+      { key: 'roi', label: 'ROI', format: 'percentage' as const },
       { key: 'ctr', label: 'CTR', format: 'percentage' as const },
       { key: 'cpc', label: 'CPC', format: 'currency' as const },
       { key: 'cpm', label: 'CPM', format: 'currency' as const },
@@ -3227,6 +3201,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                 case 'roas':
                                   raw = Number(item.roas || 0);
                                   break;
+                                case 'roi': {
+                                  const spend = Number(item.spend || 0);
+                                  const roas = Number(item.roas || 0);
+                                  const revenue = roas > 0 ? roas * spend : 0;
+                                  raw = spend > 0 ? ((revenue - spend) / spend) * 100 : 0;
+                                  break;
+                                }
                                 default:
                                   raw = 0;
                               }

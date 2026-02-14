@@ -5,6 +5,7 @@ const BASE_METRIC_LABELS: Record<string, { label: string; format: MetricFormat }
   investment: { label: 'Investimento', format: 'currency' },
   revenue: { label: 'Faturamento', format: 'currency' },
   roas: { label: 'ROAS', format: 'decimal' },
+  roi: { label: 'ROI', format: 'percentage' },
   conversion: { label: 'Taxa de Conversao', format: 'percentage' },
   spend: { label: 'Gasto', format: 'currency' },
   impressions: { label: 'Impressoes', format: 'number' },
@@ -240,6 +241,8 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
       return reach > 0 ? impressions / reach : safeNumber(row.frequency);
     case 'roas':
       return spend > 0 ? purchaseValue / spend : safeNumber(row.roas);
+    case 'roi':
+      return spend > 0 ? ((purchaseValue - spend) / spend) * 100 : 0;
     case 'cpl':
       return leads > 0 ? spend / leads : safeNumber(row.cpl);
     case 'cpa':
