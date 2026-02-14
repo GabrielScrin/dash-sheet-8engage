@@ -81,7 +81,7 @@ export function SheetTabSelector({
     if (!perpetuaTab || !distribuicaoTab) {
       toast({
         title: 'Selecione as duas abas',
-        description: 'Escolha uma aba para PerpÈtua e outra para DistribuiÁ„o.',
+        description: 'Escolha uma aba para Perp√©tua e outra para Distribui√ß√£o.',
         variant: 'destructive',
       });
       return;
@@ -111,15 +111,15 @@ export function SheetTabSelector({
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Escolha qual aba alimenta cada visualizaÁ„o do dashboard:
+          Escolha qual aba alimenta cada visualiza√ß√£o do dashboard:
         </p>
-        <div className="text-xs text-muted-foreground">PerpÈtua + DistribuiÁ„o</div>
+        <div className="text-xs text-muted-foreground">Perp√©tua + Distribui√ß√£o</div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
         <Card>
           <CardContent className="p-4 space-y-2">
-            <p className="text-sm font-medium">Aba da vis„o PerpÈtua</p>
+            <p className="text-sm font-medium">Aba da vis√£o Perp√©tua</p>
             <Select value={perpetuaTab} onValueChange={setPerpetuaTab}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione a aba" />
@@ -137,7 +137,7 @@ export function SheetTabSelector({
 
         <Card>
           <CardContent className="p-4 space-y-2">
-            <p className="text-sm font-medium">Aba da DistribuiÁ„o</p>
+            <p className="text-sm font-medium">Aba da Distribui√ß√£o</p>
             <Select value={distribuicaoTab} onValueChange={setDistribuicaoTab}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione a aba" />
@@ -159,7 +159,7 @@ export function SheetTabSelector({
           Voltar
         </Button>
         <Button onClick={handleConfirm} disabled={!perpetuaTab || !distribuicaoTab}>
-          Confirmar SeleÁ„o
+          Confirmar Sele√ß√£o
         </Button>
       </div>
     </div>
