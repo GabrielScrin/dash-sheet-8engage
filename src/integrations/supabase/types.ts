@@ -201,12 +201,51 @@ export type Database = {
           },
         ]
       }
+      payment_connection_secrets: {
+        Row: {
+          connection_id: string
+          created_at: string
+          credentials: Json
+          id: string
+          secret_hash: string
+          secret_last4: string
+          updated_at: string
+        }
+        Insert: {
+          connection_id: string
+          created_at?: string
+          credentials?: Json
+          id?: string
+          secret_hash: string
+          secret_last4: string
+          updated_at?: string
+        }
+        Update: {
+          connection_id?: string
+          created_at?: string
+          credentials?: Json
+          id?: string
+          secret_hash?: string
+          secret_last4?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_connection_secrets_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: true
+            referencedRelation: "payment_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_connections: {
         Row: {
           config: Json
           created_at: string
           id: string
           name: string | null
+          project_id: string | null
           provider: string
           status: string
           updated_at: string
@@ -217,6 +256,7 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string | null
+          project_id?: string | null
           provider: string
           status?: string
           updated_at?: string
@@ -227,12 +267,21 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string | null
+          project_id?: string | null
           provider?: string
           status?: string
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "payment_connections_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payment_orders: {
         Row: {

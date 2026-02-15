@@ -390,18 +390,17 @@ Deno.serve(async (req) => {
     let isShareAuth = false;
 
     if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.replace("Bearer ", "");
       const userClient = createClient(supabaseUrl, supabaseAnonKey, {
         global: { headers: { Authorization: authHeader } },
       });
-      const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-      if (claimsError || !claimsData?.claims?.sub) {
+      const { data: userData, error: userError } = await userClient.auth.getUser();
+      if (userError || !userData?.user?.id) {
         return new Response(JSON.stringify({ error: "Invalid token" }), {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      userId = String(claimsData.claims.sub);
+      userId = String(userData.user.id);
     } else if (shareToken) {
       isShareAuth = true;
       const { data: shareData, error: shareError } = await supabase
