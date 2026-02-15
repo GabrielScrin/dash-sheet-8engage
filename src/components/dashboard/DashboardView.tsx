@@ -3209,7 +3209,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                   })();
                               return (
                                 <td key={`${item.name}-${metricKey}`} className="px-4 py-3 text-right">
-                                  {formatDistributionMetricValue(raw, option?.format || 'number')}
+                                  {formatDistributionMetricValue(raw, (option?.format === 'link' ? 'number' : option?.format) || 'number')}
                                 </td>
                               );
                             })}
