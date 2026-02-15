@@ -53,6 +53,19 @@ const sanitizeString = (value: unknown, maxLen = MAX_STRING_LENGTH): string => {
   return String(value).trim().substring(0, maxLen).replace(/[<>]/g, "");
 };
 
+const toHex = (bytes: Uint8Array) => Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+
+const hashSecret = async (secret: string) => {
+  const encoded = new TextEncoder().encode(secret);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  return toHex(new Uint8Array(digest));
+};
+
+const generateSecret = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return `hotm_${toHex(bytes)}`;
+};
+
 const toNumber = (value: unknown) => {
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? "0"));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -144,6 +157,16 @@ Deno.serve(async (req) => {
       });
     }
 
+    const getProjectOwner = async (projectId: string) => {
+      const { data: projectData, error: projectError } = await supabase
+        .from("projects")
+        .select("id,user_id")
+        .eq("id", projectId)
+        .single();
+      if (projectError || !projectData?.user_id) return null;
+      return projectData;
+    };
+
     // 1) Public webhook ingestion (provider POST)
     if (action === "ingest-webhook") {
       if (req.method !== "POST") {
@@ -153,21 +176,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Webhook secret is REQUIRED
-      if (!webhookSecret) {
-        return new Response(JSON.stringify({ error: "Webhook secret not configured" }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const incomingSecret = req.headers.get("x-webhook-secret");
-      if (!incomingSecret || !(await timingSafeEqual(incomingSecret, webhookSecret))) {
-        return new Response(JSON.stringify({ error: "Invalid webhook secret" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+      const incomingSecret = req.headers.get("x-webhook-secret") || "";
 
       // Enforce payload size limit
       const contentLength = Number(req.headers.get("content-length") || "0");
@@ -199,6 +208,65 @@ Deno.serve(async (req) => {
         });
       }
 
+      const projectId = sanitizeString(
+        url.searchParams.get("projectId") ??
+          deepGet(payload, ["project_id", "metadata.project_id", "tracking.project_id"]),
+      80);
+      if (!projectId) {
+        return new Response(JSON.stringify({ error: "Missing projectId" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const ownerProject = await getProjectOwner(projectId);
+      if (!ownerProject?.user_id) {
+        return new Response(JSON.stringify({ error: "Project not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: connectionData } = await supabase
+        .from("payment_connections")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("provider", provider)
+        .maybeSingle();
+
+      if (!connectionData?.id) {
+        return new Response(JSON.stringify({ error: "Payment connection not configured for this project" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: secretData } = await supabase
+        .from("payment_connection_secrets")
+        .select("secret_hash")
+        .eq("connection_id", connectionData.id)
+        .maybeSingle();
+
+      if (!secretData?.secret_hash) {
+        return new Response(JSON.stringify({ error: "Webhook secret not configured for this project" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const incomingSecretHash = incomingSecret ? await hashSecret(incomingSecret) : "";
+      let secretValid = incomingSecretHash && await timingSafeEqual(incomingSecretHash, String(secretData.secret_hash));
+      if (!secretValid && webhookSecret) {
+        // Backward-compatible fallback for old global secret setup.
+        secretValid = await timingSafeEqual(incomingSecret, webhookSecret);
+      }
+      if (!secretValid) {
+        return new Response(JSON.stringify({ error: "Invalid webhook secret" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const externalOrderId = sanitizeString(
           deepGet(payload, [
             "order_id",
@@ -222,8 +290,6 @@ Deno.serve(async (req) => {
       const tracking = readTracking(payload);
       const metaFields = mergeMetaFields(payload, tracking);
 
-      const projectIdRaw = deepGet(payload, ["project_id", "metadata.project_id", "tracking.project_id"]);
-      const userIdRaw = deepGet(payload, ["user_id", "metadata.user_id", "tracking.user_id"]);
       const sessionKeyRaw = deepGet(payload, ["session_key", "metadata.session_key", "tracking.session_key"]);
 
       const approvedAt = parseDate(
@@ -253,11 +319,11 @@ Deno.serve(async (req) => {
 
       let attributionSessionId: string | null = null;
 
-      if (userIdRaw && sessionKeyRaw) {
+      if (sessionKeyRaw) {
         const { data: sessionData } = await supabase
           .from("attribution_sessions")
           .select("id")
-          .eq("user_id", String(userIdRaw))
+          .eq("user_id", String(ownerProject.user_id))
           .eq("session_key", String(sessionKeyRaw))
           .maybeSingle();
         attributionSessionId = sessionData?.id ?? null;
@@ -265,8 +331,8 @@ Deno.serve(async (req) => {
 
       const { error: upsertError } = await supabase.from("payment_orders").upsert(
         {
-          user_id: userIdRaw ? String(userIdRaw) : null,
-          project_id: projectIdRaw ? String(projectIdRaw) : null,
+          user_id: String(ownerProject.user_id),
+          project_id: String(projectId),
           provider,
           external_order_id: externalOrderId,
           status,
@@ -300,11 +366,10 @@ Deno.serve(async (req) => {
       );
 
       if (upsertError) {
-        // If user_id is missing, the row fails not-null. Surface explicit message for integration config.
         return new Response(
           JSON.stringify({
             error: upsertError.message,
-            hint: "Ensure webhook payload contains metadata.user_id and metadata.project_id.",
+            hint: "Ensure webhook payload contains metadata.project_id and a valid order id.",
           }),
           {
             status: 400,
@@ -322,6 +387,7 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     const shareToken = req.headers.get("x-share-token");
     let userId: string | null = null;
+    let isShareAuth = false;
 
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.replace("Bearer ", "");
@@ -337,6 +403,7 @@ Deno.serve(async (req) => {
       }
       userId = String(claimsData.claims.sub);
     } else if (shareToken) {
+      isShareAuth = true;
       const { data: shareData, error: shareError } = await supabase
         .from("share_tokens")
         .select("project_id,is_active,expires_at")
@@ -372,6 +439,167 @@ Deno.serve(async (req) => {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // 2.0) Project-scoped connection management (one-time secret reveal)
+    if (action === "connection-status") {
+      if (isShareAuth) {
+        return new Response(JSON.stringify({ error: "Forbidden for share token" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const projectId = sanitizeString(url.searchParams.get("projectId"), 80);
+      const provider = sanitizeString(url.searchParams.get("provider") || "hotmart", 30);
+      if (!projectId) {
+        return new Response(JSON.stringify({ error: "projectId is required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const ownerProject = await getProjectOwner(projectId);
+      if (!ownerProject || String(ownerProject.user_id) !== String(userId)) {
+        return new Response(JSON.stringify({ error: "Project not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: connectionData } = await supabase
+        .from("payment_connections")
+        .select("id,name,status,provider,project_id,created_at,updated_at")
+        .eq("project_id", projectId)
+        .eq("provider", provider)
+        .maybeSingle();
+
+      if (!connectionData?.id) {
+        return new Response(JSON.stringify({ connected: false }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: secretData } = await supabase
+        .from("payment_connection_secrets")
+        .select("secret_last4")
+        .eq("connection_id", connectionData.id)
+        .maybeSingle();
+
+      const baseUrl = `${supabaseUrl}/functions/v1/payment-attribution`;
+      const webhookUrl = `${baseUrl}?action=ingest-webhook&provider=${encodeURIComponent(provider)}&projectId=${encodeURIComponent(projectId)}`;
+
+      return new Response(
+        JSON.stringify({
+          connected: true,
+          connection: connectionData,
+          secretLast4: secretData?.secret_last4 || null,
+          webhookUrl,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (action === "connection-init" || action === "connection-rotate-secret") {
+      if (isShareAuth) {
+        return new Response(JSON.stringify({ error: "Forbidden for share token" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (req.method !== "POST") {
+        return new Response(JSON.stringify({ error: "Method not allowed" }), {
+          status: 405,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const body = (await req.json().catch(() => ({}))) as JsonRecord;
+      const projectId = sanitizeString(body.projectId, 80);
+      const provider = sanitizeString(body.provider || "hotmart", 30);
+      const name = sanitizeString(body.name || "Hotmart");
+      const credentials = (body.credentials && typeof body.credentials === "object" ? body.credentials : {}) as JsonRecord;
+
+      if (!projectId) {
+        return new Response(JSON.stringify({ error: "projectId is required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!["hotmart", "eduzz", "kiwify", "manual"].includes(provider)) {
+        return new Response(JSON.stringify({ error: "Invalid provider" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const ownerProject = await getProjectOwner(projectId);
+      if (!ownerProject || String(ownerProject.user_id) !== String(userId)) {
+        return new Response(JSON.stringify({ error: "Project not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: connectionData, error: connectionError } = await supabase
+        .from("payment_connections")
+        .upsert(
+          {
+            user_id: String(userId),
+            project_id: projectId,
+            provider,
+            name: name || "Conexão de Pagamento",
+            status: "active",
+          },
+          { onConflict: "project_id,provider" },
+        )
+        .select("id,provider,project_id,name,status")
+        .single();
+
+      if (connectionError || !connectionData?.id) {
+        return new Response(JSON.stringify({ error: connectionError?.message || "Failed to save connection" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const oneTimeSecret = generateSecret();
+      const secretHash = await hashSecret(oneTimeSecret);
+      const secretLast4 = oneTimeSecret.slice(-4);
+
+      const { error: secretError } = await supabase
+        .from("payment_connection_secrets")
+        .upsert(
+          {
+            connection_id: connectionData.id,
+            secret_hash: secretHash,
+            secret_last4: secretLast4,
+            credentials,
+          },
+          { onConflict: "connection_id" },
+        );
+
+      if (secretError) {
+        return new Response(JSON.stringify({ error: secretError.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const baseUrl = `${supabaseUrl}/functions/v1/payment-attribution`;
+      const webhookUrl = `${baseUrl}?action=ingest-webhook&provider=${encodeURIComponent(provider)}&projectId=${encodeURIComponent(projectId)}`;
+
+      return new Response(
+        JSON.stringify({
+          connected: true,
+          connection: connectionData,
+          webhookUrl,
+          oneTimeSecret,
+          note: "Guarde este secret agora. Ele não será exibido novamente.",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // 2.1) Upsert attribution session (from landing/checkout)
