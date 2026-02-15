@@ -2231,6 +2231,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       return (metaCreativeDataWithThumbs || [])
         .slice(0, 8)
         .map((row: any) => ({
+          ...row,
           name: String(row?.name || 'Criativo'),
           spend: getMetaMetricValue(row, 'investment'),
           impressions: getMetaMetricValue(row, 'impressions'),
@@ -2264,6 +2265,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   }, [metaCreativeDataWithThumbs, project?.source_type, sheetDistributionData?.topCreatives]);
 
   const distributionCreativeMetricOptions = useMemo(() => {
+    if (project?.source_type === 'meta_ads') {
+      return metaWeeklyMetricOptions.filter((option) => option.format !== 'link');
+    }
     return [
       { key: 'investment', label: 'Investimento', format: 'currency' as const },
       { key: 'impressions', label: 'Impressões', format: 'number' as const },
@@ -2277,7 +2281,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       { key: 'cpm', label: 'CPM', format: 'currency' as const },
       { key: 'roas', label: 'ROAS', format: 'decimal' as const },
     ];
-  }, []);
+  }, [metaWeeklyMetricOptions, project?.source_type]);
 
   const distributionCreativeColumns = useMemo(() => {
     const available = new Set(distributionCreativeMetricOptions.map((option) => option.key));
@@ -3169,48 +3173,40 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                             </td>
                             {distributionCreativeColumns.map((metricKey) => {
                               const option = distributionCreativeMetricOptions.find((entry) => entry.key === metricKey);
-                              let raw = 0;
-                              switch (metricKey) {
-                                case 'investment':
-                                  raw = Number(item.spend || 0);
-                                  break;
-                                case 'impressions':
-                                  raw = Number(item.impressions || 0);
-                                  break;
-                                case 'clicks':
-                                  raw = Number(item.clicks || 0);
-                                  break;
-                                case 'profile_visits':
-                                  raw = Number(item.profileVisits || 0);
-                                  break;
-                                case 'checkout_views':
-                                  raw = Number(item.checkouts || 0);
-                                  break;
-                                case 'purchases':
-                                  raw = Number(item.purchases || 0);
-                                  break;
-                                case 'ctr':
-                                  raw = Number(item.ctr || 0);
-                                  break;
-                                case 'cpc':
-                                  raw = Number(item.cpc || 0);
-                                  break;
-                                case 'cpm':
-                                  raw = Number(item.cpm || 0);
-                                  break;
-                                case 'roas':
-                                  raw = Number(item.roas || 0);
-                                  break;
-                                case 'roi': {
-                                  const spend = Number(item.spend || 0);
-                                  const roas = Number(item.roas || 0);
-                                  const revenue = roas > 0 ? roas * spend : 0;
-                                  raw = spend > 0 ? ((revenue - spend) / spend) * 100 : 0;
-                                  break;
-                                }
-                                default:
-                                  raw = 0;
-                              }
+                              const raw = project?.source_type === 'meta_ads'
+                                ? getMetaMetricValue(item as Record<string, unknown>, metricKey)
+                                : (() => {
+                                    switch (metricKey) {
+                                      case 'investment':
+                                        return Number(item.spend || 0);
+                                      case 'impressions':
+                                        return Number(item.impressions || 0);
+                                      case 'clicks':
+                                        return Number(item.clicks || 0);
+                                      case 'profile_visits':
+                                        return Number(item.profileVisits || 0);
+                                      case 'checkout_views':
+                                        return Number(item.checkouts || 0);
+                                      case 'purchases':
+                                        return Number(item.purchases || 0);
+                                      case 'ctr':
+                                        return Number(item.ctr || 0);
+                                      case 'cpc':
+                                        return Number(item.cpc || 0);
+                                      case 'cpm':
+                                        return Number(item.cpm || 0);
+                                      case 'roas':
+                                        return Number(item.roas || 0);
+                                      case 'roi': {
+                                        const spend = Number(item.spend || 0);
+                                        const roas = Number(item.roas || 0);
+                                        const revenue = roas > 0 ? roas * spend : 0;
+                                        return spend > 0 ? ((revenue - spend) / spend) * 100 : 0;
+                                      }
+                                      default:
+                                        return 0;
+                                    }
+                                  })();
                               return (
                                 <td key={`${item.name}-${metricKey}`} className="px-4 py-3 text-right">
                                   {formatDistributionMetricValue(raw, option?.format || 'number')}
