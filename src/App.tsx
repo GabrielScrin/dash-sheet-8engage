@@ -14,6 +14,7 @@ import Projects from "./pages/app/Projects";
 import ProjectConfig from "./pages/app/ProjectConfig";
 import ProjectPreview from "./pages/app/ProjectPreview";
 import MetaCallback from "./pages/app/MetaCallback";
+import Settings from "./pages/app/Settings";
 import ViewDashboard from "./pages/ViewDashboard";
 import NotFound from "./pages/NotFound";
 
@@ -52,6 +53,11 @@ const App = () => (
               <Route path="/app/meta/callback" element={
                 <ProtectedRoute>
                   <MetaCallback />
+                </ProtectedRoute>
+              } />
+              <Route path="/app/settings" element={
+                <ProtectedRoute>
+                  <Settings />
                 </ProtectedRoute>
               } />
               
