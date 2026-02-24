@@ -321,7 +321,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     'cpc',
   ]);
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
-  const [distributionPhase, setDistributionPhase] = useState<'all' | 'descoberta' | 'consideracao'>('descoberta');
+  const [distributionPhase, setDistributionPhase] = useState<'all' | 'descoberta' | 'consideracao'>('all');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -1585,7 +1585,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         if (!(campaign && selectedSet.has(campaign)) && !(adset && selectedSet.has(adset))) return false;
       }
 
-      if (distributionPhase !== 'all') {
+      if (distributionPhase !== 'all' && project?.source_type === 'meta_ads') {
         const campaign = distributionCampaignColumnKey ? String(row?.[distributionCampaignColumnKey] ?? '').toLowerCase() : '';
         const adset = distributionAdsetFilterColumnKey ? String(row?.[distributionAdsetFilterColumnKey] ?? '').toLowerCase() : '';
         const haystack = `${campaign} ${adset}`;
