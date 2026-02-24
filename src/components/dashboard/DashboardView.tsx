@@ -1057,6 +1057,29 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\bimpressions\b/, /\bimpressoes\b/]),
     [sheetMetricOptions],
   );
+  const sheetClicksMetricKey = useMemo(
+    () =>
+      pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
+        /\baction link clicks\b/,
+        /\binline link clicks\b/,
+        /\blink clicks?\b/,
+        /\bclicks?\b/,
+        /\bcliques?\b/,
+      ]),
+    [sheetMetricOptions],
+  );
+  const sheetFrequencyMetricKey = useMemo(
+    () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\bfrequency\b/, /\bfrequencia\b/]),
+    [sheetMetricOptions],
+  );
+  const sheetCpcMetricKey = useMemo(
+    () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\bcpc\b/, /cost per click/, /custo por clique/]),
+    [sheetMetricOptions],
+  );
+  const sheetCtrMetricKey = useMemo(
+    () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\bctr\b/, /click through rate/, /taxa de clique/]),
+    [sheetMetricOptions],
+  );
   const sheetDefaultWeeklyColumns = useMemo(() => {
     const fallback = sheetMetricOptions.slice(0, 5).map((metric) => metric.key);
     const prioritized = [
@@ -1718,6 +1741,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       }
 
       const current = byBucket.get(bucketKey) || { periodKey: bucketKey };
+      current.__row_count = parseSheetNumber(current.__row_count) + 1;
       const canRecomputeRoas = Boolean(sheetRoasMetricKey && sheetInvestmentMetricKey && sheetRevenueMetricKey);
       for (const metric of sheetMetricOptions) {
         if (canRecomputeRoas && sheetRoasMetricKey && metric.key === sheetRoasMetricKey) continue;
@@ -1733,12 +1757,45 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       byBucket.set(bucketKey, current);
     }
 
+    for (const values of byBucket.values()) {
+      const rowCount = parseSheetNumber(values.__row_count);
+      if (sheetFrequencyMetricKey) {
+        if (sheetImpressionsMetricKey && sheetReachMetricKey) {
+          const impressions = parseSheetNumber(values[sheetImpressionsMetricKey]);
+          const reach = parseSheetNumber(values[sheetReachMetricKey]);
+          values[sheetFrequencyMetricKey] = reach > 0 ? impressions / reach : 0;
+        } else if (rowCount > 0) {
+          values[sheetFrequencyMetricKey] = parseSheetNumber(values[sheetFrequencyMetricKey]) / rowCount;
+        }
+      }
+      if (sheetCpcMetricKey) {
+        if (sheetInvestmentMetricKey && sheetClicksMetricKey) {
+          const spend = parseSheetNumber(values[sheetInvestmentMetricKey]);
+          const clicks = parseSheetNumber(values[sheetClicksMetricKey]);
+          values[sheetCpcMetricKey] = clicks > 0 ? spend / clicks : 0;
+        } else if (rowCount > 0) {
+          values[sheetCpcMetricKey] = parseSheetNumber(values[sheetCpcMetricKey]) / rowCount;
+        }
+      }
+      if (sheetCtrMetricKey) {
+        if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
+          const clicks = parseSheetNumber(values[sheetClicksMetricKey]);
+          const impressions = parseSheetNumber(values[sheetImpressionsMetricKey]);
+          values[sheetCtrMetricKey] = impressions > 0 ? (clicks / impressions) * 100 : 0;
+        } else if (rowCount > 0) {
+          values[sheetCtrMetricKey] = parseSheetNumber(values[sheetCtrMetricKey]) / rowCount;
+        }
+      }
+    }
+
     const periodKeysFromFilter = getPeriodKeysFromDateRange(dateRange, viewMode);
     const orderedPeriodKeys =
       periodKeysFromFilter.length > 0 ? periodKeysFromFilter : Array.from(byBucket.keys()).sort((a, b) => a.localeCompare(b));
 
     return orderedPeriodKeys.map((periodKey, index) => {
       const values = byBucket.get(periodKey) || { periodKey };
+        const cleanValues = { ...(values as Record<string, unknown>) };
+        delete cleanValues.__row_count;
         const periodDate =
           viewMode === 'month'
             ? new Date(`${periodKey}-01T00:00:00`)
@@ -1753,10 +1810,26 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           week: label,
           periodKey,
           periodSort: periodDate.getTime(),
-          ...values,
+          ...cleanValues,
         };
       });
-  }, [dateRange, filteredRows, project?.source_type, sheetDateColumnKey, sheetInvestmentMetricKey, sheetMetricOptions, sheetRevenueMetricKey, sheetRoasMetricKey, viewMode]);
+  }, [
+    dateRange,
+    filteredRows,
+    project?.source_type,
+    sheetCpcMetricKey,
+    sheetClicksMetricKey,
+    sheetCtrMetricKey,
+    sheetDateColumnKey,
+    sheetFrequencyMetricKey,
+    sheetImpressionsMetricKey,
+    sheetInvestmentMetricKey,
+    sheetMetricOptions,
+    sheetReachMetricKey,
+    sheetRevenueMetricKey,
+    sheetRoasMetricKey,
+    viewMode,
+  ]);
 
   const sheetCreativeData = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
@@ -1772,6 +1845,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         link: undefined,
         thumbnail: undefined,
       };
+      current.__row_count = parseSheetNumber(current.__row_count) + 1;
       const creativeLink = sheetPermalinkColumnKey ? String(row?.[sheetPermalinkColumnKey] ?? '').trim() : '';
       const creativeThumb = sheetThumbnailColumnKey ? String(row?.[sheetThumbnailColumnKey] ?? '').trim() : '';
       if (creativeLink && !current.link) current.link = creativeLink;
@@ -1791,15 +1865,59 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       }
       byCreative.set(creativeName, current);
     }
-    return Array.from(byCreative.values()).slice(0, 200);
+
+    for (const values of byCreative.values()) {
+      const rowCount = parseSheetNumber(values.__row_count);
+      if (sheetFrequencyMetricKey) {
+        if (sheetImpressionsMetricKey && sheetReachMetricKey) {
+          const impressions = parseSheetNumber(values[sheetImpressionsMetricKey]);
+          const reach = parseSheetNumber(values[sheetReachMetricKey]);
+          values[sheetFrequencyMetricKey] = reach > 0 ? impressions / reach : 0;
+        } else if (rowCount > 0) {
+          values[sheetFrequencyMetricKey] = parseSheetNumber(values[sheetFrequencyMetricKey]) / rowCount;
+        }
+      }
+      if (sheetCpcMetricKey) {
+        if (sheetInvestmentMetricKey && sheetClicksMetricKey) {
+          const spend = parseSheetNumber(values[sheetInvestmentMetricKey]);
+          const clicks = parseSheetNumber(values[sheetClicksMetricKey]);
+          values[sheetCpcMetricKey] = clicks > 0 ? spend / clicks : 0;
+        } else if (rowCount > 0) {
+          values[sheetCpcMetricKey] = parseSheetNumber(values[sheetCpcMetricKey]) / rowCount;
+        }
+      }
+      if (sheetCtrMetricKey) {
+        if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
+          const clicks = parseSheetNumber(values[sheetClicksMetricKey]);
+          const impressions = parseSheetNumber(values[sheetImpressionsMetricKey]);
+          values[sheetCtrMetricKey] = impressions > 0 ? (clicks / impressions) * 100 : 0;
+        } else if (rowCount > 0) {
+          values[sheetCtrMetricKey] = parseSheetNumber(values[sheetCtrMetricKey]) / rowCount;
+        }
+      }
+    }
+
+    return Array.from(byCreative.values())
+      .map((item) => {
+        const cleanItem = { ...item };
+        delete cleanItem.__row_count;
+        return cleanItem;
+      })
+      .slice(0, 200);
   }, [
     filteredRows,
     project?.source_type,
     sheetAdNameColumnKey,
     sheetAdsetNameColumnKey,
+    sheetCpcMetricKey,
+    sheetClicksMetricKey,
+    sheetCtrMetricKey,
+    sheetFrequencyMetricKey,
+    sheetImpressionsMetricKey,
     sheetInvestmentMetricKey,
     sheetMetricOptions,
     sheetPermalinkColumnKey,
+    sheetReachMetricKey,
     sheetRevenueMetricKey,
     sheetRoasMetricKey,
     sheetThumbnailColumnKey,
@@ -1808,6 +1926,23 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const sheetBigNumbers = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
     const metricMap = new Map(sheetMetricOptions.map((metric) => [metric.key, metric]));
+    const rows = filteredRows as Array<Record<string, unknown>>;
+    const getAverageMetricValue = (metricKey: string) => {
+      const { sum, count } = rows.reduce(
+        (acc, row) => {
+          const raw = row?.[metricKey];
+          const hasValue = String(raw ?? '').trim().length > 0;
+          if (!hasValue) return acc;
+          return {
+            sum: acc.sum + parseSheetNumber(raw),
+            count: acc.count + 1,
+          };
+        },
+        { sum: 0, count: 0 },
+      );
+      return count > 0 ? sum / count : 0;
+    };
+
     return sheetBigNumberColumns.slice(0, 6).map((metricKey, index) => {
       const metricMeta = metricMap.get(metricKey);
       const total =
@@ -1826,6 +1961,33 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               );
               return investment > 0 ? revenue / investment : 0;
             })()
+          : sheetFrequencyMetricKey && metricKey === sheetFrequencyMetricKey
+            ? (() => {
+                if (sheetImpressionsMetricKey && sheetReachMetricKey) {
+                  const impressions = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetImpressionsMetricKey]), 0);
+                  const reach = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetReachMetricKey]), 0);
+                  return reach > 0 ? impressions / reach : 0;
+                }
+                return getAverageMetricValue(metricKey);
+              })()
+            : sheetCpcMetricKey && metricKey === sheetCpcMetricKey
+              ? (() => {
+                  if (sheetInvestmentMetricKey && sheetClicksMetricKey) {
+                    const spend = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]), 0);
+                    const clicks = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetClicksMetricKey]), 0);
+                    return clicks > 0 ? spend / clicks : 0;
+                  }
+                  return getAverageMetricValue(metricKey);
+                })()
+              : sheetCtrMetricKey && metricKey === sheetCtrMetricKey
+                ? (() => {
+                    if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
+                      const clicks = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetClicksMetricKey]), 0);
+                      const impressions = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetImpressionsMetricKey]), 0);
+                      return impressions > 0 ? (clicks / impressions) * 100 : 0;
+                    }
+                    return getAverageMetricValue(metricKey);
+                  })()
           : (filteredRows as Array<Record<string, unknown>>).reduce(
               (sum, row) => sum + parseSheetNumber(row?.[metricKey]),
               0,
@@ -1841,8 +2003,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     filteredRows,
     project?.source_type,
     sheetBigNumberColumns,
+    sheetCpcMetricKey,
+    sheetClicksMetricKey,
+    sheetCtrMetricKey,
+    sheetFrequencyMetricKey,
+    sheetImpressionsMetricKey,
     sheetInvestmentMetricKey,
     sheetMetricOptions,
+    sheetReachMetricKey,
     sheetRevenueMetricKey,
     sheetRoasMetricKey,
   ]);
