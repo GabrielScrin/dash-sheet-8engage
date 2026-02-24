@@ -34,6 +34,7 @@ interface MetaSourceConfig {
   ad_account_id?: string;
   sheet_perpetua?: string | null;
   sheet_distribuicao?: string | null;
+  sheet_consideracao?: string | null;
   [key: string]: unknown;
 }
 
@@ -239,7 +240,10 @@ const SHEET_METRIC_NAME_MAP: Array<{ pattern: RegExp; label: string; format: She
   { pattern: /\binline link clicks?\b|\baction link clicks?\b|cliques no link/, label: 'Cliques no Link', format: 'number' },
   { pattern: /\blanding page views?\b|\baction landing page view\b|lp views?|visualizacoes da pagina/, label: 'Visualizações da Página', format: 'number' },
   { pattern: /\baction omni initiated checkout\b|\binitiate checkout\b|\bcheckout\b|inicio de checkout/, label: 'Início de Checkout', format: 'number' },
-  { pattern: /\bvideo views?\b|visualizacoes de video/, label: 'Visualizações de Vídeo', format: 'number' },
+
+  { pattern: /\baction 3s video views?\b|\bvideo 3s views?\b|\bvideo3s\b/, label: 'Visualizacoes de Video 3s', format: 'number' },
+  { pattern: /\bvideo thruplay watched actions?\b|\bthruplay\b/, label: 'Thruplay', format: 'number' },
+  { pattern: /\bvideo views?\b|visualizacoes de video/, label: 'Visualizacoes de Video', format: 'number' },
   { pattern: /\bhook rate\b|\bhook\b/, label: 'Hook Rate', format: 'percentage' },
   { pattern: /\bhold rate\b|\bhold\b/, label: 'Hold Rate', format: 'percentage' },
   { pattern: /\bconnect rate\b/, label: 'Connect Rate', format: 'percentage' },
@@ -312,12 +316,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const [distributionCreativeMetricColumns, setDistributionCreativeMetricColumns] = useState<string[]>([
     'investment',
     'impressions',
-    'profile_visits',
-    'checkout_views',
-    'purchases',
+    'clicks',
+    'ctr',
+    'cpc',
   ]);
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
-  const [distributionPhase, setDistributionPhase] = useState<'all' | 'descoberta' | 'consideracao'>('all');
+  const [distributionPhase, setDistributionPhase] = useState<'all' | 'descoberta' | 'consideracao'>('descoberta');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -672,8 +676,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const sheetDistribuicaoName =
     String(sourceConfig?.sheet_distribuicao || '') ||
     (Array.isArray(project?.sheet_names) ? String((project?.sheet_names as string[])[1] || (project?.sheet_names as string[])[0] || '') : String(project?.sheet_name || ''));
+  const sheetConsideracaoName =
+    String(sourceConfig?.sheet_consideracao || '') ||
+    (Array.isArray(project?.sheet_names)
+      ? String((project?.sheet_names as string[])[2] || (project?.sheet_names as string[])[1] || (project?.sheet_names as string[])[0] || '')
+      : String(project?.sheet_name || ''));
 
-  const sheetNames: string[] = Array.from(new Set([sheetPerpetuaName, sheetDistribuicaoName].filter(Boolean)));
+  const sheetNames: string[] = Array.from(new Set([sheetPerpetuaName, sheetDistribuicaoName, sheetConsideracaoName].filter(Boolean)));
 
   // We'll use a custom query to fetch all sheets in parallel
   const allSheetsQuery = useQuery({
@@ -749,10 +758,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     (project?.source_type === 'meta_ads'
       ? (metaInsightsQuery.data || [])
       : (sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
-  const distributionSourceRows =
+  const discoverySourceRows =
     (project?.source_type === 'meta_ads'
       ? []
       : (sheetRowsByName[sheetDistribuicaoName] || sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
+  const considerationSourceRows =
+    (project?.source_type === 'meta_ads'
+      ? []
+      : (sheetRowsByName[sheetConsideracaoName] || sheetRowsByName[sheetDistribuicaoName] || sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
+  const distributionSourceRows =
+    (activeTab === 'consideracao' ? considerationSourceRows : discoverySourceRows) as any[];
   const metaAccountRows = (metaAccountInsightsQuery.data || []) as any[];
 
   const sheetDateColumnKey = useMemo(
@@ -838,6 +853,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['impressions', 'impressoes']),
     [distributionSourceRows],
   );
+  const distributionFrequencyColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['frequency', 'frequencia']),
+    [distributionSourceRows],
+  );
   const distributionEngagementColumnKey = useMemo(
     () =>
       findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
@@ -857,6 +876,24 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         'visualizacoes de video',
         'visualizacoes',
         'thruplay',
+      ]),
+    [distributionSourceRows],
+  );
+  const distributionVideo3sColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'action 3s video views',
+        'video 3s views',
+        'video3s',
+      ]),
+    [distributionSourceRows],
+  );
+  const distributionThruplayColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'video thruplay watched actions',
+        'thruplay',
+        'video thruplay',
       ]),
     [distributionSourceRows],
   );
@@ -985,6 +1022,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         'clicks',
         'cliques',
       ]),
+    [distributionSourceRows],
+  );
+  const distributionCpcColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['cpc', 'cost per click', 'custo por clique']),
+    [distributionSourceRows],
+  );
+  const distributionCtrColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['ctr', 'clickthrough rate', 'taxa de clique']),
     [distributionSourceRows],
   );
 
@@ -1582,25 +1627,39 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const byPlatform = new Map<string, { reach: number; engagement: number; count: number }>();
     let totalReach = 0;
     let totalImpressions = 0;
-    let totalVideoViews = 0;
+    let totalVideoViews3s = 0;
+    let totalThruplayViews = 0;
     let totalFollowers = 0;
     let totalEngagement = 0;
     let engagementCount = 0;
     let totalSpend = 0;
     let totalProfileVisits = 0;
+    let totalLinkClicks = 0;
+    let totalFrequencyFromField = 0;
+    let frequencyFieldCount = 0;
+    let totalCpcFromField = 0;
+    let cpcFieldCount = 0;
+    let totalCtrFromField = 0;
+    let ctrFieldCount = 0;
+    let permalinkCount = 0;
     let totalCheckouts = 0;
     let totalPurchases = 0;
     let totalRoas = 0;
     let roasCount = 0;
     let totalCpm = 0;
     let cpmCount = 0;
-    const byCreative = new Map<string, { spend: number; impressions: number; clicks: number; profileVisits: number; purchases: number; checkouts: number; link?: string; thumbnail?: string }>();
+    const byCreative = new Map<string, { spend: number; reach: number; impressions: number; clicks: number; video3s: number; thruplay: number; profileVisits: number; purchases: number; checkouts: number; link?: string; thumbnail?: string }>();
 
     for (const row of filteredDistributionRows as Array<Record<string, unknown>>) {
       const reach = parseSheetNumber(distributionReachColumnKey ? row?.[distributionReachColumnKey] : 0);
       const impressions = parseSheetNumber(distributionImpressionsColumnKey ? row?.[distributionImpressionsColumnKey] : 0);
       const engagement = parseSheetNumber(distributionEngagementColumnKey ? row?.[distributionEngagementColumnKey] : 0);
-      const videoViews = parseSheetNumber(distributionVideoViewsColumnKey ? row?.[distributionVideoViewsColumnKey] : 0);
+      const frequencyFromField = parseSheetNumber(distributionFrequencyColumnKey ? row?.[distributionFrequencyColumnKey] : 0);
+      const cpcFromField = parseSheetNumber(distributionCpcColumnKey ? row?.[distributionCpcColumnKey] : 0);
+      const ctrFromField = parseSheetNumber(distributionCtrColumnKey ? row?.[distributionCtrColumnKey] : 0);
+      const video3s = parseSheetNumber(distributionVideo3sColumnKey ? row?.[distributionVideo3sColumnKey] : 0);
+      const thruplay = parseSheetNumber(distributionThruplayColumnKey ? row?.[distributionThruplayColumnKey] : 0);
+      const videoViews = video3s > 0 ? video3s : parseSheetNumber(distributionVideoViewsColumnKey ? row?.[distributionVideoViewsColumnKey] : 0);
       const followers = parseSheetNumber(distributionFollowersColumnKey ? row?.[distributionFollowersColumnKey] : 0);
       const spend = parseSheetNumber(distributionSpendColumnKey ? row?.[distributionSpendColumnKey] : 0);
       const profileVisits = parseSheetNumber(distributionProfileVisitsColumnKey ? row?.[distributionProfileVisitsColumnKey] : 0);
@@ -1617,10 +1676,25 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
 
       totalReach += reach;
       totalImpressions += impressions;
-      totalVideoViews += videoViews;
+      totalVideoViews3s += videoViews;
+      totalThruplayViews += thruplay;
       totalFollowers += followers;
       totalSpend += spend;
       totalProfileVisits += profileVisits;
+      totalLinkClicks += clicks;
+      if (frequencyFromField > 0) {
+        totalFrequencyFromField += frequencyFromField;
+        frequencyFieldCount += 1;
+      }
+      if (cpcFromField > 0) {
+        totalCpcFromField += cpcFromField;
+        cpcFieldCount += 1;
+      }
+      if (ctrFromField > 0) {
+        totalCtrFromField += ctrFromField;
+        ctrFieldCount += 1;
+      }
+      if (creativeLink) permalinkCount += 1;
       totalCheckouts += checkouts;
       totalPurchases += purchases;
       if (roas > 0) {
@@ -1644,10 +1718,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       byPlatform.set(platform, current);
 
       if (creativeName) {
-        const currentCreative = byCreative.get(creativeName) || { spend: 0, impressions: 0, clicks: 0, profileVisits: 0, purchases: 0, checkouts: 0, link: undefined, thumbnail: undefined };
+        const currentCreative = byCreative.get(creativeName) || { spend: 0, reach: 0, impressions: 0, clicks: 0, video3s: 0, thruplay: 0, profileVisits: 0, purchases: 0, checkouts: 0, link: undefined, thumbnail: undefined };
         currentCreative.spend += spend;
+        currentCreative.reach += reach;
         currentCreative.impressions += impressions;
         currentCreative.clicks += clicks;
+        currentCreative.video3s += videoViews;
+        currentCreative.thruplay += thruplay;
         currentCreative.profileVisits += profileVisits;
         currentCreative.purchases += purchases;
         currentCreative.checkouts += checkouts;
@@ -1666,9 +1743,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     return {
       totalReach,
       totalImpressions,
+      frequency: totalReach > 0 ? totalImpressions / totalReach : (frequencyFieldCount > 0 ? totalFrequencyFromField / frequencyFieldCount : 0),
+      totalLinkClicks,
+      cpc: totalLinkClicks > 0 ? totalSpend / totalLinkClicks : (cpcFieldCount > 0 ? totalCpcFromField / cpcFieldCount : 0),
+      ctr: totalImpressions > 0 ? (totalLinkClicks / totalImpressions) * 100 : (ctrFieldCount > 0 ? totalCtrFromField / ctrFieldCount : 0),
       avgEngagement: engagementCount > 0 ? totalEngagement / engagementCount : 0,
-      videoViews: totalVideoViews,
+      videoViews: totalVideoViews3s,
+      videoViews3s: totalVideoViews3s,
+      thruplayViews: totalThruplayViews,
       followersGained: totalFollowers,
+      permalinkCount,
       spend: totalSpend,
       profileVisits: totalProfileVisits,
       checkouts: totalCheckouts,
@@ -1682,11 +1766,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         .map(([name, stats]) => ({
           name,
           spend: stats.spend,
+          reach: stats.reach,
           impressions: stats.impressions,
           clicks: stats.clicks,
+          video3s: stats.video3s,
+          thruplay: stats.thruplay,
           profileVisits: stats.profileVisits,
           purchases: stats.purchases,
           checkouts: stats.checkouts,
+          frequency: stats.reach > 0 ? stats.impressions / stats.reach : 0,
           ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
           cpc: stats.clicks > 0 ? stats.spend / stats.clicks : 0,
           cpm: stats.impressions > 0 ? (stats.spend / stats.impressions) * 1000 : 0,
@@ -1701,9 +1789,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   }, [
     distributionAdNameColumnKey,
     distributionCheckoutColumnKey,
+    distributionCpcColumnKey,
     distributionCpmColumnKey,
+    distributionCtrColumnKey,
     distributionEngagementColumnKey,
     distributionFollowersColumnKey,
+    distributionFrequencyColumnKey,
     distributionImpressionsColumnKey,
     distributionLinkClicksColumnKey,
     distributionProfileVisitsColumnKey,
@@ -1713,7 +1804,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     distributionReachColumnKey,
     distributionRoasColumnKey,
     distributionSpendColumnKey,
+    distributionThruplayColumnKey,
     distributionThumbnailColumnKey,
+    distributionVideo3sColumnKey,
     distributionVideoViewsColumnKey,
     filteredDistributionRows,
     project?.source_type,
@@ -2418,11 +2511,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     return (sheetDistributionData?.topCreatives || []) as Array<{
       name: string;
       spend: number;
+      reach?: number;
       impressions: number;
       clicks: number;
+      video3s?: number;
+      thruplay?: number;
       profileVisits: number;
       purchases: number;
       checkouts: number;
+      frequency?: number;
       ctr: number;
       cpc?: number;
       cpm?: number;
@@ -2438,16 +2535,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     }
     return [
       { key: 'investment', label: 'Investimento', format: 'currency' as const },
-      { key: 'impressions', label: 'Impressões', format: 'number' as const },
+      { key: 'reach', label: 'Alcance', format: 'number' as const },
+      { key: 'impressions', label: 'Impressoes', format: 'number' as const },
+      { key: 'frequency', label: 'Frequencia', format: 'percentage' as const },
       { key: 'clicks', label: 'Cliques', format: 'number' as const },
+      { key: 'video3s', label: 'Visualizacoes 3s', format: 'number' as const },
+      { key: 'thruplay', label: 'Thruplay', format: 'number' as const },
       { key: 'profile_visits', label: 'Visitas Perfil', format: 'number' as const },
-      { key: 'checkout_views', label: 'Checkout', format: 'number' as const },
-      { key: 'purchases', label: 'Vendas', format: 'number' as const },
-      { key: 'roi', label: 'ROI', format: 'percentage' as const },
       { key: 'ctr', label: 'CTR', format: 'percentage' as const },
       { key: 'cpc', label: 'CPC', format: 'currency' as const },
-      { key: 'cpm', label: 'CPM', format: 'currency' as const },
-      { key: 'roas', label: 'ROAS', format: 'decimal' as const },
     ];
   }, [metaWeeklyMetricOptions, project?.source_type]);
 
@@ -2458,7 +2554,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       .filter((key) => available.has(key))
       .slice(0, 5);
     if (normalized.length > 0) return normalized;
-    return ['investment', 'impressions', 'profile_visits', 'checkout_views', 'purchases'];
+    return ['investment', 'impressions', 'clicks', 'ctr', 'cpc'];
   }, [distributionCreativeMetricColumns, distributionCreativeMetricOptions]);
 
   const formatDistributionMetricValue = (value: number, formatType: 'number' | 'currency' | 'percentage' | 'decimal') => {
@@ -2685,9 +2781,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         : (freq > 0 && imps > 0 ? Math.round(imps / freq) : 0);
     const totalImpressions = Number(r?.impressions || 0);
     const avgEngagement = Number(r?.ctr || 0); // using CTR as engagement proxy for ads
+    const clicks = Number(r?.clicks || 0);
+    const ctr = totalImpressions > 0 ? (clicks / totalImpressions) * 100 : Number(r?.ctr || 0);
 
     const videoViewsRaw = Number(r?.thruplay || 0) || Number(r?.video3s || 0);
     const videoViews = Number.isFinite(videoViewsRaw) ? videoViewsRaw : 0;
+    const video3s = Number(r?.video3s || 0);
+    const thruplay = Number(r?.thruplay || 0);
 
     const followersGained = Number(r?.instagram_follows || 0);
     const spend = Number(r?.spend || 0);
@@ -2696,6 +2796,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const purchaseValue = Number(r?.purchase_value || 0);
     const roas = spend > 0 ? purchaseValue / spend : Number(r?.roas || 0);
     const roi = spend > 0 ? (purchaseValue - spend) / spend : 0;
+    const frequency = totalReach > 0 ? totalImpressions / totalReach : Number(r?.frequency || 0);
+    const cpc = clicks > 0 ? spend / clicks : Number(r?.cpc || 0);
     const profileVisits = Number(r?.profile_visits || 0);
 
     const platformRows = (metaPlatformBreakdownQuery.data || []) as any[];
@@ -2725,7 +2827,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       totalReach,
       totalImpressions,
       avgEngagement,
+      clicks,
+      ctr,
+      cpc,
+      frequency,
       videoViews,
+      video3s,
+      thruplay,
       followersGained,
       spend,
       roas,
@@ -2927,9 +3035,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-md grid-cols-3">
           <TabsTrigger value="perpetua">Perpétua</TabsTrigger>
-          <TabsTrigger value="distribuicao">Distribuição de Conteúdos</TabsTrigger>
+          <TabsTrigger value="descoberta">Descoberta</TabsTrigger>
+          <TabsTrigger value="consideracao">Consideracao</TabsTrigger>
         </TabsList>
 
         <AnimatePresence mode="wait">
@@ -3096,7 +3205,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               {(project?.source_type === 'meta_ads' ? metaFunnelSteps.length > 0 : processedData.funnelData.length > 0) && (
                 <section>
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="text-lg font-semibold">Funil de Conversão</h3>
+                    <h3 className="text-lg font-semibold">Funil de Conversao</h3>
                     {project?.source_type === 'meta_ads' && (
                       <Select value={funnelType} onValueChange={(v) => setFunnelType(v as any)}>
                         <SelectTrigger className="w-[220px]">
@@ -3138,7 +3247,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
             </motion.div>
           </TabsContent>
 
-          <TabsContent value="distribuicao" className="mt-6">
+          <TabsContent value="descoberta" className="mt-6">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -3149,7 +3258,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               {project?.source_type !== 'meta_ads' && (
                 <section>
                   <div className="flex items-center gap-3">
-                    <h3 className="text-lg font-semibold">Visão de Distribuição</h3>
+                    <h3 className="text-lg font-semibold">Visao de Descoberta</h3>
                     <Select value={distributionPhase} onValueChange={(value) => setDistributionPhase(value as any)}>
                       <SelectTrigger className="w-[220px]">
                         <SelectValue placeholder="Fase da campanha" />
@@ -3166,66 +3275,62 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               <section>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                   <BigNumberCard
-                    label="Alcance Total"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalReach || 0) : (sheetDistributionData?.totalReach || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="Impressões"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalImpressions || 0) : (sheetDistributionData?.totalImpressions || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="Engajamento Médio"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.avgEngagement || 0) : (sheetDistributionData?.avgEngagement || 0)}
-                    format="percentage"
-                  />
-                  <BigNumberCard
-                    label="Views de Vídeo"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.videoViews || 0) : (sheetDistributionData?.videoViews || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="Novos Seguidores"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followersGained || 0) : (sheetDistributionData?.followersGained || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
                     label="Investimento"
                     value={project?.source_type === 'meta_ads' ? (metaDistributionData?.spend || 0) : (sheetDistributionData?.spend || 0)}
                     format="currency"
                   />
                   <BigNumberCard
-                    label="ROAS"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.roas || 0) : (sheetDistributionData?.roas || 0)}
-                    format="decimal"
-                  />
-                  <BigNumberCard
-                    label="Início de Checkout"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.checkouts || 0) : (sheetDistributionData?.checkouts || 0)}
+                    label="Alcance"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalReach || 0) : (sheetDistributionData?.totalReach || 0)}
                     format="number"
                   />
                   <BigNumberCard
-                    label="Vendas"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.purchases || 0) : (sheetDistributionData?.purchases || 0)}
+                    label="Impressoes"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalImpressions || 0) : (sheetDistributionData?.totalImpressions || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Frequencia"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.frequency || 0) : (sheetDistributionData?.frequency || 0)}
+                    format="percentage"
+                  />
+                  <BigNumberCard
+                    label="Cliques no Link"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.clicks || 0) : (sheetDistributionData?.totalLinkClicks || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="CPC"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.cpc || 0) : (sheetDistributionData?.cpc || 0)}
+                    format="currency"
+                  />
+                  <BigNumberCard
+                    label="CTR"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.ctr || 0) : (sheetDistributionData?.ctr || 0)}
+                    format="percentage"
+                  />
+                  <BigNumberCard
+                    label="Views de Video 3s"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.video3s || 0) : (sheetDistributionData?.videoViews3s || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Thruplay"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.thruplay || 0) : (sheetDistributionData?.thruplayViews || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Visitas ao Perfil"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.profileVisits || 0) : (sheetDistributionData?.profileVisits || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Posts com Permalink"
+                    value={project?.source_type === 'meta_ads' ? 0 : (sheetDistributionData?.permalinkCount || 0)}
                     format="number"
                   />
                 </div>
               </section>
-
-              {project?.source_type !== 'meta_ads' && (
-                <section>
-                  <h3 className="mb-4 text-lg font-semibold">Performance Geral da Distribuição</h3>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                    <BigNumberCard label="Criativos ativos" value={sheetDistributionData?.activeCreatives || 0} format="number" />
-                    <BigNumberCard label="Visitas ao perfil" value={sheetDistributionData?.profileVisits || 0} format="number" />
-                    <BigNumberCard label="Custo por visita" value={sheetDistributionData?.costPerProfileVisit || 0} format="currency" />
-                    <BigNumberCard label="CPM" value={sheetDistributionData?.cpm || 0} format="currency" />
-                    <BigNumberCard label="Custo por engajamento" value={sheetDistributionData?.costPerEngagement || 0} format="currency" />
-                    <BigNumberCard label="Engajamentos" value={sheetDistributionData?.avgEngagement || 0} format="percentage" />
-                  </div>
-                </section>
-              )}
 
               {(project?.source_type === 'meta_ads'
                 ? (metaDistributionData?.platformBreakdown || []).length > 0
@@ -3347,10 +3452,275 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                     switch (metricKey) {
                                       case 'investment':
                                         return Number(item.spend || 0);
+                                      case 'reach':
+                                        return Number(item.reach || 0);
                                       case 'impressions':
                                         return Number(item.impressions || 0);
+                                      case 'frequency':
+                                        return Number(item.frequency || 0);
                                       case 'clicks':
                                         return Number(item.clicks || 0);
+                                      case 'video3s':
+                                        return Number(item.video3s || 0);
+                                      case 'thruplay':
+                                        return Number(item.thruplay || 0);
+                                      case 'profile_visits':
+                                        return Number(item.profileVisits || 0);
+                                      case 'checkout_views':
+                                        return Number(item.checkouts || 0);
+                                      case 'purchases':
+                                        return Number(item.purchases || 0);
+                                      case 'ctr':
+                                        return Number(item.ctr || 0);
+                                      case 'cpc':
+                                        return Number(item.cpc || 0);
+                                      case 'cpm':
+                                        return Number(item.cpm || 0);
+                                      case 'roas':
+                                        return Number(item.roas || 0);
+                                      case 'roi': {
+                                        const spend = Number(item.spend || 0);
+                                        const roas = Number(item.roas || 0);
+                                        const revenue = roas > 0 ? roas * spend : 0;
+                                        return spend > 0 ? ((revenue - spend) / spend) * 100 : 0;
+                                      }
+                                      default:
+                                        return 0;
+                                    }
+                                  })();
+                              return (
+                                <td key={`${item.name}-${metricKey}`} className="px-4 py-3 text-right">
+                                  {formatDistributionMetricValue(raw, (option?.format === 'link' ? 'number' : option?.format) || 'number')}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+            </motion.div>
+          </TabsContent>
+
+<TabsContent value="consideracao" className="mt-6">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-8"
+            >
+              {project?.source_type !== 'meta_ads' && (
+                <section>
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-semibold">Visao de Consideracao</h3>
+                    <Select value={distributionPhase} onValueChange={(value) => setDistributionPhase(value as any)}>
+                      <SelectTrigger className="w-[220px]">
+                        <SelectValue placeholder="Fase da campanha" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as fases</SelectItem>
+                        <SelectItem value="descoberta">Descoberta</SelectItem>
+                        <SelectItem value="consideracao">Consideração</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </section>
+              )}
+              <section>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                  <BigNumberCard
+                    label="Investimento"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.spend || 0) : (sheetDistributionData?.spend || 0)}
+                    format="currency"
+                  />
+                  <BigNumberCard
+                    label="Alcance"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalReach || 0) : (sheetDistributionData?.totalReach || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Impressoes"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalImpressions || 0) : (sheetDistributionData?.totalImpressions || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Frequencia"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.frequency || 0) : (sheetDistributionData?.frequency || 0)}
+                    format="percentage"
+                  />
+                  <BigNumberCard
+                    label="Cliques no Link"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.clicks || 0) : (sheetDistributionData?.totalLinkClicks || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="CPC"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.cpc || 0) : (sheetDistributionData?.cpc || 0)}
+                    format="currency"
+                  />
+                  <BigNumberCard
+                    label="CTR"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.ctr || 0) : (sheetDistributionData?.ctr || 0)}
+                    format="percentage"
+                  />
+                  <BigNumberCard
+                    label="Views de Video 3s"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.video3s || 0) : (sheetDistributionData?.videoViews3s || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Thruplay"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.thruplay || 0) : (sheetDistributionData?.thruplayViews || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Visitas ao Perfil"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.profileVisits || 0) : (sheetDistributionData?.profileVisits || 0)}
+                    format="number"
+                  />
+                  <BigNumberCard
+                    label="Posts com Permalink"
+                    value={project?.source_type === 'meta_ads' ? 0 : (sheetDistributionData?.permalinkCount || 0)}
+                    format="number"
+                  />
+                </div>
+              </section>
+
+              {(project?.source_type === 'meta_ads'
+                ? (metaDistributionData?.platformBreakdown || []).length > 0
+                : (sheetDistributionData?.platformBreakdown || []).length > 0) && (
+                <section>
+                  <h3 className="mb-4 text-lg font-semibold">Breakdown por Plataforma</h3>
+                  <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium">Plataforma</th>
+                          <th className="px-4 py-3 text-right font-medium">Alcance</th>
+                          <th className="px-4 py-3 text-right font-medium">Engajamento</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {(project?.source_type === 'meta_ads'
+                          ? (metaDistributionData?.platformBreakdown || [])
+                          : (sheetDistributionData?.platformBreakdown || [])
+                        ).map((item) => (
+                          <tr key={item.platform} className="hover:bg-muted/30">
+                            <td className="px-4 py-3 font-medium capitalize">{item.platform}</td>
+                            <td className="px-4 py-3 text-right">{item.reach.toLocaleString('pt-BR')}</td>
+                            <td className="px-4 py-3 text-right">{(item.engagement * 100).toFixed(2)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
+              {distributionTopCreatives.length > 0 && (
+                <section>
+                  <h3 className="mb-4 text-lg font-semibold">Melhores Criativos</h3>
+                  <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium">Criativo</th>
+                          <th className="px-4 py-3 text-left font-medium">Link / Prévia</th>
+                          {distributionCreativeColumns.map((metricKey, index) => {
+                            const option = distributionCreativeMetricOptions.find((item) => item.key === metricKey);
+                            return (
+                              <th key={`${metricKey}-${index}`} className="px-4 py-3 text-right font-medium">
+                                <Select
+                                  value={metricKey}
+                                  onValueChange={(value) =>
+                                    setDistributionCreativeMetricColumns((prev) => {
+                                      const next = [...prev];
+                                      next[index] = value;
+                                      return next;
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-8 w-[160px] text-xs ml-auto">
+                                    <SelectValue placeholder={option?.label || 'Métrica'} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {distributionCreativeMetricOptions.map((item) => (
+                                      <SelectItem key={item.key} value={item.key}>
+                                        {item.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </th>
+                            );
+                          })}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {distributionTopCreatives.map((item) => (
+                          <tr key={item.name} className="hover:bg-muted/30">
+                            <td className="px-4 py-3 font-medium">{item.name}</td>
+                            <td className="px-4 py-3">
+                              {item.link ? (
+                                <div className="flex items-center gap-2">
+                                  {item.thumbnail || getInstagramThumbnailFromLink(item.link) ? (
+                                    <a href={item.link} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                                      <img
+                                        src={item.thumbnail || getInstagramThumbnailFromLink(item.link)}
+                                        alt={item.name}
+                                        className="h-8 w-8 rounded object-cover border"
+                                        loading="lazy"
+                                        onError={(event) => {
+                                          event.currentTarget.style.display = 'none';
+                                          event.currentTarget.parentElement?.querySelector('.fallback-thumb')?.classList.remove('hidden');
+                                        }}
+                                      />
+                                    </a>
+                                  ) : (
+                                    <div className="h-8 w-8 rounded bg-muted flex items-center justify-center border">
+                                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                    </div>
+                                  )}
+                                  <div className="fallback-thumb hidden h-8 w-8 rounded bg-muted items-center justify-center border">
+                                    <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                                  </div>
+                                  <a
+                                    href={item.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                    Ver post
+                                  </a>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">Sem link</span>
+                              )}
+                            </td>
+                            {distributionCreativeColumns.map((metricKey) => {
+                              const option = distributionCreativeMetricOptions.find((entry) => entry.key === metricKey);
+                              const raw = project?.source_type === 'meta_ads'
+                                ? getMetaMetricValue(item as Record<string, unknown>, metricKey)
+                                : (() => {
+                                    switch (metricKey) {
+                                      case 'investment':
+                                        return Number(item.spend || 0);
+                                      case 'reach':
+                                        return Number(item.reach || 0);
+                                      case 'impressions':
+                                        return Number(item.impressions || 0);
+                                      case 'frequency':
+                                        return Number(item.frequency || 0);
+                                      case 'clicks':
+                                        return Number(item.clicks || 0);
+                                      case 'video3s':
+                                        return Number(item.video3s || 0);
+                                      case 'thruplay':
+                                        return Number(item.thruplay || 0);
                                       case 'profile_visits':
                                         return Number(item.profileVisits || 0);
                                       case 'checkout_views':

@@ -187,6 +187,7 @@ export default function ProjectConfig() {
             ...(project.source_config || {}),
             sheet_perpetua: null,
             sheet_distribuicao: null,
+            sheet_consideracao: null,
           },
         })
         .eq('id', project.id);
@@ -203,6 +204,7 @@ export default function ProjectConfig() {
           ...(project.source_config || {}),
           sheet_perpetua: null,
           sheet_distribuicao: null,
+          sheet_consideracao: null,
         },
       });
       setSheetSelectorOpen(false);
@@ -242,10 +244,10 @@ export default function ProjectConfig() {
     }
   };
 
-  const handleTabsSelect = async ({ perpetua, distribuicao }: { perpetua: string; distribuicao: string }) => {
+  const handleTabsSelect = async ({ perpetua, distribuicao, consideracao }: { perpetua: string; distribuicao: string; consideracao: string }) => {
     if (!project) return;
     try {
-      const sheetNames = [perpetua, distribuicao];
+      const sheetNames = [perpetua, distribuicao, consideracao];
       const { error } = await supabase
         .from('projects')
         .update({
@@ -255,6 +257,7 @@ export default function ProjectConfig() {
             ...(project.source_config || {}),
             sheet_perpetua: perpetua,
             sheet_distribuicao: distribuicao,
+            sheet_consideracao: consideracao,
           },
         })
         .eq('id', project.id);
@@ -269,13 +272,14 @@ export default function ProjectConfig() {
           ...(project.source_config || {}),
           sheet_perpetua: perpetua,
           sheet_distribuicao: distribuicao,
+          sheet_consideracao: consideracao,
         },
       });
       setCurrentStep(2);
 
       toast({
         title: 'Abas selecionadas!',
-        description: 'Perpétua e Distribuição configuradas com sucesso.',
+        description: 'Perpetua, Descoberta e Consideracao configuradas com sucesso.',
       });
     } catch (error: any) {
       toast({
@@ -523,6 +527,7 @@ export default function ProjectConfig() {
                   spreadsheetName={project.spreadsheet_name}
                   selectedPerpetua={project.source_config?.sheet_perpetua || project.sheet_names?.[0] || null}
                   selectedDistribuicao={project.source_config?.sheet_distribuicao || project.sheet_names?.[1] || project.sheet_names?.[0] || null}
+                  selectedConsideracao={project.source_config?.sheet_consideracao || project.sheet_names?.[2] || project.sheet_names?.[1] || project.sheet_names?.[0] || null}
                   onSelect={handleTabsSelect}
                   onBack={() => setCurrentStep(1)}
                 />
@@ -601,10 +606,11 @@ export default function ProjectConfig() {
     if (project.source_type === 'sheet' && currentStep === 2) {
       const hasPerpetua = Boolean(project.source_config?.sheet_perpetua);
       const hasDistribuicao = Boolean(project.source_config?.sheet_distribuicao);
-      if (!hasPerpetua || !hasDistribuicao) {
+      const hasConsideracao = Boolean(project.source_config?.sheet_consideracao);
+      if (!hasPerpetua || !hasDistribuicao || !hasConsideracao) {
         toast({
           title: 'Selecione as abas primeiro',
-          description: 'Defina uma aba para Perpétua e outra para Distribuição antes de continuar.',
+          description: 'Defina as abas de Perpetua, Descoberta e Consideracao antes de continuar.',
           variant: 'destructive',
         });
         return;

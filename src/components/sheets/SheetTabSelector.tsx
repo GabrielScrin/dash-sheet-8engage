@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Loader2, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -23,7 +23,8 @@ interface SheetTabSelectorProps {
   spreadsheetName: string;
   selectedPerpetua?: string | null;
   selectedDistribuicao?: string | null;
-  onSelect: (selection: { perpetua: string; distribuicao: string }) => void;
+  selectedConsideracao?: string | null;
+  onSelect: (selection: { perpetua: string; distribuicao: string; consideracao: string }) => void;
   onBack: () => void;
 }
 
@@ -32,6 +33,7 @@ export function SheetTabSelector({
   spreadsheetName,
   selectedPerpetua = null,
   selectedDistribuicao = null,
+  selectedConsideracao = null,
   onSelect,
   onBack
 }: SheetTabSelectorProps) {
@@ -40,6 +42,7 @@ export function SheetTabSelector({
   const [loading, setLoading] = useState(true);
   const [perpetuaTab, setPerpetuaTab] = useState<string>(selectedPerpetua || '');
   const [distribuicaoTab, setDistribuicaoTab] = useState<string>(selectedDistribuicao || '');
+  const [consideracaoTab, setConsideracaoTab] = useState<string>(selectedConsideracao || '');
 
   useEffect(() => {
     const fetchTabs = async () => {
@@ -67,7 +70,7 @@ export function SheetTabSelector({
     };
 
     fetchTabs();
-  }, [spreadsheetId]);
+  }, [spreadsheetId, toast]);
 
   useEffect(() => {
     setPerpetuaTab(selectedPerpetua || '');
@@ -77,17 +80,21 @@ export function SheetTabSelector({
     setDistribuicaoTab(selectedDistribuicao || '');
   }, [selectedDistribuicao]);
 
+  useEffect(() => {
+    setConsideracaoTab(selectedConsideracao || '');
+  }, [selectedConsideracao]);
+
   const handleConfirm = () => {
-    if (!perpetuaTab || !distribuicaoTab) {
+    if (!perpetuaTab || !distribuicaoTab || !consideracaoTab) {
       toast({
-        title: 'Selecione as duas abas',
-        description: 'Escolha uma aba para Perpétua e outra para Distribuição.',
+        title: 'Selecione as tres abas',
+        description: 'Escolha uma aba para Perpetua, Descoberta e Consideracao.',
         variant: 'destructive',
       });
       return;
     }
 
-    onSelect({ perpetua: perpetuaTab, distribuicao: distribuicaoTab });
+    onSelect({ perpetua: perpetuaTab, distribuicao: distribuicaoTab, consideracao: consideracaoTab });
   };
 
   if (loading) {
@@ -111,15 +118,15 @@ export function SheetTabSelector({
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Escolha qual aba alimenta cada visualização do dashboard:
+          Escolha qual aba alimenta cada visualizacao do dashboard:
         </p>
-        <div className="text-xs text-muted-foreground">Perpétua + Distribuição</div>
+        <div className="text-xs text-muted-foreground">Perpetua + Descoberta + Consideracao</div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-3">
         <Card>
           <CardContent className="p-4 space-y-2">
-            <p className="text-sm font-medium">Aba da visão Perpétua</p>
+            <p className="text-sm font-medium">Aba da visao Perpetua</p>
             <Select value={perpetuaTab} onValueChange={setPerpetuaTab}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione a aba" />
@@ -137,7 +144,7 @@ export function SheetTabSelector({
 
         <Card>
           <CardContent className="p-4 space-y-2">
-            <p className="text-sm font-medium">Aba da Distribuição</p>
+            <p className="text-sm font-medium">Aba da Descoberta</p>
             <Select value={distribuicaoTab} onValueChange={setDistribuicaoTab}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione a aba" />
@@ -152,14 +159,32 @@ export function SheetTabSelector({
             </Select>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardContent className="p-4 space-y-2">
+            <p className="text-sm font-medium">Aba da Consideracao</p>
+            <Select value={consideracaoTab} onValueChange={setConsideracaoTab}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a aba" />
+              </SelectTrigger>
+              <SelectContent>
+                {tabs.map((tab) => (
+                  <SelectItem key={`cons-${tab.sheetId}`} value={tab.title}>
+                    {tab.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex items-center justify-between pt-4">
         <Button variant="outline" onClick={onBack}>
           Voltar
         </Button>
-        <Button onClick={handleConfirm} disabled={!perpetuaTab || !distribuicaoTab}>
-          Confirmar Seleção
+        <Button onClick={handleConfirm} disabled={!perpetuaTab || !distribuicaoTab || !consideracaoTab}>
+          Confirmar Selecao
         </Button>
       </div>
     </div>
