@@ -45,14 +45,32 @@ function getSourceConfig(config: unknown): MetaSourceConfig | null {
   return null;
 }
 
-const normalizeKey = (value: string) => value.trim().toLowerCase().replace(/[\s_\-]+/g, '');
+const normalizeKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '');
 
 const findColumnKey = (rows: Array<Record<string, unknown>>, candidates: string[]) => {
   if (!rows.length) return null;
-  const candidateSet = new Set(candidates.map(normalizeKey));
+  const normalizedCandidates = candidates.map(normalizeKey).filter(Boolean);
+  const candidateSet = new Set(normalizedCandidates);
   const sampleKeys = Object.keys(rows[0] || {});
+
+  // Prefer exact normalized matches first.
   for (const key of sampleKeys) {
     if (candidateSet.has(normalizeKey(key))) return key;
+  }
+
+  // Then allow robust partial match for headers like "Spend (Cost, Amount Spent)".
+  for (const key of sampleKeys) {
+    const normalizedKey = normalizeKey(key);
+    if (!normalizedKey) continue;
+    if (normalizedCandidates.some((candidate) => normalizedKey.includes(candidate) || candidate.includes(normalizedKey))) {
+      return key;
+    }
   }
   return null;
 };
@@ -2553,9 +2571,26 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       .map((key) => String(key))
       .filter((key) => available.has(key))
       .slice(0, 5);
-    if (normalized.length > 0) return normalized;
-    return ['investment', 'impressions', 'clicks', 'ctr', 'cpc'];
+    const defaults = ['investment', 'impressions', 'clicks', 'ctr', 'cpc'].filter((key) => available.has(key));
+    const merged = [...normalized];
+    for (const fallbackKey of defaults) {
+      if (merged.length >= 5) break;
+      merged.push(fallbackKey);
+    }
+    return merged.slice(0, 5);
   }, [distributionCreativeMetricColumns, distributionCreativeMetricOptions]);
+
+  const setDistributionCreativeColumnAtIndex = (index: number, value: string) => {
+    setDistributionCreativeMetricColumns((prev) => {
+      const defaults = ['investment', 'impressions', 'clicks', 'ctr', 'cpc'];
+      const next = [...prev];
+      while (next.length < 5) {
+        next.push(defaults[next.length] || defaults[0]);
+      }
+      next[index] = value;
+      return next.slice(0, 5);
+    });
+  };
 
   const formatDistributionMetricValue = (value: number, formatType: 'number' | 'currency' | 'percentage' | 'decimal') => {
     switch (formatType) {
@@ -3378,13 +3413,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                               <th key={`${metricKey}-${index}`} className="px-4 py-3 text-right font-medium">
                                 <Select
                                   value={metricKey}
-                                  onValueChange={(value) =>
-                                    setDistributionCreativeMetricColumns((prev) => {
-                                      const next = [...prev];
-                                      next[index] = value;
-                                      return next;
-                                    })
-                                  }
+                                  onValueChange={(value) => setDistributionCreativeColumnAtIndex(index, value)}
                                 >
                                   <SelectTrigger className="h-8 w-[160px] text-xs ml-auto">
                                     <SelectValue placeholder={option?.label || 'Métrica'} />
@@ -3444,7 +3473,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                 <span className="text-muted-foreground">Sem link</span>
                               )}
                             </td>
-                            {distributionCreativeColumns.map((metricKey) => {
+                            {distributionCreativeColumns.map((metricKey, metricIndex) => {
                               const option = distributionCreativeMetricOptions.find((entry) => entry.key === metricKey);
                               const raw = project?.source_type === 'meta_ads'
                                 ? getMetaMetricValue(item as Record<string, unknown>, metricKey)
@@ -3489,7 +3518,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                     }
                                   })();
                               return (
-                                <td key={`${item.name}-${metricKey}`} className="px-4 py-3 text-right">
+                                <td key={`${item.name}-${metricKey}-${metricIndex}`} className="px-4 py-3 text-right">
                                   {formatDistributionMetricValue(raw, (option?.format === 'link' ? 'number' : option?.format) || 'number')}
                                 </td>
                               );
@@ -3635,13 +3664,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                               <th key={`${metricKey}-${index}`} className="px-4 py-3 text-right font-medium">
                                 <Select
                                   value={metricKey}
-                                  onValueChange={(value) =>
-                                    setDistributionCreativeMetricColumns((prev) => {
-                                      const next = [...prev];
-                                      next[index] = value;
-                                      return next;
-                                    })
-                                  }
+                                  onValueChange={(value) => setDistributionCreativeColumnAtIndex(index, value)}
                                 >
                                   <SelectTrigger className="h-8 w-[160px] text-xs ml-auto">
                                     <SelectValue placeholder={option?.label || 'Métrica'} />
@@ -3701,7 +3724,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                 <span className="text-muted-foreground">Sem link</span>
                               )}
                             </td>
-                            {distributionCreativeColumns.map((metricKey) => {
+                            {distributionCreativeColumns.map((metricKey, metricIndex) => {
                               const option = distributionCreativeMetricOptions.find((entry) => entry.key === metricKey);
                               const raw = project?.source_type === 'meta_ads'
                                 ? getMetaMetricValue(item as Record<string, unknown>, metricKey)
@@ -3746,7 +3769,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                     }
                                   })();
                               return (
-                                <td key={`${item.name}-${metricKey}`} className="px-4 py-3 text-right">
+                                <td key={`${item.name}-${metricKey}-${metricIndex}`} className="px-4 py-3 text-right">
                                   {formatDistributionMetricValue(raw, (option?.format === 'link' ? 'number' : option?.format) || 'number')}
                                 </td>
                               );
