@@ -2166,7 +2166,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const metricMap = new Map(sheetMetricOptions.map((metric) => [metric.key, metric]));
     const rows = filteredRows as Array<Record<string, unknown>>;
     const getAverageMetricValue = (metricKey: string) => {
-      const { sum, count } = rows.reduce(
+      const { sum, count } = rows.reduce<{ sum: number; count: number }>(
         (acc, row) => {
           const raw = row?.[metricKey];
           const hasValue = String(raw ?? '').trim().length > 0;
