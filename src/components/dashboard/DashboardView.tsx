@@ -241,7 +241,7 @@ const SHEET_METRIC_NAME_MAP: Array<{ pattern: RegExp; label: string; format: She
   { pattern: /\broas real\b|\broas\b/, label: 'ROAS', format: 'decimal' },
   { pattern: /\broi\b/, label: 'ROI', format: 'percentage' },
   { pattern: /\bspend\b|\binvestment\b|\binvestimento\b|\bgasto\b/, label: 'Investimento', format: 'currency' },
-  { pattern: /\brevenue\b|\bfaturamento\b|\bvalor vendido\b|\bsales value\b/, label: 'Faturamento', format: 'currency' },
+  { pattern: /\brevenue\b|\bfaturamento\b|\bfaturameto\b|\bvalor vendido\b|\bsales value\b/, label: 'Faturamento', format: 'currency' },
   { pattern: /\bimpressions\b|\bimpressoes\b/, label: 'Impressões', format: 'number' },
   { pattern: /\breach\b|\balcance\b/, label: 'Alcance', format: 'number' },
   { pattern: /\bclicks\b|\bcliques\b/, label: 'Cliques', format: 'number' },
@@ -252,7 +252,7 @@ const SHEET_METRIC_NAME_MAP: Array<{ pattern: RegExp; label: string; format: She
   { pattern: /cost per result|custo por resultado/, label: 'Custo por Resultado', format: 'currency' },
   { pattern: /cost per lead|custo por lead/, label: 'Custo por Lead', format: 'currency' },
   { pattern: /cost per message|custo por mensagem/, label: 'Custo por Mensagem', format: 'currency' },
-  { pattern: /\bcpa\b|cost per purchase|custo por compra|custo por venda/, label: 'Custo por Compra', format: 'currency' },
+  { pattern: /\bcpa\b|cost per purchase|custo por compra|custo pro compra|custo por venda/, label: 'Custo por Compra', format: 'currency' },
   { pattern: /cost per profile visit|custo por visita ao perfil/, label: 'Custo por Visita ao Perfil', format: 'currency' },
   { pattern: /\bresult\b|\bresultado\b/, label: 'Resultado da Campanha', format: 'number' },
   { pattern: /\broas real\b|\bwebsite purchase roas\b|\broas\b/, label: 'ROAS', format: 'decimal' },
@@ -1034,6 +1034,29 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       ]),
     [distributionSourceRows],
   );
+  const distributionRevenueColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'revenue',
+        'faturamento',
+        'faturameto',
+        'purchase value',
+        'valor de compras',
+        'valor de compra',
+      ]),
+    [distributionSourceRows],
+  );
+  const distributionCpaColumnKey = useMemo(
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'cpa',
+        'cost per purchase',
+        'custo por compra',
+        'custo pro compra',
+        'custo por venda',
+      ]),
+    [distributionSourceRows],
+  );
   const distributionLinkClicksColumnKey = useMemo(
     () =>
       findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
@@ -1154,6 +1177,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       /\bpurchase value\b/,
       /\brevenue\b/,
       /\bfaturamento\b/,
+      /\bfaturameto\b/,
       /\bvalor vendido\b/,
       /\bvalor de compras\b/,
       /\bvalor compra\b/,
@@ -1214,6 +1238,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         /\bcpa\b/,
         /cost per purchase/,
         /custo por compra/,
+        /custo pro compra/,
         /custo por venda/,
       ]),
     [sheetMetricOptions],
@@ -1741,6 +1766,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     let totalPurchases = 0;
     let totalRoas = 0;
     let roasCount = 0;
+    let totalRevenueFromField = 0;
+    let totalCpaFromField = 0;
+    let cpaFieldCount = 0;
     let totalCpm = 0;
     let cpmCount = 0;
     const byCreative = new Map<string, { spend: number; revenue: number; reach: number; impressions: number; clicks: number; video3s: number; thruplay: number; profileVisits: number; purchases: number; checkouts: number; metrics: Record<string, number>; metricCounts: Record<string, number>; link?: string; thumbnail?: string }>();
@@ -1767,6 +1795,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       const checkouts = parseSheetNumber(distributionCheckoutColumnKey ? row?.[distributionCheckoutColumnKey] : 0);
       const purchases = parseSheetNumber(distributionPurchasesColumnKey ? row?.[distributionPurchasesColumnKey] : 0);
       const roas = parseSheetNumber(distributionRoasColumnKey ? row?.[distributionRoasColumnKey] : 0);
+      const revenueFromField = parseSheetNumber(distributionRevenueColumnKey ? row?.[distributionRevenueColumnKey] : 0);
+      const cpaFromField = parseSheetNumber(distributionCpaColumnKey ? row?.[distributionCpaColumnKey] : 0);
       const revenueFromRow = roas > 0 ? roas * spend : 0;
       const cpm = parseSheetNumber(distributionCpmColumnKey ? row?.[distributionCpmColumnKey] : 0);
       const clicks = parseSheetNumber(distributionLinkClicksColumnKey ? row?.[distributionLinkClicksColumnKey] : 0);
@@ -1799,6 +1829,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       if (creativeLink) permalinkCount += 1;
       totalCheckouts += checkouts;
       totalPurchases += purchases;
+      if (revenueFromField > 0) {
+        totalRevenueFromField += revenueFromField;
+      }
+      if (cpaFromField > 0) {
+        totalCpaFromField += cpaFromField;
+        cpaFieldCount += 1;
+      }
       totalRevenue += revenueFromRow;
       if (roas > 0) {
         totalRoas += roas;
@@ -1868,12 +1905,18 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       followersGained: totalFollowers,
       permalinkCount,
       spend: totalSpend,
-      revenue: totalRevenue,
+      revenue: totalRevenueFromField > 0 ? totalRevenueFromField : totalRevenue,
       profileVisits: totalProfileVisits,
       checkouts: totalCheckouts,
       purchases: totalPurchases,
-      roas: totalSpend > 0 ? totalRevenue / totalSpend : (roasCount > 0 ? totalRoas / roasCount : 0),
-      cpa: totalPurchases > 0 ? totalSpend / totalPurchases : 0,
+      roas:
+        totalSpend > 0
+          ? ((totalRevenueFromField > 0 ? totalRevenueFromField : totalRevenue) / totalSpend)
+          : (roasCount > 0 ? totalRoas / roasCount : 0),
+      cpa:
+        totalPurchases > 0
+          ? totalSpend / totalPurchases
+          : (cpaFieldCount > 0 ? totalCpaFromField / cpaFieldCount : 0),
       cpm: cpmCount > 0 ? totalCpm / cpmCount : (totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0),
       costPerProfileVisit: totalProfileVisits > 0 ? totalSpend / totalProfileVisits : 0,
       costPerEngagement: totalEngagement > 0 ? totalSpend / totalEngagement : 0,
@@ -1919,6 +1962,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     distributionAdNameColumnKey,
     distributionCheckoutColumnKey,
     distributionCpcColumnKey,
+    distributionCpaColumnKey,
     distributionCpmColumnKey,
     distributionCtrColumnKey,
     distributionEngagementColumnKey,
@@ -1931,6 +1975,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     distributionPermalinkColumnKey,
     distributionPurchasesColumnKey,
     distributionReachColumnKey,
+    distributionRevenueColumnKey,
     distributionRoasColumnKey,
     distributionSheetMetricOptions,
     distributionSpendColumnKey,
