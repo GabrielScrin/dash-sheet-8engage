@@ -1300,8 +1300,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     };
 
     const clampToAvailable = (values: string[], fallbackCount: number) => {
-      const filtered = values.filter((value) => available.includes(value));
-      if (filtered.length > 0) return filtered.slice(0, fallbackCount);
+      const filtered = Array.from(new Set(values.filter((value) => available.includes(value))));
+      const filler = available.filter((value) => !filtered.includes(value));
+      const merged = [...filtered, ...filler].slice(0, fallbackCount);
+      if (merged.length > 0) return merged;
       return available.slice(0, fallbackCount);
     };
 
