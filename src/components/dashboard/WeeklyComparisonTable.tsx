@@ -168,7 +168,7 @@ export function WeeklyComparisonTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="whitespace-nowrap min-w-[170px]">
+                <TableHead className="whitespace-nowrap min-w-[170px] px-5">
                   <div className="flex items-center gap-2">
                     <Button
                       variant="ghost"
@@ -197,7 +197,7 @@ export function WeeklyComparisonTable({
                 {visibleMetricColumns.map((metricKey, index) => {
                   const metric = resolveMetric(metricKey);
                   return (
-                    <TableHead key={`${metricKey}-${index}`} className="whitespace-nowrap min-w-[155px]">
+                    <TableHead key={`${metricKey}-${index}`} className="whitespace-nowrap min-w-[155px] px-5">
                       <div className="flex items-center gap-2">
                         {isMeta ? (
                           <Select
@@ -241,7 +241,7 @@ export function WeeklyComparisonTable({
             <TableBody>
               {sortedData.map((row, index) => (
                 <TableRow key={`${row.periodKey || row.week}-${index}`} className="table-row-hover">
-                  <TableCell className="font-medium">{row.week}</TableCell>
+                  <TableCell className="px-5 py-4 font-medium">{row.week}</TableCell>
                   {visibleMetricColumns.map((metricKey, colIndex) => {
                     const metric = resolveMetric(metricKey);
                     const rawValue = getMetricValue(row, metric.key);
@@ -250,7 +250,7 @@ export function WeeklyComparisonTable({
                       (metric.key === 'conversion' && rawValue >= 4.0);
 
                     return (
-                      <TableCell key={`${metricKey}-${colIndex}`}>
+                      <TableCell key={`${metricKey}-${colIndex}`} className="px-5 py-4">
                         <span className={isPositiveHighlight ? 'text-kpi-positive font-medium' : ''}>
                           {formatMetricValue(rawValue, metric.format)}
                         </span>

@@ -172,7 +172,7 @@ export function CreativePerformanceTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="whitespace-nowrap min-w-[300px]">
+                <TableHead className="whitespace-nowrap min-w-[300px] px-5">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -187,7 +187,7 @@ export function CreativePerformanceTable({
                 {visibleMetricColumns.map((metricKey, index) => {
                   const metric = resolveMetric(metricKey);
                   return (
-                    <TableHead key={`${metricKey}-${index}`} className="whitespace-nowrap min-w-[160px]">
+                    <TableHead key={`${metricKey}-${index}`} className="whitespace-nowrap min-w-[160px] px-5">
                       <div className="flex items-center gap-2">
                         {isMeta ? (
                           <Select
@@ -227,7 +227,7 @@ export function CreativePerformanceTable({
                   );
                 })}
 
-                <TableHead className="w-10"></TableHead>
+                <TableHead className="w-10 px-5"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -238,7 +238,7 @@ export function CreativePerformanceTable({
                   className={`table-row-hover cursor-pointer ${selectedCreative === row.id ? 'bg-primary/5' : ''}`}
                   onClick={() => onCreativeSelect(selectedCreative === row.id ? null : row.id)}
                 >
-                  <TableCell className="font-medium">
+                  <TableCell className="px-5 py-4 font-medium">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -305,7 +305,7 @@ export function CreativePerformanceTable({
                       (metric.key === 'hook_rate' && rawValue >= 0.2) ||
                       (metric.key === 'hold_rate' && rawValue >= 0.1);
                     return (
-                      <TableCell key={`${metric.key}-${index}`}>
+                      <TableCell key={`${metric.key}-${index}`} className="px-5 py-4">
                         {isLinkMetric ? (
                           linkValue ? (
                             <a
@@ -330,7 +330,7 @@ export function CreativePerformanceTable({
                     );
                   })}
 
-                  <TableCell>
+                  <TableCell className="px-5 py-4">
                     {selectedCreative === row.id && (
                       <Filter className="h-4 w-4 text-primary" />
                     )}
