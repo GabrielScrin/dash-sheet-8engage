@@ -165,6 +165,8 @@ const getPeriodKeysFromDateRange = (dateRange: DateRange | undefined, viewMode: 
 };
 
 type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal' | 'link';
+const SHEET_DERIVED_REVENUE_KEY = '__derived_revenue';
+const SHEET_DERIVED_CPA_KEY = '__derived_cpa';
 
 const normalizeMetricName = (value: string) =>
   value
@@ -1111,7 +1113,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       if (samples.length > 0 && samples.some((value) => looksLikeUrl(value))) return false;
       return true;
     });
-    return metricKeys.map((key) => {
+    const options = metricKeys.map((key) => {
       const sampleValues = rows.slice(0, 80).map((row) => row?.[key]);
       const meta = inferSheetMetricMeta(key, sampleValues);
       return {
@@ -1120,6 +1122,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         format: meta.format,
       };
     });
+    const hasRevenue = options.some((metric) => /\b(revenue|faturamento|purchase value|valor de compra|valor de compras)\b/.test(normalizeMetricName(metric.key)));
+    const hasCpa = options.some((metric) => /\b(cpa|cost per purchase|custo por compra|custo por venda)\b/.test(normalizeMetricName(metric.key)));
+    if (!hasRevenue) {
+      options.push({ key: SHEET_DERIVED_REVENUE_KEY, label: 'Faturamento', format: 'currency' });
+    }
+    if (!hasCpa) {
+      options.push({ key: SHEET_DERIVED_CPA_KEY, label: 'Custo por Compra', format: 'currency' });
+    }
+    return options;
   }, [project?.source_type, sheetAdNameColumnKey, sheetCampaignColumnKey, sheetDateColumnKey, sourceRows]);
 
   const sheetInvestmentMetricKey = useMemo(() => {
@@ -1136,6 +1147,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const sheetRevenueMetricKey = useMemo(() => {
     const keys = sheetMetricOptions.map((metric) => metric.key);
     return pickFirstMatchingKey(keys, [
+      /derived revenue/,
       /\bwebsite purchases conversion value\b/,
       /\bpurchase conversion value\b/,
       /\bconversion value\b/,
@@ -1198,6 +1210,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const sheetCpaMetricKey = useMemo(
     () =>
       pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
+        /derived cpa/,
         /\bcpa\b/,
         /cost per purchase/,
         /custo por compra/,
@@ -1956,7 +1969,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       for (const metric of sheetMetricOptions) {
         if (canRecomputeRoas && sheetRoasMetricKey && metric.key === sheetRoasMetricKey) continue;
         const currentValue = parseSheetNumber(current[metric.key]);
-        const nextValue = parseSheetNumber(row?.[metric.key]);
+        const nextValue =
+          metric.key === SHEET_DERIVED_REVENUE_KEY
+            ? (() => {
+                const spend = sheetInvestmentMetricKey ? parseSheetNumber(row?.[sheetInvestmentMetricKey]) : 0;
+                const rowRoas = sheetRoasMetricKey ? parseSheetNumber(row?.[sheetRoasMetricKey]) : 0;
+                return spend > 0 && rowRoas > 0 ? spend * rowRoas : 0;
+              })()
+            : parseSheetNumber(row?.[metric.key]);
         current[metric.key] = currentValue + nextValue;
       }
       if (canRecomputeRoas && sheetRoasMetricKey && sheetInvestmentMetricKey && sheetRevenueMetricKey) {
@@ -2079,7 +2099,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       for (const metric of sheetMetricOptions) {
         if (canRecomputeRoas && sheetRoasMetricKey && metric.key === sheetRoasMetricKey) continue;
         const currentValue = parseSheetNumber(current[metric.key]);
-        const nextValue = parseSheetNumber(row?.[metric.key]);
+        const nextValue =
+          metric.key === SHEET_DERIVED_REVENUE_KEY
+            ? (() => {
+                const spend = sheetInvestmentMetricKey ? parseSheetNumber(row?.[sheetInvestmentMetricKey]) : 0;
+                const rowRoas = sheetRoasMetricKey ? parseSheetNumber(row?.[sheetRoasMetricKey]) : 0;
+                return spend > 0 && rowRoas > 0 ? spend * rowRoas : 0;
+              })()
+            : parseSheetNumber(row?.[metric.key]);
         current[metric.key] = currentValue + nextValue;
       }
       if (canRecomputeRoas && sheetRoasMetricKey && sheetInvestmentMetricKey && sheetRevenueMetricKey) {
@@ -2200,6 +2227,17 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               }
               return getAverageMetricValue(metricKey);
             })()
+          : sheetRevenueMetricKey && metricKey === sheetRevenueMetricKey
+            ? (() => {
+                if (metricKey === SHEET_DERIVED_REVENUE_KEY && sheetInvestmentMetricKey && sheetRoasMetricKey) {
+                  return rows.reduce((sum, row) => {
+                    const spend = parseSheetNumber(row?.[sheetInvestmentMetricKey]);
+                    const rowRoas = parseSheetNumber(row?.[sheetRoasMetricKey]);
+                    return sum + (spend > 0 && rowRoas > 0 ? spend * rowRoas : 0);
+                  }, 0);
+                }
+                return rows.reduce((sum, row) => sum + parseSheetNumber(row?.[metricKey]), 0);
+              })()
           : sheetFrequencyMetricKey && metricKey === sheetFrequencyMetricKey
             ? (() => {
                 if (sheetImpressionsMetricKey && sheetReachMetricKey) {
