@@ -12,7 +12,7 @@ export function useSheetData({ spreadsheetId, sheetName, enabled = true, shareTo
   return useQuery({
     queryKey: ['sheet-data', spreadsheetId, sheetName, shareToken],
     queryFn: async () => {
-      const range = `${sheetName}!A:Z`;
+      const range = `${sheetName}!A:ZZ`;
 
       const { data: sessionData } = await supabase.auth.getSession();
       const providerToken = sessionData.session?.provider_token;

@@ -709,7 +709,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       const results = await Promise.all(
         sheetNames.map(async (name: string) => {
           try {
-            const range = `'${name}'!A:Z`;
+            const range = `'${name}'!A:ZZ`;
             const { data: sessionData } = await supabase.auth.getSession();
             const providerToken = sessionData.session?.provider_token;
 
@@ -1016,6 +1016,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const distributionRoasColumnKey = useMemo(
     () =>
       findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'roas real',
         'website purchase roas',
         'purchase roas',
         'roas',
@@ -1050,6 +1051,53 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['ctr', 'clickthrough rate', 'taxa de clique']),
     [distributionSourceRows],
   );
+  const distributionSheetMetricOptions = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return [];
+    const rows = distributionSourceRows as Array<Record<string, unknown>>;
+    const keys = Object.keys(rows[0] || {});
+    const excluded = new Set(
+      [
+        distributionDateColumnKey,
+        distributionCampaignColumnKey,
+        distributionAdsetFilterColumnKey,
+        distributionAdNameColumnKey,
+        distributionPlatformColumnKey,
+        distributionPermalinkColumnKey,
+        distributionThumbnailColumnKey,
+      ]
+        .filter(Boolean)
+        .map(String),
+    );
+    const metricKeys = keys.filter((key) => {
+      if (excluded.has(key)) return false;
+      if (looksLikeTextMetricName(key)) return false;
+      const samples = rows
+        .slice(0, 80)
+        .map((row) => row?.[key])
+        .filter((value) => String(value ?? '').trim().length > 0);
+      if (samples.length > 0 && samples.some((value) => looksLikeUrl(value))) return false;
+      return true;
+    });
+    return metricKeys.map((key) => {
+      const sampleValues = rows.slice(0, 80).map((row) => row?.[key]);
+      const meta = inferSheetMetricMeta(key, sampleValues);
+      return {
+        key,
+        label: meta.label,
+        format: meta.format,
+      };
+    });
+  }, [
+    distributionAdNameColumnKey,
+    distributionAdsetFilterColumnKey,
+    distributionCampaignColumnKey,
+    distributionDateColumnKey,
+    distributionPermalinkColumnKey,
+    distributionPlatformColumnKey,
+    distributionSourceRows,
+    distributionThumbnailColumnKey,
+    project?.source_type,
+  ]);
 
   const sheetMetricOptions = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
@@ -1682,7 +1730,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     let roasCount = 0;
     let totalCpm = 0;
     let cpmCount = 0;
-    const byCreative = new Map<string, { spend: number; reach: number; impressions: number; clicks: number; video3s: number; thruplay: number; profileVisits: number; purchases: number; checkouts: number; link?: string; thumbnail?: string }>();
+    const byCreative = new Map<string, { spend: number; revenue: number; reach: number; impressions: number; clicks: number; video3s: number; thruplay: number; profileVisits: number; purchases: number; checkouts: number; metrics: Record<string, number>; metricCounts: Record<string, number>; link?: string; thumbnail?: string }>();
+    const averageMetricKeys = new Set(
+      distributionSheetMetricOptions
+        .filter((metric) => metric.format === 'percentage' || metric.format === 'decimal')
+        .map((metric) => metric.key),
+    );
+    let totalRevenue = 0;
 
     for (const row of filteredDistributionRows as Array<Record<string, unknown>>) {
       const reach = parseSheetNumber(distributionReachColumnKey ? row?.[distributionReachColumnKey] : 0);
@@ -1700,6 +1754,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       const checkouts = parseSheetNumber(distributionCheckoutColumnKey ? row?.[distributionCheckoutColumnKey] : 0);
       const purchases = parseSheetNumber(distributionPurchasesColumnKey ? row?.[distributionPurchasesColumnKey] : 0);
       const roas = parseSheetNumber(distributionRoasColumnKey ? row?.[distributionRoasColumnKey] : 0);
+      const revenueFromRow = roas > 0 ? roas * spend : 0;
       const cpm = parseSheetNumber(distributionCpmColumnKey ? row?.[distributionCpmColumnKey] : 0);
       const clicks = parseSheetNumber(distributionLinkClicksColumnKey ? row?.[distributionLinkClicksColumnKey] : 0);
       const creativeName = String(distributionAdNameColumnKey ? row?.[distributionAdNameColumnKey] : '').trim();
@@ -1731,6 +1786,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       if (creativeLink) permalinkCount += 1;
       totalCheckouts += checkouts;
       totalPurchases += purchases;
+      totalRevenue += revenueFromRow;
       if (roas > 0) {
         totalRoas += roas;
         roasCount += 1;
@@ -1752,8 +1808,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       byPlatform.set(platform, current);
 
       if (creativeName) {
-        const currentCreative = byCreative.get(creativeName) || { spend: 0, reach: 0, impressions: 0, clicks: 0, video3s: 0, thruplay: 0, profileVisits: 0, purchases: 0, checkouts: 0, link: undefined, thumbnail: undefined };
+        const currentCreative = byCreative.get(creativeName) || { spend: 0, revenue: 0, reach: 0, impressions: 0, clicks: 0, video3s: 0, thruplay: 0, profileVisits: 0, purchases: 0, checkouts: 0, metrics: {}, metricCounts: {}, link: undefined, thumbnail: undefined };
         currentCreative.spend += spend;
+        currentCreative.revenue += revenueFromRow;
         currentCreative.reach += reach;
         currentCreative.impressions += impressions;
         currentCreative.clicks += clicks;
@@ -1762,6 +1819,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         currentCreative.profileVisits += profileVisits;
         currentCreative.purchases += purchases;
         currentCreative.checkouts += checkouts;
+        for (const metric of distributionSheetMetricOptions) {
+          const rawMetric = row?.[metric.key];
+          const hasValue = String(rawMetric ?? '').trim().length > 0;
+          if (!hasValue) continue;
+          const metricValue = parseSheetNumber(rawMetric);
+          currentCreative.metrics[metric.key] = Number(currentCreative.metrics[metric.key] || 0) + metricValue;
+          if (averageMetricKeys.has(metric.key)) {
+            currentCreative.metricCounts[metric.key] = Number(currentCreative.metricCounts[metric.key] || 0) + 1;
+          }
+        }
         if (creativeLink && !currentCreative.link) currentCreative.link = creativeLink;
         if (creativeThumbnail && !currentCreative.thumbnail) currentCreative.thumbnail = creativeThumbnail;
         byCreative.set(creativeName, currentCreative);
@@ -1788,18 +1855,30 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       followersGained: totalFollowers,
       permalinkCount,
       spend: totalSpend,
+      revenue: totalRevenue,
       profileVisits: totalProfileVisits,
       checkouts: totalCheckouts,
       purchases: totalPurchases,
-      roas: roasCount > 0 ? totalRoas / roasCount : 0,
+      roas: totalSpend > 0 ? totalRevenue / totalSpend : (roasCount > 0 ? totalRoas / roasCount : 0),
+      cpa: totalPurchases > 0 ? totalSpend / totalPurchases : 0,
       cpm: cpmCount > 0 ? totalCpm / cpmCount : (totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0),
       costPerProfileVisit: totalProfileVisits > 0 ? totalSpend / totalProfileVisits : 0,
       costPerEngagement: totalEngagement > 0 ? totalSpend / totalEngagement : 0,
       activeCreatives: byCreative.size,
       topCreatives: Array.from(byCreative.entries())
-        .map(([name, stats]) => ({
+        .map(([name, stats]) => {
+          const dynamicMetrics = { ...stats.metrics };
+          for (const metric of distributionSheetMetricOptions) {
+            if (!averageMetricKeys.has(metric.key)) continue;
+            const count = Number(stats.metricCounts[metric.key] || 0);
+            if (count > 0) {
+              dynamicMetrics[metric.key] = Number(stats.metrics[metric.key] || 0) / count;
+            }
+          }
+          return {
           name,
           spend: stats.spend,
+          revenue: stats.revenue,
           reach: stats.reach,
           impressions: stats.impressions,
           clicks: stats.clicks,
@@ -1812,10 +1891,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
           cpc: stats.clicks > 0 ? stats.spend / stats.clicks : 0,
           cpm: stats.impressions > 0 ? (stats.spend / stats.impressions) * 1000 : 0,
-          roas: 0,
+          roas: stats.spend > 0 ? stats.revenue / stats.spend : 0,
+          cpa: stats.purchases > 0 ? stats.spend / stats.purchases : 0,
+          metrics: dynamicMetrics,
           link: stats.link,
           thumbnail: stats.thumbnail,
-        }))
+          };
+        })
         .sort((a, b) => b.profileVisits - a.profileVisits)
         .slice(0, 8),
       platformBreakdown,
@@ -1837,6 +1919,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     distributionPurchasesColumnKey,
     distributionReachColumnKey,
     distributionRoasColumnKey,
+    distributionSheetMetricOptions,
     distributionSpendColumnKey,
     distributionThruplayColumnKey,
     distributionThumbnailColumnKey,
@@ -2585,6 +2668,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     return (sheetDistributionData?.topCreatives || []) as Array<{
       name: string;
       spend: number;
+      revenue?: number;
       reach?: number;
       impressions: number;
       clicks: number;
@@ -2598,6 +2682,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       cpc?: number;
       cpm?: number;
       roas?: number;
+      cpa?: number;
+      metrics?: Record<string, number>;
       link?: string;
       thumbnail?: string;
     }>;
@@ -2607,7 +2693,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     if (project?.source_type === 'meta_ads') {
       return metaWeeklyMetricOptions.filter((option) => option.format !== 'link');
     }
-    return [
+    const computed = [
       { key: 'investment', label: 'Investimento', format: 'currency' as const },
       { key: 'reach', label: 'Alcance', format: 'number' as const },
       { key: 'impressions', label: 'Impressoes', format: 'number' as const },
@@ -2618,8 +2704,27 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       { key: 'profile_visits', label: 'Visitas Perfil', format: 'number' as const },
       { key: 'ctr', label: 'CTR', format: 'percentage' as const },
       { key: 'cpc', label: 'CPC', format: 'currency' as const },
+      { key: 'revenue', label: 'Faturamento', format: 'currency' as const },
+      { key: 'cpa', label: 'Custo por Compra', format: 'currency' as const },
+      { key: 'roas', label: 'ROAS', format: 'decimal' as const },
     ];
-  }, [metaWeeklyMetricOptions, project?.source_type]);
+    const dynamic = distributionSheetMetricOptions.filter((metric) => {
+      const normalized = normalizeMetricName(metric.key);
+      if (!normalized) return false;
+      if (/\b(roas real|website purchase roas|purchase roas|roas)\b/.test(normalized)) return false;
+      if (/\b(cpa|cost per purchase|custo por compra|custo por venda)\b/.test(normalized)) return false;
+      if (/\b(revenue|faturamento|purchase value|valor de compra|valor de compras)\b/.test(normalized)) return false;
+      if (/\b(cpc|cost per click|custo por clique)\b/.test(normalized)) return false;
+      if (/\b(ctr|click through rate|clickthrough rate|taxa de clique)\b/.test(normalized)) return false;
+      if (/\b(frequency|frequencia)\b/.test(normalized)) return false;
+      if (/\b(spend|amount spent|investimento|investment|cost)\b/.test(normalized)) return false;
+      if (/\b(reach|alcance)\b/.test(normalized)) return false;
+      if (/\b(impressions|impressoes)\b/.test(normalized)) return false;
+      if (/\b(action link clicks|inline link clicks|link clicks|clicks|cliques)\b/.test(normalized)) return false;
+      return true;
+    });
+    return [...computed, ...dynamic];
+  }, [distributionSheetMetricOptions, metaWeeklyMetricOptions, project?.source_type]);
 
   const distributionCreativeColumns = useMemo(() => {
     const available = new Set(distributionCreativeMetricOptions.map((option) => option.key));
@@ -2927,7 +3032,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       thruplay,
       followersGained,
       spend,
+      revenue: purchaseValue,
       roas,
+      cpa: purchases > 0 ? spend / purchases : 0,
       checkouts,
       purchases,
       profileVisits,
@@ -3416,6 +3523,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     format="number"
                   />
                   <BigNumberCard
+                    label="Faturamento"
+                    value={project?.source_type === 'meta_ads' ? ((metaDistributionData as any)?.revenue || 0) : ((sheetDistributionData as any)?.revenue || 0)}
+                    format="currency"
+                  />
+                  <BigNumberCard
+                    label="Custo por Compra"
+                    value={project?.source_type === 'meta_ads' ? ((metaDistributionData as any)?.cpa || 0) : ((sheetDistributionData as any)?.cpa || 0)}
+                    format="currency"
+                  />
+                  <BigNumberCard
                     label="Posts com Permalink"
                     value={project?.source_type === 'meta_ads' ? 0 : (sheetDistributionData?.permalinkCount || 0)}
                     format="number"
@@ -3561,6 +3678,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                         return Number(item.cpc || 0);
                                       case 'cpm':
                                         return Number(item.cpm || 0);
+                                      case 'revenue':
+                                        return Number(item.revenue || 0);
+                                      case 'cpa':
+                                        return Number(item.cpa || 0);
                                       case 'roas':
                                         return Number(item.roas || 0);
                                       case 'roi': {
@@ -3570,7 +3691,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                         return spend > 0 ? ((revenue - spend) / spend) * 100 : 0;
                                       }
                                       default:
-                                        return 0;
+                                        return Number((item.metrics && item.metrics[metricKey]) || 0);
                                     }
                                   })();
                               return (
@@ -3667,6 +3788,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     format="number"
                   />
                   <BigNumberCard
+                    label="Faturamento"
+                    value={project?.source_type === 'meta_ads' ? ((metaDistributionData as any)?.revenue || 0) : ((sheetDistributionData as any)?.revenue || 0)}
+                    format="currency"
+                  />
+                  <BigNumberCard
+                    label="Custo por Compra"
+                    value={project?.source_type === 'meta_ads' ? ((metaDistributionData as any)?.cpa || 0) : ((sheetDistributionData as any)?.cpa || 0)}
+                    format="currency"
+                  />
+                  <BigNumberCard
                     label="Posts com Permalink"
                     value={project?.source_type === 'meta_ads' ? 0 : (sheetDistributionData?.permalinkCount || 0)}
                     format="number"
@@ -3812,6 +3943,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                         return Number(item.cpc || 0);
                                       case 'cpm':
                                         return Number(item.cpm || 0);
+                                      case 'revenue':
+                                        return Number(item.revenue || 0);
+                                      case 'cpa':
+                                        return Number(item.cpa || 0);
                                       case 'roas':
                                         return Number(item.roas || 0);
                                       case 'roi': {
@@ -3821,7 +3956,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                         return spend > 0 ? ((revenue - spend) / spend) * 100 : 0;
                                       }
                                       default:
-                                        return 0;
+                                        return Number((item.metrics && item.metrics[metricKey]) || 0);
                                     }
                                   })();
                               return (

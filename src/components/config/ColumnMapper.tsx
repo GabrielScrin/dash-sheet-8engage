@@ -56,7 +56,7 @@ export function ColumnMapper({ projectId, spreadsheetId, sheetNames }: ColumnMap
             body: {
               action: 'read-data',
               spreadsheetId,
-              range: `'${name}'!A1:Z1`
+              range: `'${name}'!A1:ZZ1`
             },
             headers: providerToken ? { 'x-google-token': providerToken } : undefined,
           });
