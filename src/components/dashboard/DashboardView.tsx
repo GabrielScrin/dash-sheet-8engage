@@ -2266,11 +2266,17 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                   (sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]),
                   0,
                 );
-                const revenue = (filteredRows as Array<Record<string, unknown>>).reduce(
+                const revenueFromColumn = (filteredRows as Array<Record<string, unknown>>).reduce(
                   (sum, row) => sum + parseSheetNumber(row?.[sheetRevenueMetricKey]),
                   0,
                 );
-                return investment > 0 ? revenue / investment : 0;
+                const revenueFromRoasRows = (filteredRows as Array<Record<string, unknown>>).reduce((sum, row) => {
+                  const spend = parseSheetNumber(row?.[sheetInvestmentMetricKey]);
+                  const rowRoas = parseSheetNumber(row?.[sheetRoasMetricKey]);
+                  return sum + (spend > 0 && rowRoas > 0 ? spend * rowRoas : 0);
+                }, 0);
+                const revenue = revenueFromColumn > 0 ? revenueFromColumn : revenueFromRoasRows;
+                if (investment > 0 && revenue > 0) return revenue / investment;
               }
               return getAverageMetricValue(metricKey);
             })()

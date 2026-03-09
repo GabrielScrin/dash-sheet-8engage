@@ -272,6 +272,23 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
     case 'checkout_views':
       return checkoutViews;
     default:
+      {
+        const normalizedKey = metricKey
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim();
+        const hasDirectValue =
+          Object.prototype.hasOwnProperty.call(row, metricKey) &&
+          String((row as Record<string, unknown>)[metricKey] ?? '').trim().length > 0;
+        if (hasDirectValue) {
+          return safeNumber(row[metricKey]);
+        }
+        if (normalizedKey.includes('roas')) {
+          return spend > 0 ? purchaseValue / spend : safeNumber(row.roas);
+        }
+      }
       return safeNumber(row[metricKey]);
   }
 };
