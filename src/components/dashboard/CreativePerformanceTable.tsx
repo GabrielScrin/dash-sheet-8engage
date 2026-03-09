@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowUpDown, ArrowUp, ArrowDown, Filter, ExternalLink, Image as ImageIcon } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, Filter, ExternalLink, Image as ImageIcon, Plus } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -86,9 +86,11 @@ export function CreativePerformanceTable({
   useEffect(() => {
     const availableKeys = new Set(metricOptions.map((opt) => opt.key));
     const normalizedDefaults = defaultMetricColumns.filter((key) => availableKeys.has(key));
-    const safeDefaults = (normalizedDefaults.length > 0 ? normalizedDefaults : metricOptions.slice(0, 5).map((opt) => opt.key)).slice(0, 5);
+    const safeDefaults = normalizedDefaults.length > 0 ? normalizedDefaults : metricOptions.slice(0, 5).map((opt) => opt.key);
     setSelectedMetricColumns((prev) => {
-      const normalizedPrev = (!prev.length ? safeDefaults : prev.map((key, index) => (availableKeys.has(key) ? key : safeDefaults[index] || safeDefaults[0]))).slice(0, 5);
+      const normalizedPrev = !prev.length
+        ? safeDefaults
+        : prev.map((key, index) => (availableKeys.has(key) ? key : safeDefaults[index] || safeDefaults[0]));
       if (normalizedPrev.length === prev.length && normalizedPrev.every((value, index) => value === prev[index])) {
         return prev;
       }
@@ -100,7 +102,16 @@ export function CreativePerformanceTable({
     return metricOptions.find((m) => m.key === metricKey) || metricOptions[0] || fallbackMetricOptions[0];
   };
 
-  const visibleMetricColumns = (isMeta ? selectedMetricColumns : defaultMetricColumns).slice(0, 5);
+  const visibleMetricColumns = isMeta ? selectedMetricColumns : defaultMetricColumns;
+
+  const handleAddMetricColumn = () => {
+    const available = metricOptions.map((option) => option.key);
+    if (available.length === 0) return;
+    setSelectedMetricColumns((prev) => {
+      const nextKey = available.find((key) => !prev.includes(key)) || available[0];
+      return [...prev, nextKey];
+    });
+  };
 
   const handleSortByName = () => {
     if (sortTarget.type === 'name') {
@@ -227,7 +238,19 @@ export function CreativePerformanceTable({
                   );
                 })}
 
-                <TableHead className="w-10 px-7"></TableHead>
+                <TableHead className="w-10 px-7">
+                  {isMeta && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-primary"
+                      onClick={handleAddMetricColumn}
+                      aria-label="Adicionar coluna de métrica"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  )}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

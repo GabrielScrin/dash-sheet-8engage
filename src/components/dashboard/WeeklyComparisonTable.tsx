@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Plus } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -79,9 +79,11 @@ export function WeeklyComparisonTable({
   useEffect(() => {
     const availableKeys = new Set(metricOptions.map((opt) => opt.key));
     const normalizedDefaults = defaultMetricColumns.filter((key) => availableKeys.has(key));
-    const safeDefaults = (normalizedDefaults.length > 0 ? normalizedDefaults : metricOptions.slice(0, 5).map((opt) => opt.key)).slice(0, 5);
+    const safeDefaults = normalizedDefaults.length > 0 ? normalizedDefaults : metricOptions.slice(0, 5).map((opt) => opt.key);
     setSelectedMetricColumns((prev) => {
-      const normalizedPrev = (!prev.length ? safeDefaults : prev.map((key, index) => (availableKeys.has(key) ? key : safeDefaults[index] || safeDefaults[0]))).slice(0, 5);
+      const normalizedPrev = !prev.length
+        ? safeDefaults
+        : prev.map((key, index) => (availableKeys.has(key) ? key : safeDefaults[index] || safeDefaults[0]));
       if (normalizedPrev.length === prev.length && normalizedPrev.every((value, index) => value === prev[index])) {
         return prev;
       }
@@ -155,7 +157,16 @@ export function WeeklyComparisonTable({
     return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />;
   };
 
-  const visibleMetricColumns = (isMeta ? selectedMetricColumns : defaultMetricColumns).slice(0, 5);
+  const visibleMetricColumns = isMeta ? selectedMetricColumns : defaultMetricColumns;
+
+  const handleAddMetricColumn = () => {
+    const available = metricOptions.map((option) => option.key);
+    if (available.length === 0) return;
+    setSelectedMetricColumns((prev) => {
+      const nextKey = available.find((key) => !prev.includes(key)) || available[0];
+      return [...prev, nextKey];
+    });
+  };
 
   return (
     <motion.div
@@ -236,6 +247,19 @@ export function WeeklyComparisonTable({
                     </TableHead>
                   );
                 })}
+                {isMeta && (
+                  <TableHead className="w-10 px-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-primary"
+                      onClick={handleAddMetricColumn}
+                      aria-label="Adicionar coluna de métrica"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -257,6 +281,7 @@ export function WeeklyComparisonTable({
                       </TableCell>
                     );
                   })}
+                  {isMeta && <TableCell className="w-10 px-2 py-4" />}
                 </TableRow>
               ))}
             </TableBody>

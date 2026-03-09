@@ -1312,12 +1312,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       return clampToAvailable(readStored(sheetBigNumbersStorageKey), 6);
     });
     setSheetWeeklyMetricColumns((prev) => {
-      if (prev.length > 0) return clampToAvailable(prev, 5);
-      return clampToAvailable(readStored(sheetWeeklyStorageKey), 5);
+      const seed = prev.length > 0 ? prev : readStored(sheetWeeklyStorageKey);
+      return clampToAvailable(seed, Math.max(5, seed.length));
     });
     setSheetCreativeMetricColumns((prev) => {
-      if (prev.length > 0) return clampToAvailable(prev, 5);
-      return clampToAvailable(readStored(sheetCreativeStorageKey), 5);
+      const seed = prev.length > 0 ? prev : readStored(sheetCreativeStorageKey);
+      return clampToAvailable(seed, Math.max(5, seed.length));
     });
     setSheetChartMetricColumns((prev) => {
       if (prev.length > 0) return clampToAvailable(prev, 4);
