@@ -250,7 +250,7 @@ export function WeeklyComparisonTable({
                       (metric.key === 'conversion' && rawValue >= 4.0);
 
                     return (
-                      <TableCell key={`${metricKey}-${colIndex}`} className="px-7 py-4">
+                      <TableCell key={`${metricKey}-${colIndex}`} className="px-7 py-4 text-center">
                         <span className={isPositiveHighlight ? 'text-kpi-positive font-medium' : ''}>
                           {formatMetricValue(rawValue, metric.format)}
                         </span>

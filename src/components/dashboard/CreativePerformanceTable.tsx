@@ -305,7 +305,7 @@ export function CreativePerformanceTable({
                       (metric.key === 'hook_rate' && rawValue >= 0.2) ||
                       (metric.key === 'hold_rate' && rawValue >= 0.1);
                     return (
-                      <TableCell key={`${metric.key}-${index}`} className="px-7 py-4">
+                      <TableCell key={`${metric.key}-${index}`} className="px-7 py-4 text-center">
                         {isLinkMetric ? (
                           linkValue ? (
                             <a
