@@ -1160,7 +1160,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const hasCpa = options.some((metric) => /\b(cpa|cost per purchase|custo por compra|custo por venda)\b/.test(normalizeMetricName(metric.key)));
     const hasPurchases = options.some((metric) => {
       const normalized = normalizeMetricName(metric.key);
-      return /\b(omni purchase|website purchases?|purchases?|vendas?|compras?)\b/.test(normalized) && !/\blast click\b/.test(normalized);
+      return (
+        /\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalized) &&
+        !/\blast click\b/.test(normalized) &&
+        !isCustomActionMetric(metric.key)
+      );
     });
     const hasPurchasesLastClick = options.some((metric) => /\b(compras?|purchases?)\s+last\s+click\b|\b(compras?|purchases?)_last_click\b/.test(normalizeMetricName(metric.key)));
     const hasCpaLastClick = options.some((metric) => /\bcpa\s+last\s+click\b|\bcpa_last_click\b/.test(normalizeMetricName(metric.key)));
@@ -1231,10 +1235,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const keys = sheetMetricOptions.map((metric) => metric.key);
     const nonLastClick = keys.find((key) => {
       const normalized = normalizeMetricName(key);
-      return /\b(omni purchase|website purchases?|purchases?|vendas?|compras?)\b/.test(normalized) && !/\blast click\b/.test(normalized) && !isCustomActionMetric(key);
+      return (
+        /\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalized) &&
+        !/\blast click\b/.test(normalized) &&
+        !isCustomActionMetric(key)
+      );
     });
     if (nonLastClick) return nonLastClick;
-    const fallback = pickFirstMatchingKey(keys.filter((key) => !isCustomActionMetric(key)), [/\bpurchases?\b/, /\bvendas?\b/, /\bcompras?\b/]);
+    const fallback = pickFirstMatchingKey(keys.filter((key) => !isCustomActionMetric(key)), [/\bpurchases?\b/, /\bvendas\b/, /\bcompras\b/]);
     return fallback || SHEET_DERIVED_PURCHASES_KEY;
   }, [sheetMetricOptions]);
   const sheetReachMetricKey = useMemo(
@@ -1410,7 +1418,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       const seed = isPreview
         ? sheetDefaultBigNumberColumns
         : (prev.length > 0 ? prev : (stored.length > 0 ? stored : sheetDefaultBigNumberColumns));
-      return clampToAvailable(seed, Math.max(8, seed.length));
+      const migrated = [...seed];
+      const purchasesKey = sheetPurchasesMetricKey || SHEET_DERIVED_PURCHASES_KEY;
+      const hasPurchases = purchasesKey && migrated.includes(purchasesKey);
+      const legacyCustomCompraIndex = migrated.findIndex((key) => isCustomActionMetric(key) && /\bcompra\b/.test(normalizeMetricName(key)));
+      if (!hasPurchases && purchasesKey && available.includes(purchasesKey) && legacyCustomCompraIndex >= 0) {
+        migrated[legacyCustomCompraIndex] = purchasesKey;
+      }
+      return clampToAvailable(migrated, Math.max(8, migrated.length));
     });
     setSheetWeeklyMetricColumns((prev) => {
       const seed = prev.length > 0 ? prev : readStored(sheetWeeklyStorageKey);
@@ -1432,6 +1447,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     sheetChartStorageKey,
     sheetCreativeStorageKey,
     sheetMetricOptions,
+    sheetPurchasesMetricKey,
     sheetWeeklyStorageKey,
   ]);
 
