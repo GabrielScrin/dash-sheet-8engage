@@ -272,6 +272,7 @@ const SHEET_METRIC_NAME_MAP: Array<{ pattern: RegExp; label: string; format: She
   { pattern: /\bhold rate\b|\bhold\b/, label: 'Hold Rate', format: 'percentage' },
   { pattern: /\bconnect rate\b/, label: 'Connect Rate', format: 'percentage' },
   { pattern: /\baction omni purchase\b|\bpurchases?\b|\bvendas?\b/, label: 'Compras', format: 'number' },
+  { pattern: /\bcustom action\b.*\b(compra|purchase)\b/, label: 'Compras', format: 'number' },
   { pattern: /\bcompras?\s+last\s+click\b|\bpurchases?\s+last\s+click\b|\blast\s+click\s+purchases?\b/, label: 'Compras Last Click', format: 'number' },
   { pattern: /\bcpa\s+last\s+click\b|cost per purchase last click|custo por compra last click/, label: 'CPA Last Click', format: 'currency' },
   { pattern: /\broas\s+last\s+click\b/, label: 'ROAS Last Click', format: 'decimal' },
@@ -298,6 +299,10 @@ const pickFirstMatchingKey = (keys: string[], patterns: RegExp[]) => {
 };
 
 const isCustomActionMetric = (key: string) => /\bcustom action\b/.test(normalizeMetricName(key));
+const isCustomPurchaseActionMetric = (key: string) => {
+  const normalized = normalizeMetricName(key);
+  return /\bcustom action\b/.test(normalized) && /\b(compra|purchase)\b/.test(normalized);
+};
 
 const inferSheetMetricMeta = (columnName: string, sampleValues: unknown[]): { label: string; format: SheetMetricFormat } => {
   const normalized = normalizeMetricName(columnName);
@@ -1163,7 +1168,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       return (
         /\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalized) &&
         !/\blast click\b/.test(normalized) &&
-        !isCustomActionMetric(metric.key)
+        (!isCustomActionMetric(metric.key) || isCustomPurchaseActionMetric(metric.key))
       );
     });
     const hasPurchasesLastClick = options.some((metric) => /\b(compras?|purchases?)\s+last\s+click\b|\b(compras?|purchases?)_last_click\b/.test(normalizeMetricName(metric.key)));
@@ -1238,11 +1243,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       return (
         /\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalized) &&
         !/\blast click\b/.test(normalized) &&
-        !isCustomActionMetric(key)
+        (!isCustomActionMetric(key) || isCustomPurchaseActionMetric(key))
       );
     });
     if (nonLastClick) return nonLastClick;
-    const fallback = pickFirstMatchingKey(keys.filter((key) => !isCustomActionMetric(key)), [/\bpurchases?\b/, /\bvendas\b/, /\bcompras\b/]);
+    const fallback = pickFirstMatchingKey(
+      keys.filter((key) => !isCustomActionMetric(key) || isCustomPurchaseActionMetric(key)),
+      [/\bcustom action\b.*\b(compra|purchase)\b/, /\bpurchases?\b/, /\bvendas\b/, /\bcompras\b/],
+    );
     return fallback || SHEET_DERIVED_PURCHASES_KEY;
   }, [sheetMetricOptions]);
   const sheetReachMetricKey = useMemo(
@@ -2174,7 +2182,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         }
       }
       if (sheetCpaMetricKey) {
-        if (sheetInvestmentMetricKey && sheetPurchasesMetricKey) {
+        if (sheetCpaMetricKey === SHEET_DERIVED_CPA_KEY && sheetInvestmentMetricKey && sheetPurchasesMetricKey) {
           const spend = parseSheetNumber(values[sheetInvestmentMetricKey]);
           const purchases = parseSheetNumber(values[sheetPurchasesMetricKey]);
           values[sheetCpaMetricKey] = purchases > 0 ? spend / purchases : 0;
@@ -2304,7 +2312,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         }
       }
       if (sheetCpaMetricKey) {
-        if (sheetInvestmentMetricKey && sheetPurchasesMetricKey) {
+        if (sheetCpaMetricKey === SHEET_DERIVED_CPA_KEY && sheetInvestmentMetricKey && sheetPurchasesMetricKey) {
           const spend = parseSheetNumber(values[sheetInvestmentMetricKey]);
           const purchases = parseSheetNumber(values[sheetPurchasesMetricKey]);
           values[sheetCpaMetricKey] = purchases > 0 ? spend / purchases : 0;
@@ -2430,7 +2438,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 })()
               : sheetCpaMetricKey && metricKey === sheetCpaMetricKey
                 ? (() => {
-                    if (sheetInvestmentMetricKey && sheetPurchasesMetricKey) {
+                    if (sheetCpaMetricKey === SHEET_DERIVED_CPA_KEY && sheetInvestmentMetricKey && sheetPurchasesMetricKey) {
                       const spend = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]), 0);
                       const purchases = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetPurchasesMetricKey]), 0);
                       return purchases > 0 ? spend / purchases : 0;
