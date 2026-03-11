@@ -268,6 +268,9 @@ const SHEET_METRIC_NAME_MAP: Array<{ pattern: RegExp; label: string; format: She
   { pattern: /\bhold rate\b|\bhold\b/, label: 'Hold Rate', format: 'percentage' },
   { pattern: /\bconnect rate\b/, label: 'Connect Rate', format: 'percentage' },
   { pattern: /\baction omni purchase\b|\bpurchases?\b|\bvendas?\b/, label: 'Compras', format: 'number' },
+  { pattern: /\bcompras?\s+last\s+click\b|\bpurchases?\s+last\s+click\b|\blast\s+click\s+purchases?\b/, label: 'Compras Last Click', format: 'number' },
+  { pattern: /\bcpa\s+last\s+click\b|cost per purchase last click|custo por compra last click/, label: 'CPA Last Click', format: 'currency' },
+  { pattern: /\broas\s+last\s+click\b/, label: 'ROAS Last Click', format: 'decimal' },
   { pattern: /\bfollows?\b|seguidores?/, label: 'Seguidores', format: 'number' },
   { pattern: /\bview content\b|visualizacao de conteudo/, label: 'Visualização de Conteúdo', format: 'number' },
   { pattern: /\badd to cart\b|adicao ao carrinho/, label: 'Adições ao Carrinho', format: 'number' },
@@ -1184,22 +1187,28 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       /\btotal vendido\b/,
     ]);
   }, [sheetMetricOptions]);
-  const sheetRoasMetricKey = useMemo(
-    () =>
-      pickFirstMatchingKey(
-        sheetMetricOptions.map((metric) => metric.key),
-        [/\broas real\b/, /\bwebsite purchase roas\b/, /\bpurchase roas\b/, /\broas\b/],
-      ),
-    [sheetMetricOptions],
-  );
+  const sheetRoasMetricKey = useMemo(() => {
+    const keys = sheetMetricOptions.map((metric) => metric.key);
+    const nonLastClick = keys.find((key) => {
+      const normalized = normalizeMetricName(key);
+      return /\broas\b/.test(normalized) && !/\blast click\b/.test(normalized);
+    });
+    if (nonLastClick) return nonLastClick;
+    return pickFirstMatchingKey(keys, [/\broas\b/]);
+  }, [sheetMetricOptions]);
   const sheetCheckoutMetricKey = useMemo(
     () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\bomni initiated checkout\b/, /\binitiate checkout\b/, /\bcheckout\b/]),
     [sheetMetricOptions],
   );
-  const sheetPurchasesMetricKey = useMemo(
-    () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\bomni purchase\b/, /\bwebsite purchases?\b/, /\bpurchases?\b/, /\bvendas?\b/, /\bcompras?\b/]),
-    [sheetMetricOptions],
-  );
+  const sheetPurchasesMetricKey = useMemo(() => {
+    const keys = sheetMetricOptions.map((metric) => metric.key);
+    const nonLastClick = keys.find((key) => {
+      const normalized = normalizeMetricName(key);
+      return /\b(omni purchase|website purchases?|purchases?|vendas?|compras?)\b/.test(normalized) && !/\blast click\b/.test(normalized);
+    });
+    if (nonLastClick) return nonLastClick;
+    return pickFirstMatchingKey(keys, [/\bpurchases?\b/, /\bvendas?\b/, /\bcompras?\b/]);
+  }, [sheetMetricOptions]);
   const sheetReachMetricKey = useMemo(
     () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\breach\b/, /\balcance\b/]),
     [sheetMetricOptions],
@@ -1231,15 +1240,44 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\bctr\b/, /click through rate/, /taxa de clique/]),
     [sheetMetricOptions],
   );
-  const sheetCpaMetricKey = useMemo(
+  const sheetCpaMetricKey = useMemo(() => {
+    const keys = sheetMetricOptions.map((metric) => metric.key);
+    const nonLastClick = keys.find((key) => {
+      const normalized = normalizeMetricName(key);
+      return /\b(cpa|cost per purchase|custo por compra|custo pro compra|custo por venda)\b/.test(normalized) && !/\blast click\b/.test(normalized);
+    });
+    if (nonLastClick) return nonLastClick;
+    return pickFirstMatchingKey(keys, [/derived cpa/, /\bcpa\b/, /cost per purchase/, /custo por compra/, /custo pro compra/, /custo por venda/]);
+  }, [sheetMetricOptions]);
+  const sheetPurchasesLastClickMetricKey = useMemo(
     () =>
       pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
-        /derived cpa/,
-        /\bcpa\b/,
-        /cost per purchase/,
-        /custo por compra/,
-        /custo pro compra/,
-        /custo por venda/,
+        /\bcompras?\s+last\s+click\b/,
+        /\bpurchases?\s+last\s+click\b/,
+        /\blast\s+click\s+purchases?\b/,
+        /\bcompras?_last_click\b/,
+        /\bpurchases?_last_click\b/,
+        /\blastclick\s+purchases?\b/,
+      ]),
+    [sheetMetricOptions],
+  );
+  const sheetCpaLastClickMetricKey = useMemo(
+    () =>
+      pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
+        /\bcpa\s+last\s+click\b/,
+        /cost per purchase last click/,
+        /custo por compra last click/,
+        /\bcpa_last_click\b/,
+        /\blastclick\s+cpa\b/,
+      ]),
+    [sheetMetricOptions],
+  );
+  const sheetRoasLastClickMetricKey = useMemo(
+    () =>
+      pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
+        /\broas\s+last\s+click\b/,
+        /\broas_last_click\b/,
+        /\blastclick\s+roas\b/,
       ]),
     [sheetMetricOptions],
   );
@@ -1267,6 +1305,32 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     sheetPurchasesMetricKey,
     sheetReachMetricKey,
     sheetRevenueMetricKey,
+    sheetRoasMetricKey,
+  ]);
+  const sheetDefaultBigNumberColumns = useMemo(() => {
+    const fallback = sheetMetricOptions.slice(0, 8).map((metric) => metric.key);
+    const prioritized = [
+      sheetPurchasesMetricKey,
+      sheetCpaMetricKey,
+      sheetInvestmentMetricKey,
+      sheetRevenueMetricKey,
+      sheetRoasMetricKey,
+      sheetPurchasesLastClickMetricKey,
+      sheetCpaLastClickMetricKey,
+      sheetRoasLastClickMetricKey,
+    ].filter(Boolean) as string[];
+    const unique = Array.from(new Set(prioritized));
+    if (unique.length >= 8) return unique.slice(0, 8);
+    return Array.from(new Set([...unique, ...fallback])).slice(0, 8);
+  }, [
+    sheetCpaLastClickMetricKey,
+    sheetCpaMetricKey,
+    sheetInvestmentMetricKey,
+    sheetMetricOptions,
+    sheetPurchasesLastClickMetricKey,
+    sheetPurchasesMetricKey,
+    sheetRevenueMetricKey,
+    sheetRoasLastClickMetricKey,
     sheetRoasMetricKey,
   ]);
 
@@ -1308,8 +1372,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     };
 
     setSheetBigNumberColumns((prev) => {
-      if (prev.length > 0) return clampToAvailable(prev, 6);
-      return clampToAvailable(readStored(sheetBigNumbersStorageKey), 6);
+      const stored = readStored(sheetBigNumbersStorageKey);
+      const seed = prev.length > 0 ? prev : (stored.length > 0 ? stored : sheetDefaultBigNumberColumns);
+      return clampToAvailable(seed, Math.max(8, seed.length));
     });
     setSheetWeeklyMetricColumns((prev) => {
       const seed = prev.length > 0 ? prev : readStored(sheetWeeklyStorageKey);
@@ -1326,6 +1391,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   }, [
     project?.source_type,
     sheetBigNumbersStorageKey,
+    sheetDefaultBigNumberColumns,
     sheetChartStorageKey,
     sheetCreativeStorageKey,
     sheetMetricOptions,
@@ -2255,7 +2321,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       return count > 0 ? sum / count : 0;
     };
 
-    return sheetBigNumberColumns.slice(0, 6).map((metricKey, index) => {
+    return sheetBigNumberColumns.slice(0, 8).map((metricKey, index) => {
       const metricMeta = metricMap.get(metricKey);
       const total =
         sheetRoasMetricKey &&
@@ -2318,6 +2384,30 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     }
                     return getAverageMetricValue(metricKey);
                   })()
+              : sheetCpaLastClickMetricKey && metricKey === sheetCpaLastClickMetricKey
+                ? (() => {
+                    if (sheetInvestmentMetricKey && sheetPurchasesLastClickMetricKey) {
+                      const spend = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]), 0);
+                      const purchasesLastClick = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetPurchasesLastClickMetricKey]), 0);
+                      return purchasesLastClick > 0 ? spend / purchasesLastClick : 0;
+                    }
+                    return getAverageMetricValue(metricKey);
+                  })()
+              : sheetRoasLastClickMetricKey && metricKey === sheetRoasLastClickMetricKey
+                ? (() => {
+                    if (sheetInvestmentMetricKey) {
+                      const spend = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]), 0);
+                      const weightedRoas = rows.reduce((sum, row) => {
+                        const rowSpend = parseSheetNumber(row?.[sheetInvestmentMetricKey]);
+                        const rowRoas = parseSheetNumber(row?.[sheetRoasLastClickMetricKey]);
+                        return sum + (rowSpend > 0 ? rowSpend * rowRoas : 0);
+                      }, 0);
+                      return spend > 0 ? weightedRoas / spend : 0;
+                    }
+                    return getAverageMetricValue(metricKey);
+                  })()
+              : sheetPurchasesLastClickMetricKey && metricKey === sheetPurchasesLastClickMetricKey
+                ? rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetPurchasesLastClickMetricKey]), 0)
               : sheetCtrMetricKey && metricKey === sheetCtrMetricKey
                 ? (() => {
                     if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
@@ -2343,6 +2433,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     project?.source_type,
     sheetBigNumberColumns,
     sheetCpaMetricKey,
+    sheetCpaLastClickMetricKey,
     sheetCpcMetricKey,
     sheetClicksMetricKey,
     sheetCtrMetricKey,
@@ -2350,9 +2441,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     sheetImpressionsMetricKey,
     sheetInvestmentMetricKey,
     sheetMetricOptions,
+    sheetPurchasesLastClickMetricKey,
     sheetPurchasesMetricKey,
     sheetReachMetricKey,
     sheetRevenueMetricKey,
+    sheetRoasLastClickMetricKey,
     sheetRoasMetricKey,
   ]);
 
@@ -3344,8 +3437,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Indicadores Principais</h3>
                   {project?.source_type !== 'meta_ads' && sheetMetricOptions.length > 0 && (
-                    <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                      {sheetBigNumberColumns.slice(0, 6).map((metricKey, index) => (
+                    <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+                      {sheetBigNumberColumns.slice(0, 8).map((metricKey, index) => (
                         <Select
                           key={`sheet-big-number-${index}`}
                           value={metricKey}
@@ -3371,7 +3464,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                       ))}
                     </div>
                   )}
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
                     {bigNumbersToRender.map((kpi, index) => {
                       const { label, value, format } = kpi;
                       const previousValue = 'previousValue' in kpi ? (kpi as any).previousValue : undefined;
