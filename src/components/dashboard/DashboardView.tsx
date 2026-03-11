@@ -167,6 +167,9 @@ const getPeriodKeysFromDateRange = (dateRange: DateRange | undefined, viewMode: 
 type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal' | 'link';
 const SHEET_DERIVED_REVENUE_KEY = '__derived_revenue';
 const SHEET_DERIVED_CPA_KEY = '__derived_cpa';
+const SHEET_DERIVED_PURCHASES_LAST_CLICK_KEY = '__derived_purchases_last_click';
+const SHEET_DERIVED_CPA_LAST_CLICK_KEY = '__derived_cpa_last_click';
+const SHEET_DERIVED_ROAS_LAST_CLICK_KEY = '__derived_roas_last_click';
 
 const normalizeMetricName = (value: string) =>
   value
@@ -292,6 +295,8 @@ const pickFirstMatchingKey = (keys: string[], patterns: RegExp[]) => {
   }
   return undefined;
 };
+
+const isCustomActionMetric = (key: string) => /\bcustom action\b/.test(normalizeMetricName(key));
 
 const inferSheetMetricMeta = (columnName: string, sampleValues: unknown[]): { label: string; format: SheetMetricFormat } => {
   const normalized = normalizeMetricName(columnName);
@@ -1152,11 +1157,23 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     });
     const hasRevenue = options.some((metric) => /\b(revenue|faturamento|purchase value|valor de compra|valor de compras)\b/.test(normalizeMetricName(metric.key)));
     const hasCpa = options.some((metric) => /\b(cpa|cost per purchase|custo por compra|custo por venda)\b/.test(normalizeMetricName(metric.key)));
+    const hasPurchasesLastClick = options.some((metric) => /\b(compras?|purchases?)\s+last\s+click\b|\b(compras?|purchases?)_last_click\b/.test(normalizeMetricName(metric.key)));
+    const hasCpaLastClick = options.some((metric) => /\bcpa\s+last\s+click\b|\bcpa_last_click\b/.test(normalizeMetricName(metric.key)));
+    const hasRoasLastClick = options.some((metric) => /\broas\s+last\s+click\b|\broas_last_click\b/.test(normalizeMetricName(metric.key)));
     if (!hasRevenue) {
       options.push({ key: SHEET_DERIVED_REVENUE_KEY, label: 'Faturamento', format: 'currency' });
     }
     if (!hasCpa) {
       options.push({ key: SHEET_DERIVED_CPA_KEY, label: 'Custo por Compra', format: 'currency' });
+    }
+    if (!hasPurchasesLastClick) {
+      options.push({ key: SHEET_DERIVED_PURCHASES_LAST_CLICK_KEY, label: 'Compras Last Click', format: 'number' });
+    }
+    if (!hasCpaLastClick) {
+      options.push({ key: SHEET_DERIVED_CPA_LAST_CLICK_KEY, label: 'CPA Last Click', format: 'currency' });
+    }
+    if (!hasRoasLastClick) {
+      options.push({ key: SHEET_DERIVED_ROAS_LAST_CLICK_KEY, label: 'ROAS Last Click', format: 'decimal' });
     }
     return options;
   }, [project?.source_type, sheetAdNameColumnKey, sheetCampaignColumnKey, sheetDateColumnKey, sourceRows]);
@@ -1206,10 +1223,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const keys = sheetMetricOptions.map((metric) => metric.key);
     const nonLastClick = keys.find((key) => {
       const normalized = normalizeMetricName(key);
-      return /\b(omni purchase|website purchases?|purchases?|vendas?|compras?)\b/.test(normalized) && !/\blast click\b/.test(normalized);
+      return /\b(omni purchase|website purchases?|purchases?|vendas?|compras?)\b/.test(normalized) && !/\blast click\b/.test(normalized) && !isCustomActionMetric(key);
     });
     if (nonLastClick) return nonLastClick;
-    return pickFirstMatchingKey(keys, [/\bpurchases?\b/, /\bvendas?\b/, /\bcompras?\b/]);
+    return pickFirstMatchingKey(keys.filter((key) => !isCustomActionMetric(key)), [/\bpurchases?\b/, /\bvendas?\b/, /\bcompras?\b/]);
   }, [sheetMetricOptions]);
   const sheetReachMetricKey = useMemo(
     () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\breach\b/, /\balcance\b/]),
@@ -1252,35 +1269,41 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     return pickFirstMatchingKey(keys, [/derived cpa/, /\bcpa\b/, /cost per purchase/, /custo por compra/, /custo pro compra/, /custo por venda/]);
   }, [sheetMetricOptions]);
   const sheetPurchasesLastClickMetricKey = useMemo(
-    () =>
-      pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
+    () => {
+      const found = pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
         /\bcompras?\s+last\s+click\b/,
         /\bpurchases?\s+last\s+click\b/,
         /\blast\s+click\s+purchases?\b/,
         /\bcompras?_last_click\b/,
         /\bpurchases?_last_click\b/,
         /\blastclick\s+purchases?\b/,
-      ]),
+      ]);
+      return found || SHEET_DERIVED_PURCHASES_LAST_CLICK_KEY;
+    },
     [sheetMetricOptions],
   );
   const sheetCpaLastClickMetricKey = useMemo(
-    () =>
-      pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
+    () => {
+      const found = pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
         /\bcpa\s+last\s+click\b/,
         /cost per purchase last click/,
         /custo por compra last click/,
         /\bcpa_last_click\b/,
         /\blastclick\s+cpa\b/,
-      ]),
+      ]);
+      return found || SHEET_DERIVED_CPA_LAST_CLICK_KEY;
+    },
     [sheetMetricOptions],
   );
   const sheetRoasLastClickMetricKey = useMemo(
-    () =>
-      pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
+    () => {
+      const found = pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
         /\broas\s+last\s+click\b/,
         /\broas_last_click\b/,
         /\blastclick\s+roas\b/,
-      ]),
+      ]);
+      return found || SHEET_DERIVED_ROAS_LAST_CLICK_KEY;
+    },
     [sheetMetricOptions],
   );
   const sheetDefaultWeeklyColumns = useMemo(() => {
