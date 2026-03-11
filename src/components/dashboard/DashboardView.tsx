@@ -167,6 +167,7 @@ const getPeriodKeysFromDateRange = (dateRange: DateRange | undefined, viewMode: 
 type SheetMetricFormat = 'number' | 'currency' | 'percentage' | 'decimal' | 'link';
 const SHEET_DERIVED_REVENUE_KEY = '__derived_revenue';
 const SHEET_DERIVED_CPA_KEY = '__derived_cpa';
+const SHEET_DERIVED_PURCHASES_KEY = '__derived_purchases';
 const SHEET_DERIVED_PURCHASES_LAST_CLICK_KEY = '__derived_purchases_last_click';
 const SHEET_DERIVED_CPA_LAST_CLICK_KEY = '__derived_cpa_last_click';
 const SHEET_DERIVED_ROAS_LAST_CLICK_KEY = '__derived_roas_last_click';
@@ -1157,9 +1158,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     });
     const hasRevenue = options.some((metric) => /\b(revenue|faturamento|purchase value|valor de compra|valor de compras)\b/.test(normalizeMetricName(metric.key)));
     const hasCpa = options.some((metric) => /\b(cpa|cost per purchase|custo por compra|custo por venda)\b/.test(normalizeMetricName(metric.key)));
+    const hasPurchases = options.some((metric) => {
+      const normalized = normalizeMetricName(metric.key);
+      return /\b(omni purchase|website purchases?|purchases?|vendas?|compras?)\b/.test(normalized) && !/\blast click\b/.test(normalized);
+    });
     const hasPurchasesLastClick = options.some((metric) => /\b(compras?|purchases?)\s+last\s+click\b|\b(compras?|purchases?)_last_click\b/.test(normalizeMetricName(metric.key)));
     const hasCpaLastClick = options.some((metric) => /\bcpa\s+last\s+click\b|\bcpa_last_click\b/.test(normalizeMetricName(metric.key)));
     const hasRoasLastClick = options.some((metric) => /\broas\s+last\s+click\b|\broas_last_click\b/.test(normalizeMetricName(metric.key)));
+    if (!hasPurchases) {
+      options.push({ key: SHEET_DERIVED_PURCHASES_KEY, label: 'Compras', format: 'number' });
+    }
     if (!hasRevenue) {
       options.push({ key: SHEET_DERIVED_REVENUE_KEY, label: 'Faturamento', format: 'currency' });
     }
@@ -1226,7 +1234,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       return /\b(omni purchase|website purchases?|purchases?|vendas?|compras?)\b/.test(normalized) && !/\blast click\b/.test(normalized) && !isCustomActionMetric(key);
     });
     if (nonLastClick) return nonLastClick;
-    return pickFirstMatchingKey(keys.filter((key) => !isCustomActionMetric(key)), [/\bpurchases?\b/, /\bvendas?\b/, /\bcompras?\b/]);
+    const fallback = pickFirstMatchingKey(keys.filter((key) => !isCustomActionMetric(key)), [/\bpurchases?\b/, /\bvendas?\b/, /\bcompras?\b/]);
+    return fallback || SHEET_DERIVED_PURCHASES_KEY;
   }, [sheetMetricOptions]);
   const sheetReachMetricKey = useMemo(
     () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\breach\b/, /\balcance\b/]),

@@ -134,7 +134,7 @@ export function DashboardFilters({
         : `${selectedCampaignIds.length} campanhas selecionadas`;
 
   return (
-    <div className="sticky top-[7.5rem] z-30 -mx-4 bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+    <div className="-mx-4 bg-background/95 px-4 py-3 supports-[backdrop-filter]:bg-background/60 border-b">
       <div className="flex flex-wrap items-center gap-3">
         {/* Date Range */}
         <Popover
