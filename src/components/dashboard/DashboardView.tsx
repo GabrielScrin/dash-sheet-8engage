@@ -1375,7 +1375,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
 
     setSheetBigNumberColumns((prev) => {
       const stored = readStored(sheetBigNumbersStorageKey);
-      const seed = prev.length > 0 ? prev : (stored.length > 0 ? stored : sheetDefaultBigNumberColumns);
+      const seed = isPreview
+        ? sheetDefaultBigNumberColumns
+        : (prev.length > 0 ? prev : (stored.length > 0 ? stored : sheetDefaultBigNumberColumns));
       return clampToAvailable(seed, Math.max(8, seed.length));
     });
     setSheetWeeklyMetricColumns((prev) => {
@@ -1394,6 +1396,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     project?.source_type,
     sheetBigNumbersStorageKey,
     sheetDefaultBigNumberColumns,
+    isPreview,
     sheetChartStorageKey,
     sheetCreativeStorageKey,
     sheetMetricOptions,
