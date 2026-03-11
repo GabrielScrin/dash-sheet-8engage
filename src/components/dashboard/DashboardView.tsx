@@ -1097,6 +1097,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         .map(String),
     );
     const metricKeys = keys.filter((key) => {
+      if (String(key ?? '').trim().length === 0) return false;
       if (excluded.has(key)) return false;
       if (looksLikeTextMetricName(key)) return false;
       const samples = rows
@@ -1133,6 +1134,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const keys = Object.keys(rows[0] || {});
     const excluded = new Set([sheetDateColumnKey, sheetAdNameColumnKey, sheetCampaignColumnKey].filter(Boolean).map(String));
     const metricKeys = keys.filter((key) => {
+      if (String(key ?? '').trim().length === 0) return false;
       if (excluded.has(key)) return false;
       if (looksLikeTextMetricName(key)) return false;
       const samples = rows.slice(0, 80).map((row) => row?.[key]).filter((value) => String(value ?? '').trim().length > 0);
