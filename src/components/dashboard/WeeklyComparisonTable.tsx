@@ -208,8 +208,11 @@ export function WeeklyComparisonTable({
                 {visibleMetricColumns.map((metricKey, index) => {
                   const metric = resolveMetric(metricKey);
                   return (
-                    <TableHead key={`${metricKey}-${index}`} className="whitespace-nowrap min-w-[155px] px-7">
-                      <div className="flex items-center gap-2">
+                    <TableHead
+                      key={`${metricKey}-${index}`}
+                      className={`whitespace-nowrap min-w-[155px] px-7 ${isMeta ? '' : 'text-center'}`}
+                    >
+                      <div className={`flex items-center gap-2 ${isMeta ? '' : 'justify-center'}`}>
                         {isMeta ? (
                           <Select
                             value={metricKey}
