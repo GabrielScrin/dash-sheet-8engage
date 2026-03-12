@@ -3798,36 +3798,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 </div>
               </section>
 
-              {(project?.source_type === 'meta_ads'
-                ? (metaDistributionData?.platformBreakdown || []).length > 0
-                : (sheetDistributionData?.platformBreakdown || []).length > 0) && (
-                <section>
-                  <h3 className="mb-4 text-lg font-semibold">Breakdown por Plataforma</h3>
-                  <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/50 border-b">
-                        <tr>
-                          <th className="px-4 py-3 text-left font-medium">Plataforma</th>
-                          <th className="px-4 py-3 text-right font-medium">Alcance</th>
-                          <th className="px-4 py-3 text-right font-medium">Engajamento</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {(project?.source_type === 'meta_ads'
-                          ? (metaDistributionData?.platformBreakdown || [])
-                          : (sheetDistributionData?.platformBreakdown || [])
-                        ).map((item) => (
-                          <tr key={item.platform} className="hover:bg-muted/30">
-                            <td className="px-4 py-3 font-medium capitalize">{item.platform}</td>
-                            <td className="px-4 py-3 text-right">{item.reach.toLocaleString('pt-BR')}</td>
-                            <td className="px-4 py-3 text-right">{(item.engagement * 100).toFixed(2)}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              )}
 
               {distributionTopCreatives.length > 0 && (
                 <section>
@@ -4053,36 +4023,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 </div>
               </section>
 
-              {(project?.source_type === 'meta_ads'
-                ? (metaDistributionData?.platformBreakdown || []).length > 0
-                : (sheetDistributionData?.platformBreakdown || []).length > 0) && (
-                <section>
-                  <h3 className="mb-4 text-lg font-semibold">Breakdown por Plataforma</h3>
-                  <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/50 border-b">
-                        <tr>
-                          <th className="px-4 py-3 text-left font-medium">Plataforma</th>
-                          <th className="px-4 py-3 text-right font-medium">Alcance</th>
-                          <th className="px-4 py-3 text-right font-medium">Engajamento</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {(project?.source_type === 'meta_ads'
-                          ? (metaDistributionData?.platformBreakdown || [])
-                          : (sheetDistributionData?.platformBreakdown || [])
-                        ).map((item) => (
-                          <tr key={item.platform} className="hover:bg-muted/30">
-                            <td className="px-4 py-3 font-medium capitalize">{item.platform}</td>
-                            <td className="px-4 py-3 text-right">{item.reach.toLocaleString('pt-BR')}</td>
-                            <td className="px-4 py-3 text-right">{(item.engagement * 100).toFixed(2)}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              )}
 
               {distributionTopCreatives.length > 0 && (
                 <section>
