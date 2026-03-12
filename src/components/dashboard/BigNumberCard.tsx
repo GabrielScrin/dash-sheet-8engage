@@ -32,7 +32,7 @@ export function BigNumberCard({ label, value, previousValue, format, delay = 0 }
   };
 
   const getPrefix = (): string => {
-    if (format === 'currency') return 'R$ ';
+    if (format === 'currency') return 'R$\u00A0';
     return '';
   };
 
@@ -59,8 +59,8 @@ export function BigNumberCard({ label, value, previousValue, format, delay = 0 }
             <Card className="dashboard-card-hover cursor-default">
               <CardContent className="p-4">
                 <p className="text-sm font-medium text-muted-foreground truncate">{label}</p>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold tracking-tight" aria-live="polite">
+                <div className="mt-2 flex items-baseline gap-2 overflow-hidden">
+                  <span className="max-w-full whitespace-nowrap text-[clamp(1.45rem,1.9vw,2rem)] font-bold leading-none tracking-tight" aria-live="polite">
                     <CountUp
                       start={0}
                       end={value}
