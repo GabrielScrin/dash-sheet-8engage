@@ -3520,50 +3520,77 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               {bigNumbersToRender.length > 0 && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Indicadores Principais</h3>
-                  {project?.source_type !== 'meta_ads' && sheetMetricOptions.length > 0 && (
-                    <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      {sheetBigNumberColumns.slice(0, 8).map((metricKey, index) => (
-                        <Select
-                          key={`sheet-big-number-${index}`}
-                          value={metricKey}
-                          onValueChange={(value) =>
-                            setSheetBigNumberColumns((prev) => {
-                              const next = [...prev];
-                              next[index] = value;
-                              return next;
-                            })
-                          }
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder={`Métrica ${index + 1}`} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {sheetMetricOptions.map((option) => (
-                              <SelectItem key={option.key} value={option.key}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                  {project?.source_type !== 'meta_ads' && sheetMetricOptions.length > 0 ? (
+                    <div className="space-y-3">
+                      {[0, 4].map((offset) => (
+                        <React.Fragment key={`big-number-row-${offset}`}>
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                            {sheetBigNumberColumns.slice(offset, offset + 4).map((metricKey, localIndex) => {
+                              const index = offset + localIndex;
+                              return (
+                                <Select
+                                  key={`sheet-big-number-${index}`}
+                                  value={metricKey}
+                                  onValueChange={(value) =>
+                                    setSheetBigNumberColumns((prev) => {
+                                      const next = [...prev];
+                                      next[index] = value;
+                                      return next;
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue placeholder={`Métrica ${index + 1}`} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {sheetMetricOptions.map((option) => (
+                                      <SelectItem key={option.key} value={option.key}>
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              );
+                            })}
+                          </div>
+                          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            {bigNumbersToRender.slice(offset, offset + 4).map((kpi, localIndex) => {
+                              const index = offset + localIndex;
+                              const { label, value, format } = kpi;
+                              const previousValue = 'previousValue' in kpi ? (kpi as any).previousValue : undefined;
+                              return (
+                                <BigNumberCard
+                                  key={`${label}-${index}`}
+                                  label={label}
+                                  value={value}
+                                  previousValue={previousValue}
+                                  format={format}
+                                  delay={index * 0.1}
+                                />
+                              );
+                            })}
+                          </div>
+                        </React.Fragment>
                       ))}
                     </div>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      {bigNumbersToRender.map((kpi, index) => {
+                        const { label, value, format } = kpi;
+                        const previousValue = 'previousValue' in kpi ? (kpi as any).previousValue : undefined;
+                        return (
+                          <BigNumberCard
+                            key={label}
+                            label={label}
+                            value={value}
+                            previousValue={previousValue}
+                            format={format}
+                            delay={index * 0.1}
+                          />
+                        );
+                      })}
+                    </div>
                   )}
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {bigNumbersToRender.map((kpi, index) => {
-                      const { label, value, format } = kpi;
-                      const previousValue = 'previousValue' in kpi ? (kpi as any).previousValue : undefined;
-                      return (
-                        <BigNumberCard
-                          key={label}
-                          label={label}
-                          value={value}
-                          previousValue={previousValue}
-                          format={format}
-                          delay={index * 0.1}
-                        />
-                      );
-                    })}
-                  </div>
                 </section>
               )}
 
