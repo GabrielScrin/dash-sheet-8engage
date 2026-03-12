@@ -3521,7 +3521,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">Indicadores Principais</h3>
                   {project?.source_type !== 'meta_ads' && sheetMetricOptions.length > 0 && (
-                    <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+                    <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       {sheetBigNumberColumns.slice(0, 8).map((metricKey, index) => (
                         <Select
                           key={`sheet-big-number-${index}`}
@@ -3548,7 +3548,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                       ))}
                     </div>
                   )}
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     {bigNumbersToRender.map((kpi, index) => {
                       const { label, value, format } = kpi;
                       const previousValue = 'previousValue' in kpi ? (kpi as any).previousValue : undefined;
