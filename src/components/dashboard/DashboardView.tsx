@@ -303,6 +303,8 @@ const isCustomPurchaseActionMetric = (key: string) => {
   const normalized = normalizeMetricName(key);
   return /\bcustom action\b/.test(normalized) && /\b(compra|purchase)\b/.test(normalized);
 };
+const sumMetricValues = (rows: Array<Record<string, unknown>>, key: string) =>
+  rows.reduce((sum, row) => sum + parseSheetNumber(row?.[key]), 0);
 
 const inferSheetMetricMeta = (columnName: string, sampleValues: unknown[]): { label: string; format: SheetMetricFormat } => {
   const normalized = normalizeMetricName(columnName);
@@ -1166,7 +1168,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const hasPurchases = options.some((metric) => {
       const normalized = normalizeMetricName(metric.key);
       return (
-        /\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalized) &&
+        (/\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalized) || isCustomPurchaseActionMetric(metric.key)) &&
         !/\blast click\b/.test(normalized) &&
         (!isCustomActionMetric(metric.key) || isCustomPurchaseActionMetric(metric.key))
       );
@@ -1238,21 +1240,28 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   );
   const sheetPurchasesMetricKey = useMemo(() => {
     const keys = sheetMetricOptions.map((metric) => metric.key);
-    const nonLastClick = keys.find((key) => {
+    const rows = filteredRows as Array<Record<string, unknown>>;
+    const purchaseCandidates = keys.filter((key) => {
       const normalized = normalizeMetricName(key);
       return (
-        /\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalized) &&
+        (/\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalized) || isCustomPurchaseActionMetric(key)) &&
         !/\blast click\b/.test(normalized) &&
         (!isCustomActionMetric(key) || isCustomPurchaseActionMetric(key))
       );
     });
-    if (nonLastClick) return nonLastClick;
+    const customCandidates = purchaseCandidates.filter((key) => isCustomPurchaseActionMetric(key));
+    const customWithData = customCandidates.find((key) => sumMetricValues(rows, key) > 0);
+    if (customWithData) return customWithData;
+    const genericWithData = purchaseCandidates.find((key) => sumMetricValues(rows, key) > 0);
+    if (genericWithData) return genericWithData;
+    if (customCandidates.length > 0) return customCandidates[0];
+    if (purchaseCandidates.length > 0) return purchaseCandidates[0];
     const fallback = pickFirstMatchingKey(
       keys.filter((key) => !isCustomActionMetric(key) || isCustomPurchaseActionMetric(key)),
       [/\bcustom action\b.*\b(compra|purchase)\b/, /\bpurchases?\b/, /\bvendas\b/, /\bcompras\b/],
     );
     return fallback || SHEET_DERIVED_PURCHASES_KEY;
-  }, [sheetMetricOptions]);
+  }, [filteredRows, sheetMetricOptions]);
   const sheetReachMetricKey = useMemo(
     () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\breach\b/, /\balcance\b/]),
     [sheetMetricOptions],
