@@ -2407,104 +2407,36 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
 
     return sheetBigNumberColumns.slice(0, 8).map((metricKey, index) => {
       const metricMeta = metricMap.get(metricKey);
-      const total =
-        sheetRoasMetricKey &&
-        metricKey === sheetRoasMetricKey
-          ? (() => {
-              if (sheetInvestmentMetricKey && sheetRevenueMetricKey) {
-                const investment = (filteredRows as Array<Record<string, unknown>>).reduce(
-                  (sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]),
-                  0,
-                );
-                const revenueFromColumn = (filteredRows as Array<Record<string, unknown>>).reduce(
-                  (sum, row) => sum + parseSheetNumber(row?.[sheetRevenueMetricKey]),
-                  0,
-                );
-                const revenueFromRoasRows = (filteredRows as Array<Record<string, unknown>>).reduce((sum, row) => {
-                  const spend = parseSheetNumber(row?.[sheetInvestmentMetricKey]);
-                  const rowRoas = parseSheetNumber(row?.[sheetRoasMetricKey]);
-                  return sum + (spend > 0 && rowRoas > 0 ? spend * rowRoas : 0);
-                }, 0);
-                const revenue = revenueFromColumn > 0 ? revenueFromColumn : revenueFromRoasRows;
-                if (investment > 0 && revenue > 0) return revenue / investment;
-              }
-              return getAverageMetricValue(metricKey);
-            })()
-          : sheetRevenueMetricKey && metricKey === sheetRevenueMetricKey
-            ? (() => {
-                if (metricKey === SHEET_DERIVED_REVENUE_KEY && sheetInvestmentMetricKey && sheetRoasMetricKey) {
-                  return rows.reduce((sum, row) => {
-                    const spend = parseSheetNumber(row?.[sheetInvestmentMetricKey]);
-                    const rowRoas = parseSheetNumber(row?.[sheetRoasMetricKey]);
-                    return sum + (spend > 0 && rowRoas > 0 ? spend * rowRoas : 0);
-                  }, 0);
-                }
-                return rows.reduce((sum, row) => sum + parseSheetNumber(row?.[metricKey]), 0);
-              })()
-          : sheetFrequencyMetricKey && metricKey === sheetFrequencyMetricKey
-            ? (() => {
-                if (sheetImpressionsMetricKey && sheetReachMetricKey) {
-                  const impressions = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetImpressionsMetricKey]), 0);
-                  const reach = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetReachMetricKey]), 0);
-                  return reach > 0 ? impressions / reach : 0;
-                }
-                return getAverageMetricValue(metricKey);
-              })()
-            : sheetCpcMetricKey && metricKey === sheetCpcMetricKey
-              ? (() => {
-                  if (sheetInvestmentMetricKey && sheetClicksMetricKey) {
-                    const spend = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]), 0);
-                    const clicks = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetClicksMetricKey]), 0);
-                    return clicks > 0 ? spend / clicks : 0;
-                  }
-                  return getAverageMetricValue(metricKey);
-                })()
-              : sheetCpaMetricKey && metricKey === sheetCpaMetricKey
-                ? (() => {
-                    if (sheetCpaMetricKey === SHEET_DERIVED_CPA_KEY && sheetInvestmentMetricKey && sheetPurchasesMetricKey) {
-                      const spend = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]), 0);
-                      const purchases = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetPurchasesMetricKey]), 0);
-                      return purchases > 0 ? spend / purchases : 0;
-                    }
-                    return getAverageMetricValue(metricKey);
-                  })()
-              : sheetCpaLastClickMetricKey && metricKey === sheetCpaLastClickMetricKey
-                ? (() => {
-                    if (sheetInvestmentMetricKey && sheetPurchasesLastClickMetricKey) {
-                      const spend = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]), 0);
-                      const purchasesLastClick = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetPurchasesLastClickMetricKey]), 0);
-                      return purchasesLastClick > 0 ? spend / purchasesLastClick : 0;
-                    }
-                    return getAverageMetricValue(metricKey);
-                  })()
-              : sheetRoasLastClickMetricKey && metricKey === sheetRoasLastClickMetricKey
-                ? (() => {
-                    if (sheetInvestmentMetricKey) {
-                      const spend = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]), 0);
-                      const weightedRoas = rows.reduce((sum, row) => {
-                        const rowSpend = parseSheetNumber(row?.[sheetInvestmentMetricKey]);
-                        const rowRoas = parseSheetNumber(row?.[sheetRoasLastClickMetricKey]);
-                        return sum + (rowSpend > 0 ? rowSpend * rowRoas : 0);
-                      }, 0);
-                      return spend > 0 ? weightedRoas / spend : 0;
-                    }
-                    return getAverageMetricValue(metricKey);
-                  })()
-              : sheetPurchasesLastClickMetricKey && metricKey === sheetPurchasesLastClickMetricKey
-                ? rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetPurchasesLastClickMetricKey]), 0)
-              : sheetCtrMetricKey && metricKey === sheetCtrMetricKey
-                ? (() => {
-                    if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
-                      const clicks = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetClicksMetricKey]), 0);
-                      const impressions = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetImpressionsMetricKey]), 0);
-                      return impressions > 0 ? (clicks / impressions) * 100 : 0;
-                    }
-                    return getAverageMetricValue(metricKey);
-                  })()
-          : (filteredRows as Array<Record<string, unknown>>).reduce(
-              (sum, row) => sum + parseSheetNumber(row?.[metricKey]),
-              0,
-            );
+      const normalizedMetricKey = normalizeMetricName(metricKey);
+      const isPurchasesMetric =
+        (sheetPurchasesMetricKey && metricKey === sheetPurchasesMetricKey) ||
+        (((/\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalizedMetricKey) ||
+          isCustomPurchaseActionMetric(metricKey)) &&
+          !/\blast click\b/.test(normalizedMetricKey)));
+      const isInvestmentMetric =
+        (sheetInvestmentMetricKey && metricKey === sheetInvestmentMetricKey) ||
+        /\b(amount spent|spend|investment|investimento|gasto)\b/.test(normalizedMetricKey);
+      const isRevenueMetric =
+        (sheetRevenueMetricKey && metricKey === sheetRevenueMetricKey) ||
+        /\b(revenue|faturamento|purchase value|valor de compra|valor de compras|valor vendido)\b/.test(normalizedMetricKey);
+      const isPurchasesLastClickMetric =
+        (sheetPurchasesLastClickMetricKey && metricKey === sheetPurchasesLastClickMetricKey) ||
+        /\b(compras?|purchases?)\s+last\s+click\b|\b(compras?|purchases?)_last_click\b|\blast\s+click\s+purchases?\b/.test(normalizedMetricKey);
+
+      const shouldSumMetric = isInvestmentMetric || isPurchasesMetric || isRevenueMetric || isPurchasesLastClickMetric;
+
+      const total = shouldSumMetric
+        ? (() => {
+            if (metricKey === SHEET_DERIVED_REVENUE_KEY && sheetInvestmentMetricKey && sheetRoasMetricKey) {
+              return rows.reduce((sum, row) => {
+                const spend = parseSheetNumber(row?.[sheetInvestmentMetricKey]);
+                const rowRoas = parseSheetNumber(row?.[sheetRoasMetricKey]);
+                return sum + (spend > 0 && rowRoas > 0 ? spend * rowRoas : 0);
+              }, 0);
+            }
+            return rows.reduce((sum, row) => sum + parseSheetNumber(row?.[metricKey]), 0);
+          })()
+        : getAverageMetricValue(metricKey);
       return {
         key: metricKey || `metric_${index}`,
         label: metricMeta?.label || `Métrica ${index + 1}`,

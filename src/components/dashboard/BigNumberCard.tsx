@@ -23,7 +23,7 @@ export function BigNumberCard({ label, value, previousValue, format, delay = 0 }
       case 'currency':
         return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
       case 'percentage':
-        return `${val.toFixed(1)}%`;
+        return `${val.toFixed(2)}%`;
       case 'decimal':
         return val.toFixed(2);
       default:
@@ -42,7 +42,8 @@ export function BigNumberCard({ label, value, previousValue, format, delay = 0 }
   };
 
   const getDecimals = (): number => {
-    if (format === 'percentage' || format === 'decimal') return 1;
+    if (format === 'percentage') return 2;
+    if (format === 'decimal') return 1;
     if (format === 'currency') return 2;
     return 0;
   };
