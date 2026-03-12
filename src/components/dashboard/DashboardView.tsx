@@ -115,9 +115,6 @@ const parseSheetDateValue = (value: unknown): Date | null => {
   const raw = String(value).trim();
   if (!raw) return null;
 
-  const direct = new Date(raw);
-  if (!Number.isNaN(direct.getTime())) return direct;
-
   const br = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (br) {
     const day = Number(br[1]);
@@ -135,6 +132,9 @@ const parseSheetDateValue = (value: unknown): Date | null => {
     const parsed = new Date(year, month - 1, day);
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
+
+  const direct = new Date(raw);
+  if (!Number.isNaN(direct.getTime())) return direct;
 
   return null;
 };
@@ -1713,19 +1713,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           project?.source_type === 'meta_ads'
             ? (Object.keys(row).find((k) => k.toLowerCase().includes('data') || k.toLowerCase().includes('date') || k === 'date' || k === 'date_start') || null)
             : (sheetDateColumnKey || Object.keys(row).find((k) => k.toLowerCase().includes('data') || k.toLowerCase().includes('date')) || null);
-        if (dateKey && row[dateKey]) {
-          const rowDate = parseSheetDateValue(row[dateKey]);
-          if (rowDate) {
-            const from = new Date(dateRange.from!);
-            from.setHours(0, 0, 0, 0);
-            const to = dateRange.to ? new Date(dateRange.to) : new Date();
-            to.setHours(23, 59, 59, 999);
-            if (rowDate < from) return false;
-            if (rowDate > to) return false;
-          } else if (project?.source_type !== 'meta_ads') {
-            return false;
-          }
-        }
+        if (!dateKey || !row[dateKey]) return false;
+        const rowDate = parseSheetDateValue(row[dateKey]);
+        if (!rowDate) return false;
+        const from = new Date(dateRange.from!);
+        from.setHours(0, 0, 0, 0);
+        const to = dateRange.to ? new Date(dateRange.to) : new Date();
+        to.setHours(23, 59, 59, 999);
+        if (rowDate < from) return false;
+        if (rowDate > to) return false;
       }
 
       // Creative Filter
@@ -1874,18 +1870,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
 
       if (dateRange?.from) {
         const key = distributionDateColumnKey || Object.keys(row).find((k) => k.toLowerCase().includes('data') || k.toLowerCase().includes('date'));
-        if (key && row[key]) {
-          const rowDate = parseSheetDateValue(row[key]);
-          if (rowDate) {
-            const from = new Date(dateRange.from);
-            from.setHours(0, 0, 0, 0);
-            const to = dateRange.to ? new Date(dateRange.to) : new Date();
-            to.setHours(23, 59, 59, 999);
-            if (rowDate < from || rowDate > to) return false;
-          } else {
-            return false;
-          }
-        }
+        if (!key || !row[key]) return false;
+        const rowDate = parseSheetDateValue(row[key]);
+        if (!rowDate) return false;
+        const from = new Date(dateRange.from);
+        from.setHours(0, 0, 0, 0);
+        const to = dateRange.to ? new Date(dateRange.to) : new Date();
+        to.setHours(23, 59, 59, 999);
+        if (rowDate < from || rowDate > to) return false;
       }
 
       return true;
