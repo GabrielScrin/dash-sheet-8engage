@@ -2049,7 +2049,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       frequency: totalReach > 0 ? totalImpressions / totalReach : (frequencyFieldCount > 0 ? totalFrequencyFromField / frequencyFieldCount : 0),
       totalLinkClicks,
       cpc: totalLinkClicks > 0 ? totalSpend / totalLinkClicks : (cpcFieldCount > 0 ? totalCpcFromField / cpcFieldCount : 0),
-      ctr: totalImpressions > 0 ? (totalLinkClicks / totalImpressions) * 100 : (ctrFieldCount > 0 ? totalCtrFromField / ctrFieldCount : 0),
+      ctr: ctrFieldCount > 0 ? totalCtrFromField / ctrFieldCount : (totalImpressions > 0 ? (totalLinkClicks / totalImpressions) * 100 : 0),
       avgEngagement: engagementCount > 0 ? totalEngagement / engagementCount : 0,
       videoViews: totalVideoViews3s,
       videoViews3s: totalVideoViews3s,
@@ -2083,6 +2083,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               dynamicMetrics[metric.key] = Number(stats.metrics[metric.key] || 0) / count;
             }
           }
+          const ctrFromField =
+            distributionCtrColumnKey && Number(dynamicMetrics[distributionCtrColumnKey] || 0) > 0
+              ? Number(dynamicMetrics[distributionCtrColumnKey] || 0)
+              : 0;
           return {
           name,
           spend: stats.spend,
@@ -2096,7 +2100,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           purchases: stats.purchases,
           checkouts: stats.checkouts,
           frequency: stats.reach > 0 ? stats.impressions / stats.reach : 0,
-          ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
+          ctr: ctrFromField > 0 ? ctrFromField : (stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0),
           cpc: stats.clicks > 0 ? stats.spend / stats.clicks : 0,
           cpm: stats.impressions > 0 ? (stats.spend / stats.impressions) * 1000 : 0,
           roas: stats.spend > 0 ? stats.revenue / stats.spend : 0,
@@ -2214,12 +2218,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         }
       }
       if (sheetCtrMetricKey) {
-        if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
+        if (rowCount > 0) {
+          values[sheetCtrMetricKey] = parseSheetNumber(values[sheetCtrMetricKey]) / rowCount;
+        } else if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
           const clicks = parseSheetNumber(values[sheetClicksMetricKey]);
           const impressions = parseSheetNumber(values[sheetImpressionsMetricKey]);
           values[sheetCtrMetricKey] = impressions > 0 ? (clicks / impressions) * 100 : 0;
-        } else if (rowCount > 0) {
-          values[sheetCtrMetricKey] = parseSheetNumber(values[sheetCtrMetricKey]) / rowCount;
         }
       }
       if (sheetRoasMetricKey && (!sheetInvestmentMetricKey || !sheetRevenueMetricKey) && rowCount > 0) {
@@ -2344,12 +2348,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         }
       }
       if (sheetCtrMetricKey) {
-        if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
+        if (rowCount > 0) {
+          values[sheetCtrMetricKey] = parseSheetNumber(values[sheetCtrMetricKey]) / rowCount;
+        } else if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
           const clicks = parseSheetNumber(values[sheetClicksMetricKey]);
           const impressions = parseSheetNumber(values[sheetImpressionsMetricKey]);
           values[sheetCtrMetricKey] = impressions > 0 ? (clicks / impressions) * 100 : 0;
-        } else if (rowCount > 0) {
-          values[sheetCtrMetricKey] = parseSheetNumber(values[sheetCtrMetricKey]) / rowCount;
         }
       }
       if (sheetRoasMetricKey && (!sheetInvestmentMetricKey || !sheetRevenueMetricKey) && rowCount > 0) {
