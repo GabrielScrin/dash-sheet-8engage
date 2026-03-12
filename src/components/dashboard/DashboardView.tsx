@@ -3781,16 +3781,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     value={project?.source_type === 'meta_ads' ? ((metaDistributionData as any)?.revenue || 0) : ((sheetDistributionData as any)?.revenue || 0)}
                     format="currency"
                   />
-                  <BigNumberCard
-                    label="Custo por Compra"
-                    value={project?.source_type === 'meta_ads' ? ((metaDistributionData as any)?.cpa || 0) : ((sheetDistributionData as any)?.cpa || 0)}
-                    format="currency"
-                  />
-                  <BigNumberCard
-                    label="Posts com Permalink"
-                    value={project?.source_type === 'meta_ads' ? 0 : (sheetDistributionData?.permalinkCount || 0)}
-                    format="number"
-                  />
                 </div>
               </section>
 
@@ -3837,12 +3827,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                           {distributionCreativeColumns.map((metricKey, index) => {
                             const option = distributionCreativeMetricOptions.find((item) => item.key === metricKey);
                             return (
-                              <th key={`${metricKey}-${index}`} className="px-4 py-3 text-right font-medium">
+                              <th key={`${metricKey}-${index}`} className="px-4 py-3 text-center font-medium">
                                 <Select
                                   value={metricKey}
                                   onValueChange={(value) => setDistributionCreativeColumnAtIndex(index, value)}
                                 >
-                                  <SelectTrigger className="h-8 w-[160px] text-xs ml-auto">
+                                  <SelectTrigger className="h-8 w-[160px] text-xs mx-auto">
                                     <SelectValue placeholder={option?.label || 'Métrica'} />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -3949,7 +3939,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                     }
                                   })();
                               return (
-                                <td key={`${item.name}-${metricKey}-${metricIndex}`} className="px-4 py-3 text-right">
+                                <td key={`${item.name}-${metricKey}-${metricIndex}`} className="px-4 py-3 text-center">
                                   {formatDistributionMetricValue(raw, (option?.format === 'link' ? 'number' : option?.format) || 'number')}
                                 </td>
                               );
@@ -4046,16 +4036,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     value={project?.source_type === 'meta_ads' ? ((metaDistributionData as any)?.revenue || 0) : ((sheetDistributionData as any)?.revenue || 0)}
                     format="currency"
                   />
-                  <BigNumberCard
-                    label="Custo por Compra"
-                    value={project?.source_type === 'meta_ads' ? ((metaDistributionData as any)?.cpa || 0) : ((sheetDistributionData as any)?.cpa || 0)}
-                    format="currency"
-                  />
-                  <BigNumberCard
-                    label="Posts com Permalink"
-                    value={project?.source_type === 'meta_ads' ? 0 : (sheetDistributionData?.permalinkCount || 0)}
-                    format="number"
-                  />
                 </div>
               </section>
 
@@ -4102,12 +4082,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                           {distributionCreativeColumns.map((metricKey, index) => {
                             const option = distributionCreativeMetricOptions.find((item) => item.key === metricKey);
                             return (
-                              <th key={`${metricKey}-${index}`} className="px-4 py-3 text-right font-medium">
+                              <th key={`${metricKey}-${index}`} className="px-4 py-3 text-center font-medium">
                                 <Select
                                   value={metricKey}
                                   onValueChange={(value) => setDistributionCreativeColumnAtIndex(index, value)}
                                 >
-                                  <SelectTrigger className="h-8 w-[160px] text-xs ml-auto">
+                                  <SelectTrigger className="h-8 w-[160px] text-xs mx-auto">
                                     <SelectValue placeholder={option?.label || 'Métrica'} />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -4214,7 +4194,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                     }
                                   })();
                               return (
-                                <td key={`${item.name}-${metricKey}-${metricIndex}`} className="px-4 py-3 text-right">
+                                <td key={`${item.name}-${metricKey}-${metricIndex}`} className="px-4 py-3 text-center">
                                   {formatDistributionMetricValue(raw, (option?.format === 'link' ? 'number' : option?.format) || 'number')}
                                 </td>
                               );
