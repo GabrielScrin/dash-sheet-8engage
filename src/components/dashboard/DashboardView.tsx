@@ -1240,7 +1240,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   );
   const sheetPurchasesMetricKey = useMemo(() => {
     const keys = sheetMetricOptions.map((metric) => metric.key);
-    const rows = filteredRows as Array<Record<string, unknown>>;
+    const rows = sourceRows as Array<Record<string, unknown>>;
     const purchaseCandidates = keys.filter((key) => {
       const normalized = normalizeMetricName(key);
       return (
@@ -1261,7 +1261,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       [/\bcustom action\b.*\b(compra|purchase)\b/, /\bpurchases?\b/, /\bvendas\b/, /\bcompras\b/],
     );
     return fallback || SHEET_DERIVED_PURCHASES_KEY;
-  }, [filteredRows, sheetMetricOptions]);
+  }, [sheetMetricOptions, sourceRows]);
   const sheetReachMetricKey = useMemo(
     () => pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [/\breach\b/, /\balcance\b/]),
     [sheetMetricOptions],
