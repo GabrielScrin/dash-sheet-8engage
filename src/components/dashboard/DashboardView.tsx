@@ -325,6 +325,10 @@ const isCustomPurchaseActionMetric = (key: string) => {
   const normalized = normalizeMetricName(key);
   return /\bcustom action\b/.test(normalized) && /\b(compra|purchase)\b/.test(normalized);
 };
+const isCtrLikeMetric = (key: string, label?: string) => {
+  const source = `${key} ${label || ''}`;
+  return /\b(ctr|click\s*through\s*rate|clickthrough\s*rate|taxa de cliques?|taxa de clique)\b/.test(normalizeMetricName(source));
+};
 const sumMetricValues = (rows: Array<Record<string, unknown>>, key: string) =>
   rows.reduce((sum, row) => sum + parseSheetNumber(row?.[key]), 0);
 
@@ -2188,6 +2192,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       byBucket.set(bucketKey, current);
     }
 
+    const ctrMetricKeys = sheetMetricOptions
+      .filter((metric) => isCtrLikeMetric(metric.key, metric.label))
+      .map((metric) => metric.key);
+
     for (const values of byBucket.values()) {
       const rowCount = parseSheetNumber(values.__row_count);
       if (sheetFrequencyMetricKey) {
@@ -2217,7 +2225,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           values[sheetCpaMetricKey] = parseSheetNumber(values[sheetCpaMetricKey]) / rowCount;
         }
       }
-      if (sheetCtrMetricKey) {
+      if (ctrMetricKeys.length > 0) {
+        for (const ctrKey of ctrMetricKeys) {
+          values[ctrKey] = rowCount > 0 ? parseSheetNumber(values[ctrKey]) / rowCount : 0;
+        }
+      } else if (sheetCtrMetricKey) {
         if (rowCount > 0) {
           values[sheetCtrMetricKey] = parseSheetNumber(values[sheetCtrMetricKey]) / rowCount;
         } else if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
@@ -2318,6 +2330,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       byCreative.set(creativeName, current);
     }
 
+    const ctrMetricKeys = sheetMetricOptions
+      .filter((metric) => isCtrLikeMetric(metric.key, metric.label))
+      .map((metric) => metric.key);
+
     for (const values of byCreative.values()) {
       const rowCount = parseSheetNumber(values.__row_count);
       if (sheetFrequencyMetricKey) {
@@ -2347,7 +2363,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           values[sheetCpaMetricKey] = parseSheetNumber(values[sheetCpaMetricKey]) / rowCount;
         }
       }
-      if (sheetCtrMetricKey) {
+      if (ctrMetricKeys.length > 0) {
+        for (const ctrKey of ctrMetricKeys) {
+          values[ctrKey] = rowCount > 0 ? parseSheetNumber(values[ctrKey]) / rowCount : 0;
+        }
+      } else if (sheetCtrMetricKey) {
         if (rowCount > 0) {
           values[sheetCtrMetricKey] = parseSheetNumber(values[sheetCtrMetricKey]) / rowCount;
         } else if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
@@ -2428,8 +2448,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         /\b(compras?|purchases?)\s+last\s+click\b|\b(compras?|purchases?)_last_click\b|\blast\s+click\s+purchases?\b/.test(normalizedMetricKey);
 
       const shouldSumMetric = isInvestmentMetric || isPurchasesMetric || isRevenueMetric || isPurchasesLastClickMetric;
+      const forceAverageMetric = isCtrLikeMetric(metricKey, metricMeta?.label);
 
-      const total = shouldSumMetric
+      const total = forceAverageMetric
+        ? getAverageMetricValue(metricKey)
+        : shouldSumMetric
         ? (() => {
             if (metricKey === SHEET_DERIVED_REVENUE_KEY && sheetInvestmentMetricKey && sheetRoasMetricKey) {
               return rows.reduce((sum, row) => {
