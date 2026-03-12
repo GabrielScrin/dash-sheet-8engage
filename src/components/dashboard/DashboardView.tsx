@@ -81,9 +81,31 @@ const parseSheetNumber = (value: unknown) => {
   const raw = String(value).trim();
   if (!raw) return 0;
   const cleaned = raw.replace(/[R$\s%]/g, '');
-  const normalized = cleaned.includes(',') && cleaned.includes('.')
-    ? (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.') ? cleaned.replace(/\./g, '').replace(',', '.') : cleaned.replace(/,/g, ''))
-    : cleaned.replace(',', '.');
+  const hasComma = cleaned.includes(',');
+  const hasDot = cleaned.includes('.');
+
+  let normalized = cleaned;
+  if (hasComma && hasDot) {
+    normalized =
+      cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')
+        ? cleaned.replace(/\./g, '').replace(',', '.')
+        : cleaned.replace(/,/g, '');
+  } else if (hasDot) {
+    const parts = cleaned.split('.');
+    const leading = parts[0] || '';
+    const isThousandsStyle =
+      parts.length > 2 ||
+      (parts.length === 2 && parts[1].length === 3 && leading.length <= 3 && leading !== '0' && leading !== '-0');
+    normalized = isThousandsStyle ? cleaned.replace(/\./g, '') : cleaned;
+  } else if (hasComma) {
+    const parts = cleaned.split(',');
+    const leading = parts[0] || '';
+    const isThousandsStyle =
+      parts.length > 2 ||
+      (parts.length === 2 && parts[1].length === 3 && leading.length <= 3 && leading !== '0' && leading !== '-0');
+    normalized = isThousandsStyle ? cleaned.replace(/,/g, '') : cleaned.replace(',', '.');
+  }
+
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 };
