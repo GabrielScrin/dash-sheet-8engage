@@ -279,9 +279,10 @@ const SHEET_METRIC_NAME_MAP: Array<{ pattern: RegExp; label: string; format: She
   { pattern: /cost per result|custo por resultado/, label: 'Custo por Resultado', format: 'currency' },
   { pattern: /cost per lead|custo por lead/, label: 'Custo por Lead', format: 'currency' },
   { pattern: /cost per message|custo por mensagem/, label: 'Custo por Mensagem', format: 'currency' },
-  { pattern: /\bcpa\b|cost per purchase|custo por compra|custo pro compra|custo por venda/, label: 'Custo por Compra', format: 'currency' },
+  { pattern: /\bcpa\b|cost per purchase|custo por compra|custo pro compra|custo por venda/, label: 'Custo por Venda', format: 'currency' },
   { pattern: /cost per profile visit|custo por visita ao perfil/, label: 'Custo por Visita ao Perfil', format: 'currency' },
   { pattern: /\bresult\b|\bresultado\b/, label: 'Resultado da Campanha', format: 'number' },
+  { pattern: /\b(revenue|faturamento|purchase value|valor de compra|valor de compras|sales value|valor vendido)\s+last\s+click\b|\b(revenue|faturamento|purchase value|valor de compra|valor de compras|sales value|valor vendido)_last_click\b|\blast\s+click\s+(revenue|faturamento|purchase value|valor de compra|valor de compras|sales value|valor vendido)\b/, label: 'Faturamento Last Click', format: 'currency' },
   { pattern: /\broas real\b|\bwebsite purchase roas\b|\broas\b/, label: 'ROAS', format: 'decimal' },
   { pattern: /\bpurchase value\b|valor de compra|valor de compras/, label: 'Valor de Compras', format: 'currency' },
   { pattern: /\binline link clicks?\b|\baction link clicks?\b|cliques no link/, label: 'Cliques no Link', format: 'number' },
@@ -294,10 +295,10 @@ const SHEET_METRIC_NAME_MAP: Array<{ pattern: RegExp; label: string; format: She
   { pattern: /\bhook rate\b|\bhook\b/, label: 'Hook Rate', format: 'percentage' },
   { pattern: /\bhold rate\b|\bhold\b/, label: 'Hold Rate', format: 'percentage' },
   { pattern: /\bconnect rate\b/, label: 'Connect Rate', format: 'percentage' },
-  { pattern: /\baction omni purchase\b|\bpurchases?\b|\bvendas?\b/, label: 'Compras', format: 'number' },
-  { pattern: /\bcustom action\b.*\b(compra|purchase)\b/, label: 'Compras', format: 'number' },
-  { pattern: /\bcompras?\s+last\s+click\b|\bpurchases?\s+last\s+click\b|\blast\s+click\s+purchases?\b/, label: 'Compras Last Click', format: 'number' },
-  { pattern: /\bcpa\s+last\s+click\b|cost per purchase last click|custo por compra last click/, label: 'CPA Last Click', format: 'currency' },
+  { pattern: /\baction omni purchase\b|\bpurchases?\b|\bvendas?\b/, label: 'Vendas', format: 'number' },
+  { pattern: /\bcustom action\b.*\b(compra|purchase)\b/, label: 'Vendas', format: 'number' },
+  { pattern: /\b(compras?|vendas?|purchases?)\s+last\s+click\b|\b(compras?|vendas?|purchases?)_last_click\b|\blast\s+click\s+(purchases?|sales|vendas?|compras?)\b/, label: 'Vendas Last Click', format: 'number' },
+  { pattern: /\bcpa\s+last\s+click\b|cost per purchase last click|custo por compra last click|custo por venda last click/, label: 'Custo por Venda Last Click', format: 'currency' },
   { pattern: /\bfollows?\b|seguidores?/, label: 'Seguidores', format: 'number' },
   { pattern: /\bview content\b|visualizacao de conteudo/, label: 'Visualização de Conteúdo', format: 'number' },
   { pattern: /\badd to cart\b|adicao ao carrinho/, label: 'Adições ao Carrinho', format: 'number' },
@@ -1199,23 +1200,23 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         (!isCustomActionMetric(metric.key) || isCustomPurchaseActionMetric(metric.key))
       );
     });
-    const hasPurchasesLastClick = options.some((metric) => /\b(compras?|purchases?)\s+last\s+click\b|\b(compras?|purchases?)_last_click\b/.test(normalizeMetricName(metric.key)));
-    const hasCpaLastClick = options.some((metric) => /\bcpa\s+last\s+click\b|\bcpa_last_click\b/.test(normalizeMetricName(metric.key)));
+    const hasPurchasesLastClick = options.some((metric) => /\b(compras?|vendas?|purchases?|sales)\s+last\s+click\b|\b(compras?|vendas?|purchases?|sales)_last_click\b/.test(normalizeMetricName(metric.key)));
+    const hasCpaLastClick = options.some((metric) => /\b(cpa|custo por compra|custo por venda)\s+last\s+click\b|\bcpa_last_click\b/.test(normalizeMetricName(metric.key)));
     const hasRoasLastClick = options.some((metric) => /\broas\s+last\s+click\b|\broas_last_click\b/.test(normalizeMetricName(metric.key)));
     if (!hasPurchases) {
-      options.push({ key: SHEET_DERIVED_PURCHASES_KEY, label: 'Compras', format: 'number' });
+      options.push({ key: SHEET_DERIVED_PURCHASES_KEY, label: 'Vendas', format: 'number' });
     }
     if (!hasRevenue) {
       options.push({ key: SHEET_DERIVED_REVENUE_KEY, label: 'Faturamento', format: 'currency' });
     }
     if (!hasCpa) {
-      options.push({ key: SHEET_DERIVED_CPA_KEY, label: 'Custo por Compra', format: 'currency' });
+      options.push({ key: SHEET_DERIVED_CPA_KEY, label: 'Custo por Venda', format: 'currency' });
     }
     if (!hasPurchasesLastClick) {
-      options.push({ key: SHEET_DERIVED_PURCHASES_LAST_CLICK_KEY, label: 'Compras Last Click', format: 'number' });
+      options.push({ key: SHEET_DERIVED_PURCHASES_LAST_CLICK_KEY, label: 'Vendas Last Click', format: 'number' });
     }
     if (!hasCpaLastClick) {
-      options.push({ key: SHEET_DERIVED_CPA_LAST_CLICK_KEY, label: 'CPA Last Click', format: 'currency' });
+      options.push({ key: SHEET_DERIVED_CPA_LAST_CLICK_KEY, label: 'Custo por Venda Last Click', format: 'currency' });
     }
     if (!hasRoasLastClick) {
       options.push({ key: SHEET_DERIVED_ROAS_LAST_CLICK_KEY, label: 'ROAS Last Click', format: 'decimal' });
@@ -1249,6 +1250,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       /\bvalor de compras\b/,
       /\bvalor compra\b/,
       /\btotal vendido\b/,
+    ]);
+  }, [sheetMetricOptions]);
+  const sheetRevenueLastClickMetricKey = useMemo(() => {
+    const keys = sheetMetricOptions.map((metric) => metric.key);
+    return pickFirstMatchingKey(keys, [
+      /\b(revenue|faturamento|purchase value|valor de compra|valor de compras|sales value|valor vendido)\s+last\s+click\b/,
+      /\blast\s+click\s+(revenue|faturamento|purchase value|valor de compra|valor de compras|sales value|valor vendido)\b/,
+      /\b(revenue|faturamento|purchase value|valor de compra|valor de compras|sales value|valor vendido)_last_click\b/,
     ]);
   }, [sheetMetricOptions]);
   const sheetRoasMetricKey = useMemo(() => {
@@ -1331,12 +1340,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const sheetPurchasesLastClickMetricKey = useMemo(
     () => {
       const found = pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
-        /\bcompras?\s+last\s+click\b/,
-        /\bpurchases?\s+last\s+click\b/,
-        /\blast\s+click\s+purchases?\b/,
-        /\bcompras?_last_click\b/,
-        /\bpurchases?_last_click\b/,
-        /\blastclick\s+purchases?\b/,
+        /\b(compras?|vendas?|purchases?|sales)\s+last\s+click\b/,
+        /\blast\s+click\s+(purchases?|sales|vendas?|compras?)\b/,
+        /\b(compras?|vendas?|purchases?|sales)_last_click\b/,
+        /\blastclick\s+(purchases?|sales|vendas?|compras?)\b/,
       ]);
       return found || SHEET_DERIVED_PURCHASES_LAST_CLICK_KEY;
     },
@@ -1345,9 +1352,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const sheetCpaLastClickMetricKey = useMemo(
     () => {
       const found = pickFirstMatchingKey(sheetMetricOptions.map((metric) => metric.key), [
-        /\bcpa\s+last\s+click\b/,
+        /\b(cpa|custo por compra|custo por venda)\s+last\s+click\b/,
         /cost per purchase last click/,
+        /cost per sale last click/,
         /custo por compra last click/,
+        /custo por venda last click/,
         /\bcpa_last_click\b/,
         /\blastclick\s+cpa\b/,
       ]);
@@ -1401,6 +1410,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       sheetRevenueMetricKey,
       sheetRoasMetricKey,
       sheetPurchasesLastClickMetricKey,
+      sheetRevenueLastClickMetricKey,
       sheetCpaLastClickMetricKey,
       sheetRoasLastClickMetricKey,
     ].filter(Boolean) as string[];
@@ -1414,6 +1424,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     sheetMetricOptions,
     sheetPurchasesLastClickMetricKey,
     sheetPurchasesMetricKey,
+    sheetRevenueLastClickMetricKey,
     sheetRevenueMetricKey,
     sheetRoasLastClickMetricKey,
     sheetRoasMetricKey,
@@ -2443,11 +2454,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       const isRevenueMetric =
         (sheetRevenueMetricKey && metricKey === sheetRevenueMetricKey) ||
         /\b(revenue|faturamento|purchase value|valor de compra|valor de compras|valor vendido)\b/.test(normalizedMetricKey);
+      const isRevenueLastClickMetric =
+        (sheetRevenueLastClickMetricKey && metricKey === sheetRevenueLastClickMetricKey) ||
+        /\b(revenue|faturamento|purchase value|valor de compra|valor de compras|sales value|valor vendido)\s+last\s+click\b|\b(revenue|faturamento|purchase value|valor de compra|valor de compras|sales value|valor vendido)_last_click\b|\blast\s+click\s+(revenue|faturamento|purchase value|valor de compra|valor de compras|sales value|valor vendido)\b/.test(normalizedMetricKey);
       const isPurchasesLastClickMetric =
         (sheetPurchasesLastClickMetricKey && metricKey === sheetPurchasesLastClickMetricKey) ||
-        /\b(compras?|purchases?)\s+last\s+click\b|\b(compras?|purchases?)_last_click\b|\blast\s+click\s+purchases?\b/.test(normalizedMetricKey);
+        /\b(compras?|vendas?|purchases?|sales)\s+last\s+click\b|\b(compras?|vendas?|purchases?|sales)_last_click\b|\blast\s+click\s+(purchases?|sales|vendas?|compras?)\b/.test(normalizedMetricKey);
 
-      const shouldSumMetric = isInvestmentMetric || isPurchasesMetric || isRevenueMetric || isPurchasesLastClickMetric;
+      const shouldSumMetric = isInvestmentMetric || isPurchasesMetric || isRevenueMetric || isRevenueLastClickMetric || isPurchasesLastClickMetric;
       const forceAverageMetric = isCtrLikeMetric(metricKey, metricMeta?.label);
 
       const total = forceAverageMetric
@@ -2487,6 +2501,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     sheetPurchasesLastClickMetricKey,
     sheetPurchasesMetricKey,
     sheetReachMetricKey,
+    sheetRevenueLastClickMetricKey,
     sheetRevenueMetricKey,
     sheetRoasLastClickMetricKey,
     sheetRoasMetricKey,
@@ -2932,7 +2947,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       { key: 'ctr', label: 'CTR', format: 'percentage' as const },
       { key: 'cpc', label: 'CPC', format: 'currency' as const },
       { key: 'revenue', label: 'Faturamento', format: 'currency' as const },
-      { key: 'cpa', label: 'Custo por Compra', format: 'currency' as const },
+      { key: 'cpa', label: 'Custo por Venda', format: 'currency' as const },
       { key: 'roas', label: 'ROAS', format: 'decimal' as const },
     ];
     const dynamic = distributionSheetMetricOptions.filter((metric) => {
@@ -3015,7 +3030,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     if (totals.landingViews > 0) steps.push({ label: 'LP Views', value: totals.landingViews });
     if (totals.checkoutViews > 0) steps.push({ label: 'Checkout', value: totals.checkoutViews });
     if (totals.leads > 0) steps.push({ label: 'Leads', value: totals.leads });
-    if (totals.purchases > 0) steps.push({ label: 'Compras', value: totals.purchases });
+    if (totals.purchases > 0) steps.push({ label: 'Vendas', value: totals.purchases });
     return steps;
   }, [filteredRows, project?.source_type]);
 
@@ -3282,7 +3297,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     const purchases = Number(r?.purchases || 0);
     const purchaseValue = Number(r?.purchase_value || 0);
 
-    const resultsLabel = purchases > 0 ? 'Compras' : 'Leads';
+    const resultsLabel = purchases > 0 ? 'Vendas' : 'Leads';
     const results = purchases > 0 ? purchases : leads;
     const costPerResult = results > 0 ? spend / results : 0;
     const roas = spend > 0 ? purchaseValue / spend : Number(r?.roas || 0);
