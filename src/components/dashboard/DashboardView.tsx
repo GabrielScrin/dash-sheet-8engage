@@ -35,6 +35,7 @@ interface MetaSourceConfig {
   sheet_perpetua?: string | null;
   sheet_distribuicao?: string | null;
   sheet_consideracao?: string | null;
+  sheet_criativos?: string | null;
   [key: string]: unknown;
 }
 
@@ -744,8 +745,13 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     (Array.isArray(project?.sheet_names)
       ? String((project?.sheet_names as string[])[2] || (project?.sheet_names as string[])[1] || (project?.sheet_names as string[])[0] || '')
       : String(project?.sheet_name || ''));
+  const sheetCriativosName =
+    String(sourceConfig?.sheet_criativos || '') ||
+    (Array.isArray(project?.sheet_names)
+      ? String((project?.sheet_names as string[])[3] || (project?.sheet_names as string[])[2] || (project?.sheet_names as string[])[1] || (project?.sheet_names as string[])[0] || '')
+      : String(project?.sheet_name || ''));
 
-  const sheetNames: string[] = Array.from(new Set([sheetPerpetuaName, sheetDistribuicaoName, sheetConsideracaoName].filter(Boolean)));
+  const sheetNames: string[] = Array.from(new Set([sheetPerpetuaName, sheetDistribuicaoName, sheetConsideracaoName, sheetCriativosName].filter(Boolean)));
 
   // We'll use a custom query to fetch all sheets in parallel
   const allSheetsQuery = useQuery({
@@ -829,6 +835,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     (project?.source_type === 'meta_ads'
       ? []
       : (sheetRowsByName[sheetConsideracaoName] || sheetRowsByName[sheetDistribuicaoName] || sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
+  const creativeSourceRows =
+    (project?.source_type === 'meta_ads'
+      ? []
+      : (sheetRowsByName[sheetCriativosName] || sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
   const distributionSourceRows =
     (activeTab === 'consideracao' ? considerationSourceRows : discoverySourceRows) as any[];
   const metaAccountRows = (metaAccountInsightsQuery.data || []) as any[];
@@ -837,13 +847,17 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['date', 'data', 'day', 'dia']),
     [sourceRows],
   );
+  const sheetCreativeDateColumnKey = useMemo(
+    () => findColumnKey(creativeSourceRows as Array<Record<string, unknown>>, ['date', 'data', 'day', 'dia']),
+    [creativeSourceRows],
+  );
   const sheetAdNameColumnKey = useMemo(
-    () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['adname', 'ad name', 'nome do anuncio', 'anuncio']),
-    [sourceRows],
+    () => findColumnKey(creativeSourceRows as Array<Record<string, unknown>>, ['adname', 'ad name', 'nome do anuncio', 'anuncio']),
+    [creativeSourceRows],
   );
   const sheetAdsetNameColumnKey = useMemo(
-    () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['adset name', 'adset', 'nome do conjunto', 'conjunto']),
-    [sourceRows],
+    () => findColumnKey(creativeSourceRows as Array<Record<string, unknown>>, ['adset name', 'adset', 'nome do conjunto', 'conjunto']),
+    [creativeSourceRows],
   );
   const sheetCampaignColumnKey = useMemo(
     () => findColumnKey(sourceRows as Array<Record<string, unknown>>, ['campaign name', 'campaign', 'nome da campanha', 'campanha']),
@@ -861,7 +875,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   );
   const sheetPermalinkColumnKey = useMemo(
     () =>
-      findColumnKey(sourceRows as Array<Record<string, unknown>>, [
+      findColumnKey(creativeSourceRows as Array<Record<string, unknown>>, [
         'instagram permalink url',
         'instagram_permalink_url',
         'permalink',
@@ -869,11 +883,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         'url',
         'link',
       ]),
-    [sourceRows],
+    [creativeSourceRows],
   );
   const sheetThumbnailColumnKey = useMemo(
     () =>
-      findColumnKey(sourceRows as Array<Record<string, unknown>>, [
+      findColumnKey(creativeSourceRows as Array<Record<string, unknown>>, [
         'thumbnail',
         'thumb',
         'image',
@@ -881,7 +895,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         'image_url',
         'creative thumbnail',
       ]),
-    [sourceRows],
+    [creativeSourceRows],
   );
 
   const distributionDateColumnKey = useMemo(
@@ -1755,6 +1769,46 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     });
   }, [aggregatedMetaRows, dateRange, project?.source_type, selectedCreative, sheetAdNameColumnKey, sheetAdsetNameColumnKey, sheetDateColumnKey]);
 
+  const filteredCreativeRows = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return [];
+    if (!creativeSourceRows.length) return [];
+
+    return (creativeSourceRows as Array<Record<string, unknown>>).filter((row) => {
+      if (dateRange?.from) {
+        const dateKey =
+          sheetCreativeDateColumnKey ||
+          Object.keys(row).find((k) => k.toLowerCase().includes('data') || k.toLowerCase().includes('date')) ||
+          null;
+        if (!dateKey || !row[dateKey]) return false;
+        const rowDate = parseSheetDateValue(row[dateKey]);
+        if (!rowDate) return false;
+        const from = new Date(dateRange.from);
+        from.setHours(0, 0, 0, 0);
+        const to = dateRange.to ? new Date(dateRange.to) : new Date();
+        to.setHours(23, 59, 59, 999);
+        if (rowDate < from) return false;
+        if (rowDate > to) return false;
+      }
+
+      if (selectedCreative) {
+        const creativeKey = sheetAdNameColumnKey || sheetAdsetNameColumnKey;
+        if (creativeKey && String(row?.[creativeKey] ?? '').trim() !== selectedCreative) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [
+    creativeSourceRows,
+    dateRange,
+    project?.source_type,
+    selectedCreative,
+    sheetAdNameColumnKey,
+    sheetAdsetNameColumnKey,
+    sheetCreativeDateColumnKey,
+  ]);
+
   // 5. Process Data
   const effectiveMappings = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return resolvedMappings || [];
@@ -2304,7 +2358,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     if (!sheetAdNameColumnKey && !sheetAdsetNameColumnKey) return [];
     const creativeColumnKey = sheetAdNameColumnKey || sheetAdsetNameColumnKey;
     const byCreative = new Map<string, Record<string, unknown>>();
-    for (const row of filteredRows as Array<Record<string, unknown>>) {
+    for (const row of filteredCreativeRows as Array<Record<string, unknown>>) {
       const creativeName = String((creativeColumnKey && row?.[creativeColumnKey]) ?? '').trim();
       if (!creativeName) continue;
       const current = byCreative.get(creativeName) || {
@@ -2400,7 +2454,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       })
       .slice(0, 200);
   }, [
-    filteredRows,
+    filteredCreativeRows,
     project?.source_type,
     sheetAdNameColumnKey,
     sheetAdsetNameColumnKey,
@@ -2451,6 +2505,20 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       const isInvestmentMetric =
         (sheetInvestmentMetricKey && metricKey === sheetInvestmentMetricKey) ||
         /\b(amount spent|spend|investment|investimento|gasto)\b/.test(normalizedMetricKey);
+      const isReachMetric =
+        (sheetReachMetricKey && metricKey === sheetReachMetricKey) ||
+        /\b(reach|alcance)\b/.test(normalizedMetricKey);
+      const isImpressionsMetric =
+        (sheetImpressionsMetricKey && metricKey === sheetImpressionsMetricKey) ||
+        /\b(impressions|impressoes)\b/.test(normalizedMetricKey);
+      const isClicksMetric =
+        (sheetClicksMetricKey && metricKey === sheetClicksMetricKey) ||
+        /\b(action link clicks|inline link clicks|link clicks|clicks|cliques)\b/.test(normalizedMetricKey);
+      const isLandingViewsMetric =
+        /\b(landing page views?|action landing page view|lp views?|visualizacoes da pagina)\b/.test(normalizedMetricKey);
+      const isCheckoutMetric =
+        (sheetCheckoutMetricKey && metricKey === sheetCheckoutMetricKey) ||
+        /\b(action omni initiated checkout|initiate checkout|checkout|inicio de checkout)\b/.test(normalizedMetricKey);
       const isRevenueMetric =
         (sheetRevenueMetricKey && metricKey === sheetRevenueMetricKey) ||
         /\b(revenue|faturamento|purchase value|valor de compra|valor de compras|valor vendido)\b/.test(normalizedMetricKey);
@@ -2461,7 +2529,17 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         (sheetPurchasesLastClickMetricKey && metricKey === sheetPurchasesLastClickMetricKey) ||
         /\b(compras?|vendas?|purchases?|sales)\s+last\s+click\b|\b(compras?|vendas?|purchases?|sales)_last_click\b|\blast\s+click\s+(purchases?|sales|vendas?|compras?)\b/.test(normalizedMetricKey);
 
-      const shouldSumMetric = isInvestmentMetric || isPurchasesMetric || isRevenueMetric || isRevenueLastClickMetric || isPurchasesLastClickMetric;
+      const shouldSumMetric =
+        isInvestmentMetric ||
+        isReachMetric ||
+        isImpressionsMetric ||
+        isClicksMetric ||
+        isLandingViewsMetric ||
+        isCheckoutMetric ||
+        isPurchasesMetric ||
+        isRevenueMetric ||
+        isRevenueLastClickMetric ||
+        isPurchasesLastClickMetric;
       const forceAverageMetric = isCtrLikeMetric(metricKey, metricMeta?.label);
 
       const total = forceAverageMetric

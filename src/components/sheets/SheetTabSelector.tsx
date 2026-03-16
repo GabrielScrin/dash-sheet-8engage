@@ -24,7 +24,8 @@ interface SheetTabSelectorProps {
   selectedPerpetua?: string | null;
   selectedDistribuicao?: string | null;
   selectedConsideracao?: string | null;
-  onSelect: (selection: { perpetua: string; distribuicao: string; consideracao: string }) => void;
+  selectedCriativos?: string | null;
+  onSelect: (selection: { perpetua: string; distribuicao: string; consideracao: string; criativos: string }) => void;
   onBack: () => void;
 }
 
@@ -34,6 +35,7 @@ export function SheetTabSelector({
   selectedPerpetua = null,
   selectedDistribuicao = null,
   selectedConsideracao = null,
+  selectedCriativos = null,
   onSelect,
   onBack
 }: SheetTabSelectorProps) {
@@ -43,6 +45,7 @@ export function SheetTabSelector({
   const [perpetuaTab, setPerpetuaTab] = useState<string>(selectedPerpetua || '');
   const [distribuicaoTab, setDistribuicaoTab] = useState<string>(selectedDistribuicao || '');
   const [consideracaoTab, setConsideracaoTab] = useState<string>(selectedConsideracao || '');
+  const [criativosTab, setCriativosTab] = useState<string>(selectedCriativos || '');
 
   useEffect(() => {
     const fetchTabs = async () => {
@@ -84,17 +87,21 @@ export function SheetTabSelector({
     setConsideracaoTab(selectedConsideracao || '');
   }, [selectedConsideracao]);
 
+  useEffect(() => {
+    setCriativosTab(selectedCriativos || '');
+  }, [selectedCriativos]);
+
   const handleConfirm = () => {
-    if (!perpetuaTab || !distribuicaoTab || !consideracaoTab) {
+    if (!perpetuaTab || !distribuicaoTab || !consideracaoTab || !criativosTab) {
       toast({
-        title: 'Selecione as tres abas',
-        description: 'Escolha uma aba para Perpetua, Descoberta e Consideracao.',
+        title: 'Selecione as quatro abas',
+        description: 'Escolha uma aba para Perpetua, Descoberta, Consideracao e Criativos.',
         variant: 'destructive',
       });
       return;
     }
 
-    onSelect({ perpetua: perpetuaTab, distribuicao: distribuicaoTab, consideracao: consideracaoTab });
+    onSelect({ perpetua: perpetuaTab, distribuicao: distribuicaoTab, consideracao: consideracaoTab, criativos: criativosTab });
   };
 
   if (loading) {
@@ -120,10 +127,10 @@ export function SheetTabSelector({
         <p className="text-sm text-muted-foreground">
           Escolha qual aba alimenta cada visualizacao do dashboard:
         </p>
-        <div className="text-xs text-muted-foreground">Perpetua + Descoberta + Consideracao</div>
+        <div className="text-xs text-muted-foreground">Perpetua + Descoberta + Consideracao + Criativos</div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardContent className="p-4 space-y-2">
             <p className="text-sm font-medium">Aba da visao Perpetua</p>
@@ -177,13 +184,31 @@ export function SheetTabSelector({
             </Select>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardContent className="p-4 space-y-2">
+            <p className="text-sm font-medium">Aba dos Criativos</p>
+            <Select value={criativosTab} onValueChange={setCriativosTab}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a aba" />
+              </SelectTrigger>
+              <SelectContent>
+                {tabs.map((tab) => (
+                  <SelectItem key={`crea-${tab.sheetId}`} value={tab.title}>
+                    {tab.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex items-center justify-between pt-4">
         <Button variant="outline" onClick={onBack}>
           Voltar
         </Button>
-        <Button onClick={handleConfirm} disabled={!perpetuaTab || !distribuicaoTab || !consideracaoTab}>
+        <Button onClick={handleConfirm} disabled={!perpetuaTab || !distribuicaoTab || !consideracaoTab || !criativosTab}>
           Confirmar Selecao
         </Button>
       </div>
