@@ -1446,7 +1446,55 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
 
   const sheetCreativeMetricOptions = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
-    const options = [...sheetMetricOptions];
+    const rows = creativeSourceRows as Array<Record<string, unknown>>;
+    const keys = Object.keys(rows[0] || {});
+    const excluded = new Set(
+      [
+        sheetCreativeDateColumnKey,
+        sheetAdNameColumnKey,
+        sheetAdsetNameColumnKey,
+        sheetPermalinkColumnKey,
+        sheetThumbnailColumnKey,
+      ]
+        .filter(Boolean)
+        .map(String),
+    );
+    const metricKeys = keys.filter((key) => {
+      if (String(key ?? '').trim().length === 0) return false;
+      if (excluded.has(key)) return false;
+      if (looksLikeTextMetricName(key)) return false;
+      const samples = rows.slice(0, 80).map((row) => row?.[key]).filter((value) => String(value ?? '').trim().length > 0);
+      if (samples.length > 0 && samples.some((value) => looksLikeUrl(value))) return false;
+      return true;
+    });
+    const options = metricKeys.map((key) => {
+      const sampleValues = rows.slice(0, 80).map((row) => row?.[key]);
+      const meta = inferSheetMetricMeta(key, sampleValues);
+      return {
+        key,
+        label: meta.label,
+        format: meta.format,
+      };
+    });
+    const hasRevenue = options.some((metric) => /\b(revenue|faturamento|purchase value|valor de compra|valor de compras)\b/.test(normalizeMetricName(metric.key)));
+    const hasCpa = options.some((metric) => /\b(cpa|cost per purchase|custo por compra|custo por venda)\b/.test(normalizeMetricName(metric.key)));
+    const hasPurchases = options.some((metric) => {
+      const normalized = normalizeMetricName(metric.key);
+      return (
+        (/\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalized) || isCustomPurchaseActionMetric(metric.key)) &&
+        !/\blast click\b/.test(normalized) &&
+        (!isCustomActionMetric(metric.key) || isCustomPurchaseActionMetric(metric.key))
+      );
+    });
+    if (!hasPurchases) {
+      options.push({ key: SHEET_DERIVED_PURCHASES_KEY, label: 'Vendas', format: 'number' });
+    }
+    if (!hasRevenue) {
+      options.push({ key: SHEET_DERIVED_REVENUE_KEY, label: 'Faturamento', format: 'currency' });
+    }
+    if (!hasCpa) {
+      options.push({ key: SHEET_DERIVED_CPA_KEY, label: 'Custo por Venda', format: 'currency' });
+    }
     if (sheetPermalinkColumnKey) {
       options.push({
         key: sheetPermalinkColumnKey,
@@ -1455,7 +1503,134 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       });
     }
     return options;
-  }, [project?.source_type, sheetMetricOptions, sheetPermalinkColumnKey]);
+  }, [
+    creativeSourceRows,
+    project?.source_type,
+    sheetAdNameColumnKey,
+    sheetAdsetNameColumnKey,
+    sheetCreativeDateColumnKey,
+    sheetPermalinkColumnKey,
+    sheetThumbnailColumnKey,
+  ]);
+
+  const creativeInvestmentMetricKey = useMemo(
+    () =>
+      pickFirstMatchingKey(sheetCreativeMetricOptions.map((metric) => metric.key), [
+        /\bamount spent\b/,
+        /\bspend\b/,
+        /\binvestment\b/,
+        /\binvestimento\b/,
+        /\bgasto\b/,
+        /\bcost\b/,
+      ]),
+    [sheetCreativeMetricOptions],
+  );
+  const creativeRevenueMetricKey = useMemo(
+    () =>
+      pickFirstMatchingKey(sheetCreativeMetricOptions.map((metric) => metric.key), [
+        /derived revenue/,
+        /\bwebsite purchases conversion value\b/,
+        /\bpurchase conversion value\b/,
+        /\bconversion value\b/,
+        /\bpurchase value\b/,
+        /\brevenue\b/,
+        /\bfaturamento\b/,
+        /\bfaturameto\b/,
+        /\bvalor vendido\b/,
+        /\bvalor de compras\b/,
+        /\bvalor compra\b/,
+        /\btotal vendido\b/,
+      ]),
+    [sheetCreativeMetricOptions],
+  );
+  const creativeRoasMetricKey = useMemo(() => {
+    const keys = sheetCreativeMetricOptions.map((metric) => metric.key);
+    const nonLastClick = keys.find((key) => {
+      const normalized = normalizeMetricName(key);
+      return /\broas\b/.test(normalized) && !/\blast click\b/.test(normalized);
+    });
+    if (nonLastClick) return nonLastClick;
+    return pickFirstMatchingKey(keys, [/\broas\b/]);
+  }, [sheetCreativeMetricOptions]);
+  const creativePurchasesMetricKey = useMemo(() => {
+    const keys = sheetCreativeMetricOptions.map((metric) => metric.key);
+    const rows = creativeSourceRows as Array<Record<string, unknown>>;
+    const purchaseCandidates = keys.filter((key) => {
+      const normalized = normalizeMetricName(key);
+      return (
+        (/\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalized) || isCustomPurchaseActionMetric(key)) &&
+        !/\blast click\b/.test(normalized) &&
+        (!isCustomActionMetric(key) || isCustomPurchaseActionMetric(key))
+      );
+    });
+    const customCandidates = purchaseCandidates.filter((key) => isCustomPurchaseActionMetric(key));
+    const customWithData = customCandidates.find((key) => sumMetricValues(rows, key) > 0);
+    if (customWithData) return customWithData;
+    const genericWithData = purchaseCandidates.find((key) => sumMetricValues(rows, key) > 0);
+    if (genericWithData) return genericWithData;
+    if (customCandidates.length > 0) return customCandidates[0];
+    if (purchaseCandidates.length > 0) return purchaseCandidates[0];
+    return SHEET_DERIVED_PURCHASES_KEY;
+  }, [creativeSourceRows, sheetCreativeMetricOptions]);
+  const creativeReachMetricKey = useMemo(
+    () => pickFirstMatchingKey(sheetCreativeMetricOptions.map((metric) => metric.key), [/\breach\b/, /\balcance\b/]),
+    [sheetCreativeMetricOptions],
+  );
+  const creativeImpressionsMetricKey = useMemo(
+    () => pickFirstMatchingKey(sheetCreativeMetricOptions.map((metric) => metric.key), [/\bimpressions\b/, /\bimpressoes\b/]),
+    [sheetCreativeMetricOptions],
+  );
+  const creativeClicksMetricKey = useMemo(
+    () =>
+      pickFirstMatchingKey(sheetCreativeMetricOptions.map((metric) => metric.key), [
+        /\baction link clicks\b/,
+        /\binline link clicks\b/,
+        /\blink clicks?\b/,
+        /\bclicks?\b/,
+        /\bcliques?\b/,
+      ]),
+    [sheetCreativeMetricOptions],
+  );
+  const creativeFrequencyMetricKey = useMemo(
+    () => pickFirstMatchingKey(sheetCreativeMetricOptions.map((metric) => metric.key), [/\bfrequency\b/, /\bfrequencia\b/]),
+    [sheetCreativeMetricOptions],
+  );
+  const creativeCpcMetricKey = useMemo(
+    () => pickFirstMatchingKey(sheetCreativeMetricOptions.map((metric) => metric.key), [/\bcpc\b/, /cost per click/, /custo por clique/]),
+    [sheetCreativeMetricOptions],
+  );
+  const creativeCtrMetricKey = useMemo(
+    () => pickFirstMatchingKey(sheetCreativeMetricOptions.map((metric) => metric.key), [/\bctr\b/, /click through rate/, /taxa de clique/]),
+    [sheetCreativeMetricOptions],
+  );
+  const creativeCpaMetricKey = useMemo(() => {
+    const keys = sheetCreativeMetricOptions.map((metric) => metric.key);
+    return pickFirstMatchingKey(keys, [/derived cpa/, /\bcpa\b/, /cost per purchase/, /custo por compra/, /custo por venda/]) || SHEET_DERIVED_CPA_KEY;
+  }, [sheetCreativeMetricOptions]);
+  const sheetDefaultCreativeColumns = useMemo(() => {
+    const fallback = sheetCreativeMetricOptions.slice(0, 5).map((metric) => metric.key);
+    const prioritized = [
+      creativePurchasesMetricKey,
+      creativeReachMetricKey,
+      creativeImpressionsMetricKey,
+      creativeRevenueMetricKey,
+      creativeRoasMetricKey,
+      creativeCpaMetricKey,
+      creativeClicksMetricKey,
+    ].filter(Boolean) as string[];
+    const unique = Array.from(new Set(prioritized));
+    if (unique.length >= 5) return unique.slice(0, 5);
+    return Array.from(new Set([...unique, ...fallback])).slice(0, 5);
+  }, [
+    creativeCpaMetricKey,
+    creativeClicksMetricKey,
+    creativeImpressionsMetricKey,
+    creativePurchasesMetricKey,
+    creativeReachMetricKey,
+    creativeRevenueMetricKey,
+    creativeRoasMetricKey,
+    sheetCreativeMetricOptions,
+  ]);
 
   React.useEffect(() => {
     if (project?.source_type === 'meta_ads') return;
@@ -2373,76 +2548,85 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       if (creativeLink && !current.link) current.link = creativeLink;
       if (sheetPermalinkColumnKey && creativeLink) current[sheetPermalinkColumnKey] = creativeLink;
       if (creativeThumb && !current.thumbnail) current.thumbnail = creativeThumb;
-      const canRecomputeRoas = Boolean(sheetRoasMetricKey && sheetInvestmentMetricKey && sheetRevenueMetricKey);
-      for (const metric of sheetMetricOptions) {
-        if (canRecomputeRoas && sheetRoasMetricKey && metric.key === sheetRoasMetricKey) continue;
+      const canRecomputeRoas = Boolean(creativeRoasMetricKey && creativeInvestmentMetricKey && creativeRevenueMetricKey);
+      for (const metric of sheetCreativeMetricOptions) {
+        if (canRecomputeRoas && creativeRoasMetricKey && metric.key === creativeRoasMetricKey) continue;
         const currentValue = parseSheetNumber(current[metric.key]);
         const nextValue =
           metric.key === SHEET_DERIVED_REVENUE_KEY
             ? (() => {
-                const spend = sheetInvestmentMetricKey ? parseSheetNumber(row?.[sheetInvestmentMetricKey]) : 0;
-                const rowRoas = sheetRoasMetricKey ? parseSheetNumber(row?.[sheetRoasMetricKey]) : 0;
+                const spend = creativeInvestmentMetricKey ? parseSheetNumber(row?.[creativeInvestmentMetricKey]) : 0;
+                const rowRoas = creativeRoasMetricKey ? parseSheetNumber(row?.[creativeRoasMetricKey]) : 0;
                 return spend > 0 && rowRoas > 0 ? spend * rowRoas : 0;
               })()
+            : metric.key === SHEET_DERIVED_PURCHASES_KEY
+            ? (() => {
+                if (creativePurchasesMetricKey && creativePurchasesMetricKey !== SHEET_DERIVED_PURCHASES_KEY) {
+                  return parseSheetNumber(row?.[creativePurchasesMetricKey]);
+                }
+                return 0;
+              })()
+            : metric.key === SHEET_DERIVED_CPA_KEY
+            ? 0
             : parseSheetNumber(row?.[metric.key]);
         current[metric.key] = currentValue + nextValue;
       }
-      if (canRecomputeRoas && sheetRoasMetricKey && sheetInvestmentMetricKey && sheetRevenueMetricKey) {
-        const invest = parseSheetNumber(current[sheetInvestmentMetricKey]);
-        const revenue = parseSheetNumber(current[sheetRevenueMetricKey]);
-        current[sheetRoasMetricKey] = invest > 0 ? revenue / invest : 0;
+      if (canRecomputeRoas && creativeRoasMetricKey && creativeInvestmentMetricKey && creativeRevenueMetricKey) {
+        const invest = parseSheetNumber(current[creativeInvestmentMetricKey]);
+        const revenue = parseSheetNumber(current[creativeRevenueMetricKey]);
+        current[creativeRoasMetricKey] = invest > 0 ? revenue / invest : 0;
       }
       byCreative.set(creativeName, current);
     }
 
-    const ctrMetricKeys = sheetMetricOptions
+    const ctrMetricKeys = sheetCreativeMetricOptions
       .filter((metric) => isCtrLikeMetric(metric.key, metric.label))
       .map((metric) => metric.key);
 
     for (const values of byCreative.values()) {
       const rowCount = parseSheetNumber(values.__row_count);
-      if (sheetFrequencyMetricKey) {
-        if (sheetImpressionsMetricKey && sheetReachMetricKey) {
-          const impressions = parseSheetNumber(values[sheetImpressionsMetricKey]);
-          const reach = parseSheetNumber(values[sheetReachMetricKey]);
-          values[sheetFrequencyMetricKey] = reach > 0 ? impressions / reach : 0;
+      if (creativeFrequencyMetricKey) {
+        if (creativeImpressionsMetricKey && creativeReachMetricKey) {
+          const impressions = parseSheetNumber(values[creativeImpressionsMetricKey]);
+          const reach = parseSheetNumber(values[creativeReachMetricKey]);
+          values[creativeFrequencyMetricKey] = reach > 0 ? impressions / reach : 0;
         } else if (rowCount > 0) {
-          values[sheetFrequencyMetricKey] = parseSheetNumber(values[sheetFrequencyMetricKey]) / rowCount;
+          values[creativeFrequencyMetricKey] = parseSheetNumber(values[creativeFrequencyMetricKey]) / rowCount;
         }
       }
-      if (sheetCpcMetricKey) {
-        if (sheetInvestmentMetricKey && sheetClicksMetricKey) {
-          const spend = parseSheetNumber(values[sheetInvestmentMetricKey]);
-          const clicks = parseSheetNumber(values[sheetClicksMetricKey]);
-          values[sheetCpcMetricKey] = clicks > 0 ? spend / clicks : 0;
+      if (creativeCpcMetricKey) {
+        if (creativeInvestmentMetricKey && creativeClicksMetricKey) {
+          const spend = parseSheetNumber(values[creativeInvestmentMetricKey]);
+          const clicks = parseSheetNumber(values[creativeClicksMetricKey]);
+          values[creativeCpcMetricKey] = clicks > 0 ? spend / clicks : 0;
         } else if (rowCount > 0) {
-          values[sheetCpcMetricKey] = parseSheetNumber(values[sheetCpcMetricKey]) / rowCount;
+          values[creativeCpcMetricKey] = parseSheetNumber(values[creativeCpcMetricKey]) / rowCount;
         }
       }
-      if (sheetCpaMetricKey) {
-        if (sheetCpaMetricKey === SHEET_DERIVED_CPA_KEY && sheetInvestmentMetricKey && sheetPurchasesMetricKey) {
-          const spend = parseSheetNumber(values[sheetInvestmentMetricKey]);
-          const purchases = parseSheetNumber(values[sheetPurchasesMetricKey]);
-          values[sheetCpaMetricKey] = purchases > 0 ? spend / purchases : 0;
+      if (creativeCpaMetricKey) {
+        if (creativeInvestmentMetricKey && creativePurchasesMetricKey) {
+          const spend = parseSheetNumber(values[creativeInvestmentMetricKey]);
+          const purchases = parseSheetNumber(values[creativePurchasesMetricKey]);
+          values[creativeCpaMetricKey] = purchases > 0 ? spend / purchases : 0;
         } else if (rowCount > 0) {
-          values[sheetCpaMetricKey] = parseSheetNumber(values[sheetCpaMetricKey]) / rowCount;
+          values[creativeCpaMetricKey] = parseSheetNumber(values[creativeCpaMetricKey]) / rowCount;
         }
       }
       if (ctrMetricKeys.length > 0) {
         for (const ctrKey of ctrMetricKeys) {
           values[ctrKey] = rowCount > 0 ? parseSheetNumber(values[ctrKey]) / rowCount : 0;
         }
-      } else if (sheetCtrMetricKey) {
+      } else if (creativeCtrMetricKey) {
         if (rowCount > 0) {
-          values[sheetCtrMetricKey] = parseSheetNumber(values[sheetCtrMetricKey]) / rowCount;
-        } else if (sheetClicksMetricKey && sheetImpressionsMetricKey) {
-          const clicks = parseSheetNumber(values[sheetClicksMetricKey]);
-          const impressions = parseSheetNumber(values[sheetImpressionsMetricKey]);
-          values[sheetCtrMetricKey] = impressions > 0 ? (clicks / impressions) * 100 : 0;
+          values[creativeCtrMetricKey] = parseSheetNumber(values[creativeCtrMetricKey]) / rowCount;
+        } else if (creativeClicksMetricKey && creativeImpressionsMetricKey) {
+          const clicks = parseSheetNumber(values[creativeClicksMetricKey]);
+          const impressions = parseSheetNumber(values[creativeImpressionsMetricKey]);
+          values[creativeCtrMetricKey] = impressions > 0 ? (clicks / impressions) * 100 : 0;
         }
       }
-      if (sheetRoasMetricKey && (!sheetInvestmentMetricKey || !sheetRevenueMetricKey) && rowCount > 0) {
-        values[sheetRoasMetricKey] = parseSheetNumber(values[sheetRoasMetricKey]) / rowCount;
+      if (creativeRoasMetricKey && (!creativeInvestmentMetricKey || !creativeRevenueMetricKey) && rowCount > 0) {
+        values[creativeRoasMetricKey] = parseSheetNumber(values[creativeRoasMetricKey]) / rowCount;
       }
     }
 
@@ -2455,22 +2639,22 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       .slice(0, 200);
   }, [
     filteredCreativeRows,
+    creativeCpaMetricKey,
+    creativeCpcMetricKey,
+    creativeClicksMetricKey,
+    creativeCtrMetricKey,
+    creativeFrequencyMetricKey,
+    creativeImpressionsMetricKey,
+    creativeInvestmentMetricKey,
+    creativePurchasesMetricKey,
+    creativeReachMetricKey,
+    creativeRevenueMetricKey,
+    creativeRoasMetricKey,
     project?.source_type,
     sheetAdNameColumnKey,
     sheetAdsetNameColumnKey,
-    sheetCpaMetricKey,
-    sheetCpcMetricKey,
-    sheetClicksMetricKey,
-    sheetCtrMetricKey,
-    sheetFrequencyMetricKey,
-    sheetImpressionsMetricKey,
-    sheetInvestmentMetricKey,
-    sheetMetricOptions,
     sheetPermalinkColumnKey,
-    sheetPurchasesMetricKey,
-    sheetReachMetricKey,
-    sheetRevenueMetricKey,
-    sheetRoasMetricKey,
+    sheetCreativeMetricOptions,
     sheetThumbnailColumnKey,
   ]);
 
@@ -3739,7 +3923,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     onCreativeSelect={setSelectedCreative}
                     isMeta
                     metricOptions={project?.source_type === 'meta_ads' ? (metaWeeklyMetricOptions as any) : (sheetCreativeMetricOptions as any)}
-                    defaultMetricColumns={project?.source_type === 'meta_ads' ? ['post_engagement', 'hook_rate', 'hold_rate', 'cpc', 'cost_per_result'] : sheetDefaultWeeklyColumns}
+                    defaultMetricColumns={project?.source_type === 'meta_ads' ? ['post_engagement', 'hook_rate', 'hold_rate', 'cpc', 'cost_per_result'] : sheetDefaultCreativeColumns}
                     metricColumns={project?.source_type === 'meta_ads' ? creativeMetricColumns : sheetCreativeMetricColumns}
                     onMetricColumnsChange={project?.source_type === 'meta_ads' ? setCreativeMetricColumns : setSheetCreativeMetricColumns}
                   />
