@@ -2457,12 +2457,21 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         }
       }
       if (sheetCpaMetricKey) {
-        if (sheetCpaMetricKey === SHEET_DERIVED_CPA_KEY && sheetInvestmentMetricKey && sheetPurchasesMetricKey) {
+        if (sheetInvestmentMetricKey && sheetPurchasesMetricKey) {
           const spend = parseSheetNumber(values[sheetInvestmentMetricKey]);
           const purchases = parseSheetNumber(values[sheetPurchasesMetricKey]);
           values[sheetCpaMetricKey] = purchases > 0 ? spend / purchases : 0;
         } else if (rowCount > 0) {
           values[sheetCpaMetricKey] = parseSheetNumber(values[sheetCpaMetricKey]) / rowCount;
+        }
+      }
+      if (sheetCpaLastClickMetricKey) {
+        if (sheetInvestmentMetricKey && sheetPurchasesLastClickMetricKey) {
+          const spend = parseSheetNumber(values[sheetInvestmentMetricKey]);
+          const purchasesLastClick = parseSheetNumber(values[sheetPurchasesLastClickMetricKey]);
+          values[sheetCpaLastClickMetricKey] = purchasesLastClick > 0 ? spend / purchasesLastClick : 0;
+        } else if (rowCount > 0) {
+          values[sheetCpaLastClickMetricKey] = parseSheetNumber(values[sheetCpaLastClickMetricKey]) / rowCount;
         }
       }
       if (ctrMetricKeys.length > 0) {
@@ -2513,6 +2522,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     filteredRows,
     project?.source_type,
     sheetCpaMetricKey,
+    sheetCpaLastClickMetricKey,
     sheetCpcMetricKey,
     sheetClicksMetricKey,
     sheetCtrMetricKey,
@@ -2681,6 +2691,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     return sheetBigNumberColumns.slice(0, 8).map((metricKey, index) => {
       const metricMeta = metricMap.get(metricKey);
       const normalizedMetricKey = normalizeMetricName(metricKey);
+      const isCpaMetric =
+        (sheetCpaMetricKey && metricKey === sheetCpaMetricKey) ||
+        /\b(cpa|cost per purchase|custo por compra|custo por venda)\b/.test(normalizedMetricKey);
+      const isCpaLastClickMetric =
+        (sheetCpaLastClickMetricKey && metricKey === sheetCpaLastClickMetricKey) ||
+        /\b(cpa|custo por compra|custo por venda)\s+last\s+click\b|\bcpa_last_click\b|\blastclick\s+cpa\b/.test(normalizedMetricKey);
       const isPurchasesMetric =
         (sheetPurchasesMetricKey && metricKey === sheetPurchasesMetricKey) ||
         (((/\b(action omni purchase|omni purchase|website purchases?|purchase|purchases|vendas|compras)\b/.test(normalizedMetricKey) ||
@@ -2728,6 +2744,18 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
 
       const total = forceAverageMetric
         ? getAverageMetricValue(metricKey)
+        : isCpaMetric && sheetInvestmentMetricKey && sheetPurchasesMetricKey
+        ? (() => {
+            const spend = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]), 0);
+            const purchases = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetPurchasesMetricKey]), 0);
+            return purchases > 0 ? spend / purchases : 0;
+          })()
+        : isCpaLastClickMetric && sheetInvestmentMetricKey && sheetPurchasesLastClickMetricKey
+        ? (() => {
+            const spend = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetInvestmentMetricKey]), 0);
+            const purchasesLastClick = rows.reduce((sum, row) => sum + parseSheetNumber(row?.[sheetPurchasesLastClickMetricKey]), 0);
+            return purchasesLastClick > 0 ? spend / purchasesLastClick : 0;
+          })()
         : shouldSumMetric
         ? (() => {
             if (metricKey === SHEET_DERIVED_REVENUE_KEY && sheetInvestmentMetricKey && sheetRoasMetricKey) {
@@ -2756,12 +2784,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     sheetCpcMetricKey,
     sheetClicksMetricKey,
     sheetCtrMetricKey,
+    sheetCpaLastClickMetricKey,
     sheetFrequencyMetricKey,
     sheetImpressionsMetricKey,
     sheetInvestmentMetricKey,
     sheetMetricOptions,
     sheetPurchasesLastClickMetricKey,
     sheetPurchasesMetricKey,
+    sheetPurchasesLastClickMetricKey,
     sheetReachMetricKey,
     sheetRevenueLastClickMetricKey,
     sheetRevenueMetricKey,
