@@ -2693,7 +2693,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       const normalizedMetricKey = normalizeMetricName(metricKey);
       const isCpaMetric =
         (sheetCpaMetricKey && metricKey === sheetCpaMetricKey) ||
-        /\b(cpa|cost per purchase|custo por compra|custo por venda)\b/.test(normalizedMetricKey);
+        (/\b(cpa|cost per purchase|custo por compra|custo por venda)\b/.test(normalizedMetricKey) &&
+          !/\blast click\b/.test(normalizedMetricKey));
       const isCpaLastClickMetric =
         (sheetCpaLastClickMetricKey && metricKey === sheetCpaLastClickMetricKey) ||
         /\b(cpa|custo por compra|custo por venda)\s+last\s+click\b|\bcpa_last_click\b|\blastclick\s+cpa\b/.test(normalizedMetricKey);
@@ -4083,11 +4084,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     value={project?.source_type === 'meta_ads' ? (metaDistributionData?.profileVisits || 0) : (sheetDistributionData?.profileVisits || 0)}
                     format="number"
                   />
-                  <BigNumberCard
-                    label="Faturamento"
-                    value={project?.source_type === 'meta_ads' ? ((metaDistributionData as any)?.revenue || 0) : ((sheetDistributionData as any)?.revenue || 0)}
-                    format="currency"
-                  />
                 </div>
               </section>
 
@@ -4307,11 +4303,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     label="Visitas ao Perfil"
                     value={project?.source_type === 'meta_ads' ? (metaDistributionData?.profileVisits || 0) : (sheetDistributionData?.profileVisits || 0)}
                     format="number"
-                  />
-                  <BigNumberCard
-                    label="Faturamento"
-                    value={project?.source_type === 'meta_ads' ? ((metaDistributionData as any)?.revenue || 0) : ((sheetDistributionData as any)?.revenue || 0)}
-                    format="currency"
                   />
                 </div>
               </section>
