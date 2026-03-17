@@ -46,6 +46,22 @@ function getSourceConfig(config: unknown): MetaSourceConfig | null {
   return null;
 }
 
+function pickConfiguredSheetName(
+  sheetNames: string[] | null | undefined,
+  preferredIndex: number,
+  patterns: RegExp[] = [],
+  fallback: string = '',
+) {
+  const names = Array.isArray(sheetNames) ? sheetNames.map((value) => String(value || '').trim()).filter(Boolean) : [];
+  const direct = names[preferredIndex];
+  if (direct) return direct;
+  for (const pattern of patterns) {
+    const found = names.find((name) => pattern.test(normalizeMetricName(name)));
+    if (found) return found;
+  }
+  return fallback;
+}
+
 const normalizeKey = (value: string) =>
   value
     .trim()
@@ -736,20 +752,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   // 3. Fetch Sheet Data from all configured sheets
   const sheetPerpetuaName =
     String(sourceConfig?.sheet_perpetua || '') ||
-    (Array.isArray(project?.sheet_names) ? String((project?.sheet_names as string[])[0] || '') : String(project?.sheet_name || ''));
+    pickConfiguredSheetName(project?.sheet_names as string[] | null | undefined, 0, [/\bperpet/], String(project?.sheet_name || ''));
   const sheetDistribuicaoName =
     String(sourceConfig?.sheet_distribuicao || '') ||
-    (Array.isArray(project?.sheet_names) ? String((project?.sheet_names as string[])[1] || (project?.sheet_names as string[])[0] || '') : String(project?.sheet_name || ''));
+    pickConfiguredSheetName(project?.sheet_names as string[] | null | undefined, 1, [/\bdescob/, /\bdistribuicao\b/, /\bdistrib/], String(project?.sheet_name || ''));
   const sheetConsideracaoName =
     String(sourceConfig?.sheet_consideracao || '') ||
-    (Array.isArray(project?.sheet_names)
-      ? String((project?.sheet_names as string[])[2] || (project?.sheet_names as string[])[1] || (project?.sheet_names as string[])[0] || '')
-      : String(project?.sheet_name || ''));
+    pickConfiguredSheetName(project?.sheet_names as string[] | null | undefined, 2, [/\bconsider/], String(project?.sheet_name || ''));
   const sheetCriativosName =
     String(sourceConfig?.sheet_criativos || '') ||
-    (Array.isArray(project?.sheet_names)
-      ? String((project?.sheet_names as string[])[3] || (project?.sheet_names as string[])[2] || (project?.sheet_names as string[])[1] || (project?.sheet_names as string[])[0] || '')
-      : String(project?.sheet_name || ''));
+    pickConfiguredSheetName(project?.sheet_names as string[] | null | undefined, 3, [/\bcriativ/, /\bcreative/], String(project?.sheet_name || ''));
 
   const sheetNames: string[] = Array.from(new Set([sheetPerpetuaName, sheetDistribuicaoName, sheetConsideracaoName, sheetCriativosName].filter(Boolean)));
 
@@ -4033,7 +4045,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 </section>
               )}
               <section>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   <BigNumberCard
                     label="Investimento"
                     value={project?.source_type === 'meta_ads' ? (metaDistributionData?.spend || 0) : (sheetDistributionData?.spend || 0)}
@@ -4253,7 +4265,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 </section>
               )}
               <section>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   <BigNumberCard
                     label="Investimento"
                     value={project?.source_type === 'meta_ads' ? (metaDistributionData?.spend || 0) : (sheetDistributionData?.spend || 0)}
