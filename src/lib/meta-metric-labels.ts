@@ -260,6 +260,8 @@ export const getMetaMetricValue = (rowInput: Record<string, unknown>, metricKey:
       return results > 0 ? spend / results : 0;
     case 'connect_rate':
       return impressions > 0 ? (landingViews / impressions) * 100 : 0;
+    case 'cost_per_follower':
+      return instagramFollows > 0 ? spend / instagramFollows : 0;
     case 'post_engagement':
       return postEngagement;
     case 'video_views':
