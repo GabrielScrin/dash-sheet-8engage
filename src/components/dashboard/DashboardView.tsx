@@ -2328,6 +2328,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       cpm: cpmCount > 0 ? totalCpm / cpmCount : (totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0),
       costPerProfileVisit: totalProfileVisits > 0 ? totalSpend / totalProfileVisits : 0,
       costPerEngagement: totalEngagement > 0 ? totalSpend / totalEngagement : 0,
+      costPerFollower: totalFollowers > 0 ? totalSpend / totalFollowers : 0,
       activeCreatives: byCreative.size,
       topCreatives: Array.from(byCreative.entries())
         .map(([name, stats]) => {
@@ -3586,6 +3587,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       purchases,
       profileVisits,
       costPerProfileVisit: profileVisits > 0 ? spend / profileVisits : 0,
+      followers: followersGained,
+      costPerFollower: followersGained > 0 ? spend / followersGained : 0,
       platformBreakdown,
     };
   }, [metaPlatformBreakdownQuery.data, metaTotalsRow, project?.source_type]);
@@ -4082,14 +4085,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     format="percentage"
                   />
                   <BigNumberCard
-                    label="Views de Video 3s"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.video3s || 0) : (sheetDistributionData?.videoViews3s || 0)}
+                    label="Seguidores"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followers || 0) : (sheetDistributionData?.followersGained || 0)}
                     format="number"
                   />
                   <BigNumberCard
-                    label="Thruplay"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.thruplay || 0) : (sheetDistributionData?.thruplayViews || 0)}
-                    format="number"
+                    label="Custo por Seguidor"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.costPerFollower || 0) : (sheetDistributionData?.costPerFollower || 0)}
+                    format="currency"
                   />
                   <BigNumberCard
                     label="Visitas ao Perfil"
@@ -4302,14 +4305,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     format="percentage"
                   />
                   <BigNumberCard
-                    label="Views de Video 3s"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.video3s || 0) : (sheetDistributionData?.videoViews3s || 0)}
+                    label="Seguidores"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followers || 0) : (sheetDistributionData?.followersGained || 0)}
                     format="number"
                   />
                   <BigNumberCard
-                    label="Thruplay"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.thruplay || 0) : (sheetDistributionData?.thruplayViews || 0)}
-                    format="number"
+                    label="Custo por Seguidor"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.costPerFollower || 0) : (sheetDistributionData?.costPerFollower || 0)}
+                    format="currency"
                   />
                   <BigNumberCard
                     label="Visitas ao Perfil"
