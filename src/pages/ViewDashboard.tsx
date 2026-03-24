@@ -99,7 +99,7 @@ export default function ViewDashboard() {
       if (data.valid && data.projectId) {
         setProjectId(data.projectId);
         setTokenName(data.tokenName || 'Dashboard');
-        setProjectData((data.project || null) as Record<string, unknown> | null);
+        setProjectData((data.project || null) as unknown as Record<string, unknown> | null);
         setProjectMappings(Array.isArray(data.mappings) ? data.mappings : []);
         setStatus('validated');
         return;
