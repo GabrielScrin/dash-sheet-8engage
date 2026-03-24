@@ -97,10 +97,9 @@ export default function ViewDashboard() {
       }
 
       if (data.valid && data.projectId) {
-        const projectRecord = data.project ? (data.project as unknown as Record<string, unknown>) : null;
         setProjectId(data.projectId);
         setTokenName(data.tokenName || 'Dashboard');
-        setProjectData(projectRecord);
+        setProjectData((data.project || null) as unknown as Record<string, unknown> | null);
         setProjectMappings(Array.isArray(data.mappings) ? data.mappings : []);
         setStatus('validated');
         return;
