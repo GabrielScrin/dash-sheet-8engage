@@ -4,24 +4,10 @@ import { Loader2, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { DashboardView } from '@/components/dashboard/DashboardView';
 import { supabase } from '@/integrations/supabase/client';
-import type { Tables } from '@/integrations/supabase/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-
-type ColumnMapping = Tables<'column_mappings'>;
-type ProjectSourceType = 'sheet' | 'meta_ads' | null;
-
-interface SharedProjectData {
-  id: string;
-  name: string;
-  source_type: ProjectSourceType;
-  source_config: Record<string, unknown> | null;
-  spreadsheet_id: string | null;
-  sheet_name: string | null;
-  sheet_names: string[] | null;
-}
 
 interface ValidationResult {
   valid: boolean;
@@ -29,12 +15,8 @@ interface ValidationResult {
   projectId?: string;
   tokenName?: string;
   error?: string;
-  project?: SharedProjectData;
-  mappings?: ColumnMapping[];
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Falha desconhecida.';
+  project?: Record<string, unknown>;
+  mappings?: any[];
 }
 
 export default function ViewDashboard() {
@@ -47,7 +29,7 @@ export default function ViewDashboard() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [tokenName, setTokenName] = useState('Dashboard');
   const [projectData, setProjectData] = useState<Record<string, unknown> | null>(null);
-  const [projectMappings, setProjectMappings] = useState<ColumnMapping[]>([]);
+  const [projectMappings, setProjectMappings] = useState<any[]>([]);
 
   const validateToken = async (passwordAttempt?: string) => {
     if (!token) {
@@ -68,9 +50,8 @@ export default function ViewDashboard() {
       );
 
       if (fnError) {
-        const maybeBody = (fnError as { context?: { body?: unknown } })?.context?.body;
+        const maybeBody = (fnError as any)?.context?.body;
         let parsedError = '';
-
         if (typeof maybeBody === 'string') {
           try {
             parsedError = JSON.parse(maybeBody)?.error || '';
@@ -78,7 +59,6 @@ export default function ViewDashboard() {
             parsedError = '';
           }
         }
-
         setStatus('error');
         setError(parsedError || fnError.message || 'Erro ao validar link de compartilhamento.');
         return;
@@ -99,7 +79,7 @@ export default function ViewDashboard() {
       if (data.valid && data.projectId) {
         setProjectId(data.projectId);
         setTokenName(data.tokenName || 'Dashboard');
-        setProjectData((data.project || null) as unknown as Record<string, unknown> | null);
+        setProjectData((data.project || null) as Record<string, unknown> | null);
         setProjectMappings(Array.isArray(data.mappings) ? data.mappings : []);
         setStatus('validated');
         return;
@@ -107,9 +87,9 @@ export default function ViewDashboard() {
 
       setStatus('error');
       setError(data.error || 'Token inválido.');
-    } catch (err: unknown) {
+    } catch (err: any) {
       setStatus('error');
-      setError(getErrorMessage(err) || 'Falha de conexão ao validar token.');
+      setError(err?.message || 'Falha de conexão ao validar token.');
     } finally {
       setIsSubmitting(false);
     }
@@ -121,9 +101,9 @@ export default function ViewDashboard() {
 
   if (status === 'loading') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
           <p className="mt-4 text-muted-foreground">Validando acesso...</p>
         </div>
       </div>
@@ -132,10 +112,10 @@ export default function ViewDashboard() {
 
   if (status === 'password') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
               <Lock className="h-6 w-6 text-primary" />
             </div>
             <CardTitle>{tokenName}</CardTitle>
@@ -200,10 +180,10 @@ export default function ViewDashboard() {
 
   if (status === 'error' || !projectId) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
               <AlertCircle className="h-6 w-6 text-destructive" />
             </div>
             <CardTitle>Acesso Negado</CardTitle>

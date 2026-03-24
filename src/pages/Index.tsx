@@ -36,6 +36,7 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Header */}
       <header className="fixed top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2">
@@ -46,12 +47,15 @@ export default function Index() {
           </div>
           <div className="flex items-center gap-4">
             <ThemeToggle />
-            <Button onClick={() => navigate('/login')}>Entrar</Button>
+            <Button onClick={() => navigate('/login')}>
+              Entrar
+            </Button>
           </div>
         </div>
       </header>
 
-      <main className="container pb-16 pt-32">
+      {/* Hero */}
+      <main className="container pt-32 pb-16">
         <div className="mx-auto max-w-3xl text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -59,10 +63,11 @@ export default function Index() {
             transition={{ duration: 0.5 }}
           >
             <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
-              Dashboards inteligentes para suas <span className="text-primary">planilhas</span>
+              Dashboards inteligentes para suas{' '}
+              <span className="text-primary">planilhas</span>
             </h1>
             <p className="mt-6 text-lg text-muted-foreground">
-              Conecte suas planilhas Google e transforme dados em dashboards visuais e interativos.
+              Conecte suas planilhas Google e transforme dados em dashboards visuais e interativos. 
               Compartilhe com seus clientes em segundos.
             </p>
             <div className="mt-10 flex items-center justify-center gap-4">
@@ -76,6 +81,7 @@ export default function Index() {
             </div>
           </motion.div>
 
+          {/* Features */}
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}

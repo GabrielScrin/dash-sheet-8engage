@@ -9,10 +9,6 @@ verify_jwt = false
 [functions.google-sheets]
 verify_jwt = false
 
-[functions.google-auth]
-enabled = true
-verify_jwt = false
-
 [functions.meta-auth]
 enabled = true
 verify_jwt = false

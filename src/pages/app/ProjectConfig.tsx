@@ -9,23 +9,12 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Header } from '@/components/layout/Header';
 import { supabase } from '@/integrations/supabase/client';
-import type { Json, Tables } from '@/integrations/supabase/types';
 import { useToast } from '@/hooks/use-toast';
 import { SheetSelector } from '@/components/sheets/SheetSelector';
 import { SheetTabSelector } from '@/components/sheets/SheetTabSelector';
 import { ShareManager } from '@/components/config/ShareManager';
 import { AccessLogsPanel } from '@/components/dashboard/AccessLogsPanel';
 import { WebhookPanel } from '@/components/config/WebhookPanel';
-
-interface ProjectSourceConfig {
-  ad_account_id?: string | null;
-  ad_account_name?: string | null;
-  sheet_perpetua?: string | null;
-  sheet_distribuicao?: string | null;
-  sheet_consideracao?: string | null;
-  sheet_criativos?: string | null;
-  [key: string]: Json | undefined;
-}
 
 interface Project {
   id: string;
@@ -37,38 +26,15 @@ interface Project {
   sheet_names: string[] | null;
   status: string;
   source_type: 'sheet' | 'meta_ads' | null;
-  source_config: ProjectSourceConfig;
+  source_config: any;
 }
 
 type SourceType = 'sheet' | 'meta_ads' | null;
-type ProjectRow = Tables<'projects'>;
-
-interface AdAccount {
-  id: string;
-  name: string;
-  currency?: string | null;
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Erro inesperado.';
-}
-
-function parseSourceConfig(value: ProjectRow['source_config']): ProjectSourceConfig {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as ProjectSourceConfig;
-  }
-  return {};
-}
-
-function parseSheetNames(value: ProjectRow['sheet_names']): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item)).filter(Boolean);
-}
 
 const allSteps = [
   { id: 1, name: 'Fonte', icon: Database, description: 'Escolha a origem dos dados' },
-  { id: 2, name: 'Conexão', icon: Link2, description: 'Conecte sua conta ou planilha' },
-  { id: 5, name: 'Integrações', icon: Webhook, description: 'Webhooks e integrações de pagamento' },
+  { id: 2, name: 'ConexÃ£o', icon: Link2, description: 'Conecte sua conta ou planilha' },
+  { id: 5, name: 'IntegraÃ§Ãµes', icon: Webhook, description: 'Webhooks e integraÃ§Ãµes de pagamento' },
   { id: 4, name: 'Publicar', icon: Share2, description: 'Compartilhe seu dashboard' },
 ];
 
@@ -87,7 +53,7 @@ export default function ProjectConfig() {
   const [loading, setLoading] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
   const [sheetSelectorOpen, setSheetSelectorOpen] = useState(false);
-  const [adAccounts, setAdAccounts] = useState<AdAccount[]>([]);
+  const [adAccounts, setAdAccounts] = useState<any[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [metaConnected, setMetaConnected] = useState<boolean | null>(null);
   const [adAccountSearch, setAdAccountSearch] = useState('');
@@ -108,8 +74,8 @@ export default function ProjectConfig() {
       setMetaConnected(true);
       setAdAccounts(data?.accounts || []);
       setAdAccountSearch('');
-    } catch (e: unknown) {
-      const message = getErrorMessage(e) || 'Erro ao listar contas';
+    } catch (e: any) {
+      const message = e?.message || 'Erro ao listar contas de anÃºncios';
       setMetaConnected(false);
       setAdAccounts([]);
       if (!silent && !message.toLowerCase().includes('meta account not connected')) {
@@ -179,26 +145,25 @@ export default function ProjectConfig() {
       if (error) throw error;
 
       // Parse sheet_names from JSONB and ensure all fields are present
-      const typedData = data as ProjectRow;
       const projectData: Project = {
-        id: typedData.id,
-        name: typedData.name,
-        description: typedData.description,
-        spreadsheet_id: typedData.spreadsheet_id,
-        spreadsheet_name: typedData.spreadsheet_name,
-        sheet_name: typedData.sheet_name,
-        sheet_names: parseSheetNames(typedData.sheet_names),
-        status: typedData.status || 'draft',
-        source_type: (typedData.source_type as 'sheet' | 'meta_ads' | null) || null,
-        source_config: parseSourceConfig(typedData.source_config),
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        spreadsheet_id: data.spreadsheet_id,
+        spreadsheet_name: data.spreadsheet_name,
+        sheet_name: data.sheet_name,
+        sheet_names: Array.isArray(data.sheet_names) ? data.sheet_names as string[] : [],
+        status: data.status || 'draft',
+        source_type: (data.source_type as 'sheet' | 'meta_ads' | null) || null,
+        source_config: data.source_config || {},
       };
       setProject(projectData);
 
       setCurrentStep(getInitialStepForProject(projectData));
-    } catch (error: unknown) {
+    } catch (error: any) {
       toast({
         title: 'Erro ao carregar projeto',
-        description: getErrorMessage(error),
+        description: error.message,
         variant: 'destructive',
       });
       navigate('/app/projects');
@@ -251,10 +216,10 @@ export default function ProjectConfig() {
         title: 'Planilha conectada!',
         description: `${spreadsheet.name} foi vinculada ao projeto.`,
       });
-    } catch (error: unknown) {
+    } catch (error: any) {
       toast({
         title: 'Erro ao salvar planilha',
-        description: getErrorMessage(error),
+        description: error.message,
         variant: 'destructive',
       });
     }
@@ -272,10 +237,10 @@ export default function ProjectConfig() {
 
       setProject({ ...project, source_type: type });
       setCurrentStep(2);
-    } catch (error: unknown) {
+    } catch (error: any) {
       toast({
         title: 'Erro ao salvar fonte',
-        description: getErrorMessage(error),
+        description: error.message,
         variant: 'destructive',
       });
     }
@@ -320,10 +285,10 @@ export default function ProjectConfig() {
         title: 'Abas selecionadas!',
         description: 'Perpetua, Descoberta, Consideracao e Criativos configuradas com sucesso.',
       });
-    } catch (error: unknown) {
+    } catch (error: any) {
       toast({
         title: 'Erro ao salvar abas',
-        description: getErrorMessage(error),
+        description: error.message,
         variant: 'destructive',
       });
     }
@@ -334,7 +299,7 @@ export default function ProjectConfig() {
       case 1:
         return (
           <div className="space-y-6">
-            <h3 className="text-lg font-medium">De onde vêm seus dados?</h3>
+            <h3 className="text-lg font-medium">De onde vÃªm seus dados?</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <Card
                 className={`cursor-pointer transition-all hover:border-primary ${project?.source_type === 'sheet' ? 'border-primary bg-primary/5' : ''}`}
@@ -361,7 +326,7 @@ export default function ProjectConfig() {
                   </div>
                   <h4 className="font-semibold">Meta Ads</h4>
                   <p className="text-sm text-muted-foreground mt-2">
-                    Conexão nativa com Facebook e Instagram Ads. Dados atualizados automaticamente.
+                    ConexÃ£o nativa com Facebook e Instagram Ads. Dados atualizados automaticamente.
                   </p>
                 </CardContent>
               </Card>
@@ -378,7 +343,7 @@ export default function ProjectConfig() {
                     <Facebook className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                     <h3 className="text-lg font-semibold mb-2">Conectar Meta Ads</h3>
                     <p className="text-muted-foreground mb-4">
-                      Conecte sua conta do Facebook para listar suas contas de anúncios.
+                      Conecte sua conta do Facebook para listar suas contas de anÃºncios.
                     </p>
                     <Button
                       size="lg"
@@ -394,8 +359,8 @@ export default function ProjectConfig() {
                           if (resData?.url) {
                             window.location.href = resData.url;
                           }
-                        } catch (e: unknown) {
-                          toast({ title: 'Erro na conexão', description: getErrorMessage(e), variant: 'destructive' });
+                        } catch (e: any) {
+                          toast({ title: 'Erro na conexÃ£o', description: e.message, variant: 'destructive' });
                         }
                       }}
                     >
@@ -421,7 +386,7 @@ export default function ProjectConfig() {
                   {!project.source_config?.ad_account_id ? (
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
-                        <h3 className="text-lg font-medium">Selecione uma conta de anúncios</h3>
+                        <h3 className="text-lg font-medium">Selecione uma conta de anÃºncios</h3>
                         <Button variant="outline" onClick={() => fetchAdAccounts()}>
                           Atualizar Lista
                         </Button>
@@ -444,7 +409,7 @@ export default function ProjectConfig() {
                             return String(acc?.name || '').toLowerCase().includes(adAccountSearch.trim().toLowerCase());
                           }).length === 0 && (
                             <div className="text-center py-8 text-muted-foreground">
-                              Nenhuma conta encontrada. Clique em "Atualizar Lista" ou verifique suas permissões no Facebook.
+                              Nenhuma conta encontrada. Clique em "Atualizar Lista" ou verifique suas permissÃµes no Facebook.
                             </div>
                           )}
                           {adAccounts
@@ -468,15 +433,15 @@ export default function ProjectConfig() {
                                   if (error) throw error;
                                   setProject({ ...project, source_config: { ...project.source_config, ad_account_id: acc.id, ad_account_name: acc.name } });
                                   navigate(`/app/projects/${project.id}/preview`);
-                                } catch (e: unknown) {
-                                  toast({ title: 'Erro ao selecionar conta', description: getErrorMessage(e), variant: 'destructive' });
+                                } catch (e: any) {
+                                  toast({ title: 'Erro ao selecionar conta', description: e.message, variant: 'destructive' });
                                 }
                               }}
                             >
                               <CardContent className="p-4 flex justify-between items-center">
                                 <div>
                                   <p className="font-medium">{acc.name}</p>
-                                  <p className="text-xs text-muted-foreground">ID: {acc.id} • {acc.currency}</p>
+                                  <p className="text-xs text-muted-foreground">ID: {acc.id} â€¢ {acc.currency}</p>
                                 </div>
                                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
                               </CardContent>
@@ -506,8 +471,8 @@ export default function ProjectConfig() {
                           if (error) throw error;
                           setProject({ ...project, source_config: nextConfig });
                           fetchAdAccounts({ silent: true });
-                        } catch (e: unknown) {
-                          toast({ title: 'Erro ao alterar conta', description: getErrorMessage(e), variant: 'destructive' });
+                        } catch (e: any) {
+                          toast({ title: 'Erro ao alterar conta', description: e.message, variant: 'destructive' });
                         }
                       }}
                       >
@@ -613,13 +578,13 @@ export default function ProjectConfig() {
 
       toast({
         title: 'Dashboard Publicado!',
-        description: 'Seu dashboard já pode ser compartilhado.',
+        description: 'Seu dashboard jÃ¡ pode ser compartilhado.',
       });
       navigate('/app/projects');
-    } catch (error: unknown) {
+    } catch (error: any) {
       toast({
         title: 'Erro ao publicar',
-        description: getErrorMessage(error),
+        description: error.message,
         variant: 'destructive',
       });
     }
@@ -686,7 +651,7 @@ export default function ProjectConfig() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight">{project?.name}</h1>
           <p className="text-muted-foreground">
-            Configure a conexão e visualização do dashboard
+            Configure a conexÃ£o e visualizaÃ§Ã£o do dashboard
           </p>
         </div>
 
@@ -794,7 +759,7 @@ export default function ProjectConfig() {
                     onClick={goToNextStep}
                     className="gap-2"
                   >
-                    Próximo
+                    PrÃ³ximo
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 ) : (
@@ -818,8 +783,6 @@ export default function ProjectConfig() {
     </div>
   );
 }
-
-
 
 
 
