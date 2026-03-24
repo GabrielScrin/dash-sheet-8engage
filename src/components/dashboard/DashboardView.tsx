@@ -3587,6 +3587,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       purchases,
       profileVisits,
       costPerProfileVisit: profileVisits > 0 ? spend / profileVisits : 0,
+      followers: followersGained,
+      costPerFollower: followersGained > 0 ? spend / followersGained : 0,
       platformBreakdown,
     };
   }, [metaPlatformBreakdownQuery.data, metaTotalsRow, project?.source_type]);
