@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, LayoutDashboard, ExternalLink, Settings, Trash2, MoreHorizontal, Calendar, FileSpreadsheet } from 'lucide-react';
+import {
+  Plus,
+  LayoutDashboard,
+  ExternalLink,
+  Settings,
+  Trash2,
+  MoreHorizontal,
+  Calendar,
+  FileSpreadsheet,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -40,6 +49,10 @@ interface Project {
   updated_at: string;
 }
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Erro inesperado.';
+}
+
 export default function Projects() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -63,10 +76,10 @@ export default function Projects() {
 
       if (error) throw error;
       setProjects(data || []);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Erro ao carregar projetos',
-        description: error.message,
+        description: getErrorMessage(error),
         variant: 'destructive',
       });
     } finally {
@@ -106,10 +119,10 @@ export default function Projects() {
       setIsCreateOpen(false);
       setNewProject({ name: '', description: '' });
       navigate(`/app/projects/${data.id}/config`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Erro ao criar dashboard',
-        description: error.message,
+        description: getErrorMessage(error),
         variant: 'destructive',
       });
     } finally {
@@ -119,22 +132,19 @@ export default function Projects() {
 
   const handleDeleteProject = async (projectId: string) => {
     try {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', projectId);
+      const { error } = await supabase.from('projects').delete().eq('id', projectId);
 
       if (error) throw error;
 
-      setProjects(projects.filter(p => p.id !== projectId));
+      setProjects(projects.filter((project) => project.id !== projectId));
       toast({
         title: 'Dashboard excluído',
         description: 'O dashboard foi removido com sucesso.',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Erro ao excluir',
-        description: error.message,
+        description: getErrorMessage(error),
         variant: 'destructive',
       });
     }
@@ -151,8 +161,11 @@ export default function Projects() {
       published: 'Publicado',
       archived: 'Arquivado',
     };
+
     return (
-      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status as keyof typeof styles] || styles.draft}`}>
+      <span
+        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status as keyof typeof styles] || styles.draft}`}
+      >
         {labels[status as keyof typeof labels] || status}
       </span>
     );
@@ -192,7 +205,7 @@ export default function Projects() {
                     id="name"
                     placeholder="Ex: Relatório de Vendas Q1"
                     value={newProject.name}
-                    onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                    onChange={(event) => setNewProject({ ...newProject, name: event.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
@@ -201,7 +214,7 @@ export default function Projects() {
                     id="description"
                     placeholder="Uma breve descrição do dashboard..."
                     value={newProject.description}
-                    onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                    onChange={(event) => setNewProject({ ...newProject, description: event.target.value })}
                     rows={3}
                   />
                 </div>
@@ -220,8 +233,8 @@ export default function Projects() {
 
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} className="animate-pulse">
+            {[1, 2, 3].map((item) => (
+              <Card key={item} className="animate-pulse">
                 <CardHeader>
                   <div className="h-6 w-3/4 rounded bg-muted" />
                   <div className="h-4 w-1/2 rounded bg-muted" />
@@ -243,7 +256,9 @@ export default function Projects() {
             </div>
             <h3 className="mb-2 text-lg font-semibold">Nenhum dashboard ainda</h3>
             <p className="mb-6 text-center text-muted-foreground">
-              Crie seu primeiro dashboard e conecte<br />uma planilha Google para começar.
+              Crie seu primeiro dashboard e conecte
+              <br />
+              uma planilha Google para começar.
             </p>
             <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
@@ -262,12 +277,12 @@ export default function Projects() {
                   transition={{ delay: index * 0.05 }}
                 >
                   <Card
-                    className="group relative overflow-hidden transition-all hover:shadow-lg hover:-translate-y-1 cursor-pointer"
+                    className="group relative cursor-pointer overflow-hidden transition-all hover:-translate-y-1 hover:shadow-lg"
                     onClick={() => navigate(`/app/projects/${project.id}/config`)}
                   >
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
-                        <div className="space-y-1 z-10">
+                        <div className="z-10 space-y-1">
                           <CardTitle className="text-lg">{project.name}</CardTitle>
                           {project.description && (
                             <CardDescription className="line-clamp-2">
@@ -275,7 +290,7 @@ export default function Projects() {
                             </CardDescription>
                           )}
                         </div>
-                        <div onClick={(e) => e.stopPropagation()} className="z-20">
+                        <div onClick={(event) => event.stopPropagation()} className="z-20">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -308,7 +323,7 @@ export default function Projects() {
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-3 z-10">
+                    <CardContent className="z-10 space-y-3">
                       <div className="flex items-center gap-2">
                         {getStatusBadge(project.status)}
                         {project.spreadsheet_name && (

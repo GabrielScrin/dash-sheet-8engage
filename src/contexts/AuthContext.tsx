@@ -19,6 +19,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const persistGoogleTokens = async (activeSession: Session) => {
+      if (!activeSession.provider_refresh_token) return;
+
+      const expiresAt =
+        typeof activeSession.expires_at === 'number'
+          ? new Date(activeSession.expires_at * 1000).toISOString()
+          : null;
+
+      const { error } = await supabase.functions.invoke('google-auth?action=store-tokens', {
+        body: {
+          accessToken: activeSession.provider_token ?? '',
+          refreshToken: activeSession.provider_refresh_token,
+          expiresAt,
+          tokenType: 'Bearer',
+        },
+      });
+
+      if (error) {
+        console.error('Failed to persist Google tokens securely:', error);
+      }
+    };
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -27,31 +49,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
         setLoading(false);
 
-        // Capture provider tokens on sign in - use UPSERT to handle missing profiles
+        // Persist OAuth tokens via an authenticated edge function instead of writing directly from the client.
         if (event === 'SIGNED_IN' && session?.provider_refresh_token) {
-          console.log('Saving Google refresh token via upsert...');
-          // Use setTimeout to avoid blocking the auth flow
+          console.log('Persisting Google refresh token securely...');
           setTimeout(async () => {
             try {
-              const { error } = await supabase
-                .from('profiles')
-                .upsert({
-                  user_id: session.user.id,
-                  email: session.user.email,
-                  full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name,
-                  avatar_url: session.user.user_metadata?.avatar_url,
-                  google_refresh_token: session.provider_refresh_token,
-                }, {
-                  onConflict: 'user_id',
-                });
-              
-              if (error) {
-                console.error('Failed to upsert profile with refresh token:', error);
-              } else {
-                console.log('Profile upserted with Google refresh token');
-              }
+              await persistGoogleTokens(session);
             } catch (err) {
-              console.error('Error upserting profile:', err);
+              console.error('Error persisting Google tokens:', err);
             }
           }, 0);
         }

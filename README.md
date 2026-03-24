@@ -1,73 +1,77 @@
-# Welcome to your Lovable project
+# Engage DashView
 
-## Project info
+Dashboard web app para conectar Google Sheets e Meta Ads, montar dashboards compartilháveis e expor links públicos com proteção opcional por senha.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Stack
 
-## How can I edit this code?
+- Vite
+- React 18
+- TypeScript
+- React Router
+- TanStack Query
+- Tailwind + shadcn/ui
+- Supabase Auth, Database e Edge Functions
 
-There are several ways of editing your application.
+## Estrutura
 
-**Use Lovable**
+- `src/`: frontend da aplicação
+- `src/pages/app/`: fluxo autenticado de projetos, configuração e preview
+- `src/contexts/`: contexto de autenticação
+- `src/integrations/supabase/`: client e tipos do Supabase
+- `supabase/functions/`: Edge Functions para Google Sheets, Meta Ads, compartilhamento e integrações
+- `supabase/migrations/`: histórico de schema
+- `docs/`: documentação complementar
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Ambiente local
 
-Changes made via Lovable will be committed automatically to this repo.
+Use `npm` como gerenciador de pacotes padrão deste projeto.
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+1. Instale dependências:
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+npm install
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+2. Crie o arquivo de ambiente a partir do exemplo:
 
-# Step 3: Install the necessary dependencies.
-npm i
+```sh
+cp .env.example .env
+```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+3. Preencha as variáveis públicas do frontend:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+4. Rode o app:
+
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Scripts
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- `npm run dev`: servidor local do Vite
+- `npm run build`: build de produção
+- `npm run build:dev`: build em modo development
+- `npm run lint`: checagem com ESLint
+- `npm run preview`: preview local do build
+- `npm run test`: suíte Vitest
+- `npm run test:watch`: Vitest em watch mode
 
-**Use GitHub Codespaces**
+## Supabase
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+Este projeto depende de Edge Functions e variáveis de ambiente no Supabase para:
 
-## What technologies are used for this project?
+- autenticação Google e Meta
+- leitura de planilhas
+- geração e validação de links compartilhados
+- integrações de pagamento
 
-This project is built with:
+As funções esperam chaves como `SUPABASE_SERVICE_ROLE_KEY`, credenciais OAuth do Google/Meta e, opcionalmente, Upstash Redis para rate limit/cache do Google Sheets.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Segurança e operação
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- `.env` não deve ser versionado.
+- O repositório usa `npm`; lockfiles do Bun foram removidos para evitar drift.
+- Tokens OAuth persistentes devem ser armazenados via `service_tokens`, não em tabelas de perfil acessíveis pelo cliente.

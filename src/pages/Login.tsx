@@ -8,6 +8,10 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
+interface NavigationState {
+  from?: string | { pathname?: string; search?: string };
+}
+
 export default function Login() {
   const { user, loading, signInWithGoogle } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
@@ -16,7 +20,7 @@ export default function Login() {
   const { toast } = useToast();
 
   const from = (() => {
-    const state = location.state as any;
+    const state = location.state as NavigationState | null;
     const rawFrom = state?.from;
 
     if (typeof rawFrom === 'string') return rawFrom;
@@ -34,7 +38,7 @@ export default function Login() {
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     const { error } = await signInWithGoogle();
-    
+
     if (error) {
       toast({
         title: 'Erro ao fazer login',
@@ -65,8 +69,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="absolute top-0 right-0 p-4">
+      <header className="absolute right-0 top-0 p-4">
         <ThemeToggle />
       </header>
 
@@ -77,7 +80,6 @@ export default function Login() {
           transition={{ duration: 0.5 }}
           className="w-full max-w-md"
         >
-          {/* Logo */}
           <div className="mb-8 flex flex-col items-center text-center">
             <motion.div
               initial={{ scale: 0.8 }}
@@ -88,12 +90,9 @@ export default function Login() {
               <img src="/cr8-logo.svg" alt="CR8 Logo" className="h-9 w-9 object-contain" />
             </motion.div>
             <h1 className="text-3xl font-bold tracking-tight">Engage DashView</h1>
-            <p className="mt-2 text-muted-foreground">
-              Dashboards inteligentes para suas planilhas
-            </p>
+            <p className="mt-2 text-muted-foreground">Dashboards inteligentes para suas planilhas</p>
           </div>
 
-          {/* Login Card */}
           <Card className="border-2 shadow-xl">
             <CardHeader className="text-center">
               <CardTitle className="text-xl">Bem-vindo de volta</CardTitle>
@@ -105,7 +104,7 @@ export default function Login() {
               <Button
                 variant="outline"
                 size="lg"
-                className="w-full h-12 text-base font-medium"
+                className="h-12 w-full text-base font-medium"
                 onClick={handleGoogleLogin}
                 disabled={isLoading || loading}
               >
@@ -113,7 +112,7 @@ export default function Login() {
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                    className="mr-2 h-5 w-5 border-2 border-current border-t-transparent rounded-full"
+                    className="mr-2 h-5 w-5 rounded-full border-2 border-current border-t-transparent"
                   />
                 ) : (
                   <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
@@ -151,7 +150,6 @@ export default function Login() {
             </CardContent>
           </Card>
 
-          {/* Features */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -170,9 +168,7 @@ export default function Login() {
                   <feature.icon className="h-5 w-5" />
                 </div>
                 <h3 className="text-sm font-medium">{feature.title}</h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {feature.description}
-                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{feature.description}</p>
               </motion.div>
             ))}
           </motion.div>
