@@ -4082,14 +4082,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     format="percentage"
                   />
                   <BigNumberCard
-                    label="Views de Video 3s"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.video3s || 0) : (sheetDistributionData?.videoViews3s || 0)}
+                    label="Seguidores"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followers || 0) : (sheetDistributionData?.followersGained || 0)}
                     format="number"
                   />
                   <BigNumberCard
-                    label="Thruplay"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.thruplay || 0) : (sheetDistributionData?.thruplayViews || 0)}
-                    format="number"
+                    label="Custo por Seguidor"
+                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.costPerFollower || 0) : (sheetDistributionData?.costPerFollower || 0)}
+                    format="currency"
                   />
                   <BigNumberCard
                     label="Visitas ao Perfil"
