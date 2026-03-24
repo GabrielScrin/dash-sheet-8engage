@@ -2328,6 +2328,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       cpm: cpmCount > 0 ? totalCpm / cpmCount : (totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0),
       costPerProfileVisit: totalProfileVisits > 0 ? totalSpend / totalProfileVisits : 0,
       costPerEngagement: totalEngagement > 0 ? totalSpend / totalEngagement : 0,
+      costPerFollower: totalFollowers > 0 ? totalSpend / totalFollowers : 0,
       activeCreatives: byCreative.size,
       topCreatives: Array.from(byCreative.entries())
         .map(([name, stats]) => {
