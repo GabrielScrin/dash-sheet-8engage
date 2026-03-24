@@ -347,6 +347,14 @@ const isCtrLikeMetric = (key: string, label?: string) => {
   const source = `${key} ${label || ''}`;
   return /\b(ctr|click\s*through\s*rate|clickthrough\s*rate|taxa de cliques?|taxa de clique)\b/.test(normalizeMetricName(source));
 };
+const isFollowerMetricKey = (key: string, label?: string) => {
+  const source = `${key} ${label || ''}`;
+  return /\b(followers|follows|seguidores?)\b/.test(normalizeMetricName(source));
+};
+const isCostPerFollowerMetricKey = (key: string, label?: string) => {
+  const source = `${key} ${label || ''}`;
+  return /\b(cost per follow|cost per follower|custo por seguidores?|custo por seguidor)\b/.test(normalizeMetricName(source));
+};
 const sumMetricValues = (rows: Array<Record<string, unknown>>, key: string) =>
   rows.reduce((sum, row) => sum + parseSheetNumber(row?.[key]), 0);
 
@@ -4183,6 +4191,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                               const raw = project?.source_type === 'meta_ads'
                                 ? getMetaMetricValue(item as Record<string, unknown>, metricKey)
                                 : (() => {
+                                    if (isCostPerFollowerMetricKey(metricKey, option?.label)) {
+                                      return Number(item.costPerFollower || 0);
+                                    }
+                                    if (isFollowerMetricKey(metricKey, option?.label)) {
+                                      return Number(item.followers || 0);
+                                    }
                                     switch (metricKey) {
                                       case 'investment':
                                         return Number(item.spend || 0);
@@ -4403,6 +4417,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                               const raw = project?.source_type === 'meta_ads'
                                 ? getMetaMetricValue(item as Record<string, unknown>, metricKey)
                                 : (() => {
+                                    if (isCostPerFollowerMetricKey(metricKey, option?.label)) {
+                                      return Number(item.costPerFollower || 0);
+                                    }
+                                    if (isFollowerMetricKey(metricKey, option?.label)) {
+                                      return Number(item.followers || 0);
+                                    }
                                     switch (metricKey) {
                                       case 'investment':
                                         return Number(item.spend || 0);
