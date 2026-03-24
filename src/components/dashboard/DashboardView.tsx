@@ -2187,7 +2187,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     let cpaFieldCount = 0;
     let totalCpm = 0;
     let cpmCount = 0;
-    const byCreative = new Map<string, { spend: number; revenue: number; reach: number; impressions: number; clicks: number; video3s: number; thruplay: number; profileVisits: number; purchases: number; checkouts: number; metrics: Record<string, number>; metricCounts: Record<string, number>; link?: string; thumbnail?: string }>();
+    const byCreative = new Map<string, { spend: number; revenue: number; reach: number; impressions: number; clicks: number; video3s: number; thruplay: number; followers: number; profileVisits: number; purchases: number; checkouts: number; metrics: Record<string, number>; metricCounts: Record<string, number>; link?: string; thumbnail?: string }>();
     const averageMetricKeys = new Set(
       distributionSheetMetricOptions
         .filter((metric) => metric.format === 'percentage' || metric.format === 'decimal')
@@ -2274,7 +2274,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       byPlatform.set(platform, current);
 
       if (creativeName) {
-        const currentCreative = byCreative.get(creativeName) || { spend: 0, revenue: 0, reach: 0, impressions: 0, clicks: 0, video3s: 0, thruplay: 0, profileVisits: 0, purchases: 0, checkouts: 0, metrics: {}, metricCounts: {}, link: undefined, thumbnail: undefined };
+        const currentCreative = byCreative.get(creativeName) || { spend: 0, revenue: 0, reach: 0, impressions: 0, clicks: 0, video3s: 0, thruplay: 0, followers: 0, profileVisits: 0, purchases: 0, checkouts: 0, metrics: {}, metricCounts: {}, link: undefined, thumbnail: undefined };
         currentCreative.spend += spend;
         currentCreative.revenue += revenueFromRow;
         currentCreative.reach += reach;
@@ -2282,6 +2282,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         currentCreative.clicks += clicks;
         currentCreative.video3s += videoViews;
         currentCreative.thruplay += thruplay;
+        currentCreative.followers += followers;
         currentCreative.profileVisits += profileVisits;
         currentCreative.purchases += purchases;
         currentCreative.checkouts += checkouts;
@@ -2361,6 +2362,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           clicks: stats.clicks,
           video3s: stats.video3s,
           thruplay: stats.thruplay,
+          followers: stats.followers,
           profileVisits: stats.profileVisits,
           purchases: stats.purchases,
           checkouts: stats.checkouts,
@@ -2370,6 +2372,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           cpm: stats.impressions > 0 ? (stats.spend / stats.impressions) * 1000 : 0,
           roas: stats.spend > 0 ? stats.revenue / stats.spend : 0,
           cpa: stats.purchases > 0 ? stats.spend / stats.purchases : 0,
+          costPerFollower: stats.followers > 0 ? stats.spend / stats.followers : 0,
           metrics: dynamicMetrics,
           link: stats.link,
           thumbnail: stats.thumbnail,
