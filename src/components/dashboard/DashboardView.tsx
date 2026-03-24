@@ -2327,6 +2327,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         totalPurchases > 0
           ? totalSpend / totalPurchases
           : (cpaFieldCount > 0 ? totalCpaFromField / cpaFieldCount : 0),
+      // Follower cost must be recomputed from consolidated spend and followers.
       costPerFollower: totalFollowers > 0 ? totalSpend / totalFollowers : 0,
       cpm: cpmCount > 0 ? totalCpm / cpmCount : (totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0),
       costPerProfileVisit: totalProfileVisits > 0 ? totalSpend / totalProfileVisits : 0,
