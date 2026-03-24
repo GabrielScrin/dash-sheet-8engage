@@ -39,6 +39,7 @@ const BASE_METRIC_LABELS: Record<string, { label: string; format: MetricFormat }
   cost_per_purchase: { label: 'Custo por Compra', format: 'currency' },
   cost_per_result: { label: 'Custo por Resultado', format: 'currency' },
   connect_rate: { label: 'Connect Rate', format: 'percentage' },
+  cost_per_follower: { label: 'Custo por Seguidor', format: 'currency' },
 };
 
 const ACTION_LABELS: Record<string, string> = {
