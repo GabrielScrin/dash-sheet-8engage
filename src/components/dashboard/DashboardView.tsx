@@ -299,6 +299,7 @@ const SHEET_METRIC_NAME_MAP: Array<{ pattern: RegExp; label: string; format: She
   { pattern: /cost per result|custo por resultado/, label: 'Custo por Resultado', format: 'currency' },
   { pattern: /cost per lead|custo por lead/, label: 'Custo por Lead', format: 'currency' },
   { pattern: /cost per message|custo por mensagem/, label: 'Custo por Mensagem', format: 'currency' },
+  { pattern: /cost per follow|cost per follower|custo por seguidores?|custo por seguidor/, label: 'Custo por Seguidores', format: 'currency' },
   { pattern: /\bcpa\b|cost per purchase|custo por compra|custo pro compra|custo por venda/, label: 'Custo por Venda', format: 'currency' },
   { pattern: /cost per profile visit|custo por visita ao perfil/, label: 'Custo por Visita ao Perfil', format: 'currency' },
   { pattern: /\bresult\b|\bresultado\b/, label: 'Resultado da Campanha', format: 'number' },
@@ -2179,7 +2180,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     let cpaFieldCount = 0;
     let totalCpm = 0;
     let cpmCount = 0;
-    const byCreative = new Map<string, { spend: number; revenue: number; reach: number; impressions: number; clicks: number; video3s: number; thruplay: number; profileVisits: number; purchases: number; checkouts: number; metrics: Record<string, number>; metricCounts: Record<string, number>; link?: string; thumbnail?: string }>();
+    const byCreative = new Map<string, { spend: number; revenue: number; reach: number; impressions: number; clicks: number; video3s: number; thruplay: number; followers: number; profileVisits: number; purchases: number; checkouts: number; metrics: Record<string, number>; metricCounts: Record<string, number>; link?: string; thumbnail?: string }>();
     const averageMetricKeys = new Set(
       distributionSheetMetricOptions
         .filter((metric) => metric.format === 'percentage' || metric.format === 'decimal')
@@ -2266,7 +2267,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       byPlatform.set(platform, current);
 
       if (creativeName) {
-        const currentCreative = byCreative.get(creativeName) || { spend: 0, revenue: 0, reach: 0, impressions: 0, clicks: 0, video3s: 0, thruplay: 0, profileVisits: 0, purchases: 0, checkouts: 0, metrics: {}, metricCounts: {}, link: undefined, thumbnail: undefined };
+        const currentCreative = byCreative.get(creativeName) || { spend: 0, revenue: 0, reach: 0, impressions: 0, clicks: 0, video3s: 0, thruplay: 0, followers: 0, profileVisits: 0, purchases: 0, checkouts: 0, metrics: {}, metricCounts: {}, link: undefined, thumbnail: undefined };
         currentCreative.spend += spend;
         currentCreative.revenue += revenueFromRow;
         currentCreative.reach += reach;
@@ -2274,6 +2275,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         currentCreative.clicks += clicks;
         currentCreative.video3s += videoViews;
         currentCreative.thruplay += thruplay;
+        currentCreative.followers += followers;
         currentCreative.profileVisits += profileVisits;
         currentCreative.purchases += purchases;
         currentCreative.checkouts += checkouts;
@@ -2325,6 +2327,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         totalPurchases > 0
           ? totalSpend / totalPurchases
           : (cpaFieldCount > 0 ? totalCpaFromField / cpaFieldCount : 0),
+      costPerFollower: totalFollowers > 0 ? totalSpend / totalFollowers : 0,
       cpm: cpmCount > 0 ? totalCpm / cpmCount : (totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0),
       costPerProfileVisit: totalProfileVisits > 0 ? totalSpend / totalProfileVisits : 0,
       costPerEngagement: totalEngagement > 0 ? totalSpend / totalEngagement : 0,
@@ -2352,6 +2355,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           clicks: stats.clicks,
           video3s: stats.video3s,
           thruplay: stats.thruplay,
+          followers: stats.followers,
           profileVisits: stats.profileVisits,
           purchases: stats.purchases,
           checkouts: stats.checkouts,
@@ -2361,6 +2365,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           cpm: stats.impressions > 0 ? (stats.spend / stats.impressions) * 1000 : 0,
           roas: stats.spend > 0 ? stats.revenue / stats.spend : 0,
           cpa: stats.purchases > 0 ? stats.spend / stats.purchases : 0,
+          costPerFollower: stats.followers > 0 ? stats.spend / stats.followers : 0,
           metrics: dynamicMetrics,
           link: stats.link,
           thumbnail: stats.thumbnail,
@@ -3221,6 +3226,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       clicks: number;
       video3s?: number;
       thruplay?: number;
+      followers?: number;
       profileVisits: number;
       purchases: number;
       checkouts: number;
@@ -3230,6 +3236,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       cpm?: number;
       roas?: number;
       cpa?: number;
+      costPerFollower?: number;
       metrics?: Record<string, number>;
       link?: string;
       thumbnail?: string;
@@ -3246,6 +3253,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       { key: 'impressions', label: 'Impressoes', format: 'number' as const },
       { key: 'frequency', label: 'Frequencia', format: 'percentage' as const },
       { key: 'clicks', label: 'Cliques', format: 'number' as const },
+      { key: 'followers', label: 'Seguidores', format: 'number' as const },
+      { key: 'cost_per_follower', label: 'Custo por Seguidores', format: 'currency' as const },
       { key: 'video3s', label: 'Visualizacoes 3s', format: 'number' as const },
       { key: 'thruplay', label: 'Thruplay', format: 'number' as const },
       { key: 'profile_visits', label: 'Visitas Perfil', format: 'number' as const },
@@ -3262,8 +3271,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       if (/\b(cpa|cost per purchase|custo por compra|custo por venda)\b/.test(normalized)) return false;
       if (/\b(revenue|faturamento|purchase value|valor de compra|valor de compras)\b/.test(normalized)) return false;
       if (/\b(cpc|cost per click|custo por clique)\b/.test(normalized)) return false;
+      if (/\b(cost per follow|cost per follower|custo por seguidores?|custo por seguidor)\b/.test(normalized)) return false;
       if (/\b(ctr|click through rate|clickthrough rate|taxa de clique)\b/.test(normalized)) return false;
       if (/\b(frequency|frequencia)\b/.test(normalized)) return false;
+      if (/\b(followers|follows|seguidores?)\b/.test(normalized)) return false;
       if (/\b(spend|amount spent|investimento|investment|cost)\b/.test(normalized)) return false;
       if (/\b(reach|alcance)\b/.test(normalized)) return false;
       if (/\b(impressions|impressoes)\b/.test(normalized)) return false;
@@ -4082,14 +4093,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     format="percentage"
                   />
                   <BigNumberCard
-                    label="Views de Video 3s"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.video3s || 0) : (sheetDistributionData?.videoViews3s || 0)}
+                    label="Seguidores"
+                    value={project?.source_type === 'meta_ads' ? 0 : (sheetDistributionData?.followersGained || 0)}
                     format="number"
                   />
                   <BigNumberCard
-                    label="Thruplay"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.thruplay || 0) : (sheetDistributionData?.thruplayViews || 0)}
-                    format="number"
+                    label="Custo por Seguidores"
+                    value={project?.source_type === 'meta_ads' ? 0 : (sheetDistributionData?.costPerFollower || 0)}
+                    format="currency"
                   />
                   <BigNumberCard
                     label="Visitas ao Perfil"
@@ -4191,6 +4202,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                         return Number(item.frequency || 0);
                                       case 'clicks':
                                         return Number(item.clicks || 0);
+                                      case 'followers':
+                                        return Number(item.followers || 0);
+                                      case 'cost_per_follower':
+                                        return Number(item.costPerFollower || 0);
                                       case 'video3s':
                                         return Number(item.video3s || 0);
                                       case 'thruplay':
@@ -4302,14 +4317,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     format="percentage"
                   />
                   <BigNumberCard
-                    label="Views de Video 3s"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.video3s || 0) : (sheetDistributionData?.videoViews3s || 0)}
+                    label="Seguidores"
+                    value={project?.source_type === 'meta_ads' ? 0 : (sheetDistributionData?.followersGained || 0)}
                     format="number"
                   />
                   <BigNumberCard
-                    label="Thruplay"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.thruplay || 0) : (sheetDistributionData?.thruplayViews || 0)}
-                    format="number"
+                    label="Custo por Seguidores"
+                    value={project?.source_type === 'meta_ads' ? 0 : (sheetDistributionData?.costPerFollower || 0)}
+                    format="currency"
                   />
                   <BigNumberCard
                     label="Visitas ao Perfil"
@@ -4411,6 +4426,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                         return Number(item.frequency || 0);
                                       case 'clicks':
                                         return Number(item.clicks || 0);
+                                      case 'followers':
+                                        return Number(item.followers || 0);
+                                      case 'cost_per_follower':
+                                        return Number(item.costPerFollower || 0);
                                       case 'video3s':
                                         return Number(item.video3s || 0);
                                       case 'thruplay':
