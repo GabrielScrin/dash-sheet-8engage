@@ -134,6 +134,21 @@ const parseSheetDateValue = (value: unknown): Date | null => {
   const raw = String(value).trim();
   if (!raw) return null;
 
+  const brWithoutYear = raw.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+  if (brWithoutYear) {
+    const day = Number(brWithoutYear[1]);
+    const month = Number(brWithoutYear[2]);
+    const year = new Date().getFullYear();
+    const parsed = new Date(year, month - 1, day);
+    if (
+      !Number.isNaN(parsed.getTime()) &&
+      parsed.getDate() === day &&
+      parsed.getMonth() === month - 1
+    ) {
+      return parsed;
+    }
+  }
+
   const br = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (br) {
     const day = Number(br[1]);
