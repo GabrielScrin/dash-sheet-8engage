@@ -1128,6 +1128,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         'spend',
         'amount spent',
         'cost',
+        'custo',
         'investimento',
         'valor investido',
       ]),
