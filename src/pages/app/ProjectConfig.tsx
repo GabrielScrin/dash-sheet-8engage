@@ -550,6 +550,19 @@ export default function ProjectConfig() {
                     </div>
                   </div>
                 )}
+                {(project.source_config?.sheet_google_descoberta || project.source_config?.sheet_google_consideracao) && (
+                  <div className="rounded-lg border p-4 bg-muted/50">
+                    <p className="text-sm text-muted-foreground mb-2">Abas Google selecionadas:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {project.source_config?.sheet_google_descoberta && (
+                        <Badge variant="secondary">{project.source_config.sheet_google_descoberta}</Badge>
+                      )}
+                      {project.source_config?.sheet_google_consideracao && (
+                        <Badge variant="secondary">{project.source_config.sheet_google_consideracao}</Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <SheetTabSelector
                   spreadsheetId={project.spreadsheet_id}
                   spreadsheetName={project.spreadsheet_name}

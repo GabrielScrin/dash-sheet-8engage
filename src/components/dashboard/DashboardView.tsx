@@ -779,10 +779,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const sheetGoogleConsideracaoName =
     String(sourceConfig?.sheet_google_consideracao || '') ||
     pickConfiguredSheetName(project?.sheet_names as string[] | null | undefined, 5, [/\bgoogle\b.*\bconsider/, /\bconsider.*\bgoogle/]);
-  const hasGoogleSheetView =
+  const hasGoogleSheetConfig =
     project?.source_type === 'sheet' && Boolean(sheetGoogleDescobertaName && sheetGoogleConsideracaoName);
   const isGoogleSheetView =
-    project?.source_type === 'sheet' && hasGoogleSheetView && sheetDashboardSource === 'google';
+    project?.source_type === 'sheet' && sheetDashboardSource === 'google';
 
   const sheetNames: string[] = Array.from(
     new Set(
@@ -804,14 +804,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       return;
     }
 
-    if (!hasGoogleSheetView && sheetDashboardSource !== 'meta') {
-      setSheetDashboardSource('meta');
-    }
-
     if (sheetDashboardSource === 'google' && activeTab === 'perpetua') {
       setActiveTab('descoberta');
     }
-  }, [activeTab, hasGoogleSheetView, project?.source_type, sheetDashboardSource]);
+  }, [activeTab, project?.source_type, sheetDashboardSource]);
 
   // We'll use a custom query to fetch all sheets in parallel
   const allSheetsQuery = useQuery({
@@ -4124,7 +4120,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         onViewModeChange={(v) => setViewMode(v)}
       />
 
-      {project?.source_type === 'sheet' && hasGoogleSheetView && (
+      {project?.source_type === 'sheet' && (
         <div className="mt-6 flex flex-wrap gap-3">
           <Button
             type="button"
@@ -4149,17 +4145,26 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         </div>
       )}
 
+      {project?.source_type === 'sheet' && isGoogleSheetView && !hasGoogleSheetConfig && (
+        <Alert className="mt-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Abas Google não configuradas</AlertTitle>
+          <AlertDescription>
+            Vá para a etapa 2 e selecione `Aba da Descoberta Google` e `Aba da Consideracao Google`.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-        <TabsList className={`grid w-full [&>*:first-child]:hidden ${isGoogleSheetView ? 'max-w-sm grid-cols-2' : 'max-w-md grid-cols-3'}`}>
-          <TabsTrigger value="perpetua">Perpétua</TabsTrigger>
+        <TabsList className={`grid w-full ${isGoogleSheetView ? 'max-w-sm grid-cols-2' : 'max-w-md grid-cols-3'}`}>
           {!isGoogleSheetView && <TabsTrigger value="perpetua">Perpetua</TabsTrigger>}
           <TabsTrigger value="descoberta">Descoberta</TabsTrigger>
           <TabsTrigger value="consideracao">Consideracao</TabsTrigger>
         </TabsList>
 
         <AnimatePresence mode="wait">
-          <TabsContent value="perpetua" className="mt-6">
+          {!isGoogleSheetView && <TabsContent value="perpetua" className="mt-6">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -4389,7 +4394,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 </div>
               )}
             </motion.div>
-          </TabsContent>
+          </TabsContent>}
 
           <TabsContent value="descoberta" className="mt-6">
             <motion.div

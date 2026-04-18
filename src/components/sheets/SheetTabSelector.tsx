@@ -250,7 +250,7 @@ export function SheetTabSelector({
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 rounded-lg border border-border/60 p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold tracking-[0.22em] text-foreground">GOOGLE</p>
