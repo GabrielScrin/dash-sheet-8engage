@@ -36,6 +36,8 @@ interface MetaSourceConfig {
   sheet_distribuicao?: string | null;
   sheet_consideracao?: string | null;
   sheet_criativos?: string | null;
+  sheet_google_descoberta?: string | null;
+  sheet_google_consideracao?: string | null;
   [key: string]: unknown;
 }
 
@@ -391,6 +393,7 @@ interface DashboardViewProps {
 export function DashboardView({ projectId, isPreview = false, shareToken, initialProject, initialMappings }: DashboardViewProps) {
   const { signInWithGoogle } = useAuth();
   const [activeTab, setActiveTab] = useState('perpetua');
+  const [sheetDashboardSource, setSheetDashboardSource] = useState<'meta' | 'google'>('meta');
   const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
@@ -770,8 +773,45 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const sheetCriativosName =
     String(sourceConfig?.sheet_criativos || '') ||
     pickConfiguredSheetName(project?.sheet_names as string[] | null | undefined, 3, [/\bcriativ/, /\bcreative/], String(project?.sheet_name || ''));
+  const sheetGoogleDescobertaName =
+    String(sourceConfig?.sheet_google_descoberta || '') ||
+    pickConfiguredSheetName(project?.sheet_names as string[] | null | undefined, 4, [/\bgoogle\b.*\bdescob/, /\bdescob.*\bgoogle/]);
+  const sheetGoogleConsideracaoName =
+    String(sourceConfig?.sheet_google_consideracao || '') ||
+    pickConfiguredSheetName(project?.sheet_names as string[] | null | undefined, 5, [/\bgoogle\b.*\bconsider/, /\bconsider.*\bgoogle/]);
+  const hasGoogleSheetView =
+    project?.source_type === 'sheet' && Boolean(sheetGoogleDescobertaName && sheetGoogleConsideracaoName);
+  const isGoogleSheetView =
+    project?.source_type === 'sheet' && hasGoogleSheetView && sheetDashboardSource === 'google';
 
-  const sheetNames: string[] = Array.from(new Set([sheetPerpetuaName, sheetDistribuicaoName, sheetConsideracaoName, sheetCriativosName].filter(Boolean)));
+  const sheetNames: string[] = Array.from(
+    new Set(
+      [
+        sheetPerpetuaName,
+        sheetDistribuicaoName,
+        sheetConsideracaoName,
+        sheetCriativosName,
+        sheetGoogleDescobertaName,
+        sheetGoogleConsideracaoName,
+      ].filter(Boolean),
+    ),
+  );
+
+  React.useEffect(() => {
+    if (project?.source_type !== 'sheet') {
+      if (sheetDashboardSource !== 'meta') setSheetDashboardSource('meta');
+      if (activeTab !== 'perpetua') setActiveTab('perpetua');
+      return;
+    }
+
+    if (!hasGoogleSheetView && sheetDashboardSource !== 'meta') {
+      setSheetDashboardSource('meta');
+    }
+
+    if (sheetDashboardSource === 'google' && activeTab === 'perpetua') {
+      setActiveTab('descoberta');
+    }
+  }, [activeTab, hasGoogleSheetView, project?.source_type, sheetDashboardSource]);
 
   // We'll use a custom query to fetch all sheets in parallel
   const allSheetsQuery = useQuery({
@@ -847,6 +887,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     (project?.source_type === 'meta_ads'
       ? (metaInsightsQuery.data || [])
       : (sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
+  const googleDiscoverySourceRows =
+    (project?.source_type === 'meta_ads'
+      ? []
+      : (sheetRowsByName[sheetGoogleDescobertaName] || [])) as any[];
+  const googleConsiderationSourceRows =
+    (project?.source_type === 'meta_ads'
+      ? []
+      : (sheetRowsByName[sheetGoogleConsideracaoName] || [])) as any[];
   const discoverySourceRows =
     (project?.source_type === 'meta_ads'
       ? []
@@ -860,7 +908,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       ? []
       : (sheetRowsByName[sheetCriativosName] || sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
   const distributionSourceRows =
-    (activeTab === 'consideracao' ? considerationSourceRows : discoverySourceRows) as any[];
+    (
+      isGoogleSheetView
+        ? (activeTab === 'consideracao' ? googleConsiderationSourceRows : googleDiscoverySourceRows)
+        : (activeTab === 'consideracao' ? considerationSourceRows : discoverySourceRows)
+    ) as any[];
   const metaAccountRows = (metaAccountInsightsQuery.data || []) as any[];
 
   const sheetDateColumnKey = useMemo(
@@ -943,7 +995,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     [distributionSourceRows],
   );
   const distributionReachColumnKey = useMemo(
-    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['reach', 'alcance']),
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['reach', 'alcance', 'usuarios exclusivos', 'usuarios unicos', 'unique users']),
     [distributionSourceRows],
   );
   const distributionImpressionsColumnKey = useMemo(
@@ -951,7 +1003,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     [distributionSourceRows],
   );
   const distributionFrequencyColumnKey = useMemo(
-    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['frequency', 'frequencia']),
+    () =>
+      findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, [
+        'frequency',
+        'frequencia',
+        'freq med impr usuario',
+        'freq media impr usuario',
+        'avg impr user',
+      ]),
     [distributionSourceRows],
   );
   const distributionEngagementColumnKey = useMemo(
@@ -973,6 +1032,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         'visualizacoes de video',
         'visualizacoes',
         'thruplay',
+        'visualizacao do trueview',
+        'trueview view',
       ]),
     [distributionSourceRows],
   );
@@ -1020,6 +1081,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         'instagram_permalink_url',
         'permalink',
         'post url',
+        'video link',
         'url',
         'link',
       ]),
@@ -1131,6 +1193,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         'custo por compra',
         'custo pro compra',
         'custo por venda',
+        'cost conv',
+        'cost per conversion',
+        'custo conv',
+        'custo conversao',
       ]),
     [distributionSourceRows],
   );
@@ -1151,6 +1217,34 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   );
   const distributionCtrColumnKey = useMemo(
     () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['ctr', 'clickthrough rate', 'taxa de clique']),
+    [distributionSourceRows],
+  );
+  const distributionGoogleVideo25ColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['video assistido ate 25', 'video watched to 25', 'video 25']),
+    [distributionSourceRows],
+  );
+  const distributionGoogleVideo50ColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['video assistido ate 50', 'video watched to 50', 'video 50']),
+    [distributionSourceRows],
+  );
+  const distributionGoogleVideo75ColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['video assistido ate 75', 'video watched to 75', 'video 75']),
+    [distributionSourceRows],
+  );
+  const distributionGoogleVideo100ColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['video assistido ate 100', 'video watched to 100', 'video 100']),
+    [distributionSourceRows],
+  );
+  const distributionGoogleCpvColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['cpv', 'cpv medio do trueview', 'average cpv', 'cpv medio']),
+    [distributionSourceRows],
+  );
+  const distributionGoogleTrueviewColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['visualizacao do trueview', 'trueview views', 'visualizacao trueview']),
+    [distributionSourceRows],
+  );
+  const distributionGoogleConversionsColumnKey = useMemo(
+    () => findColumnKey(distributionSourceRows as Array<Record<string, unknown>>, ['conversions', 'conversoes', 'conversao']),
     [distributionSourceRows],
   );
   const distributionSheetMetricOptions = useMemo(() => {
@@ -1741,45 +1835,54 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     return activeFirst.map((c) => ({ id: String(c.id), name: String(c.name), effective_status: c.effective_status }));
   }, [metaCampaignTotalsQuery.data, metaCampaignsQuery.data, project?.source_type]);
 
+  const sheetCampaignOptionRows = useMemo(() => {
+    if (project?.source_type === 'meta_ads') return [] as Array<Record<string, unknown>>;
+    if (isGoogleSheetView) {
+      return [...(googleDiscoverySourceRows as Array<Record<string, unknown>>), ...(googleConsiderationSourceRows as Array<Record<string, unknown>>)];
+    }
+    return [...(sourceRows as Array<Record<string, unknown>>), ...(discoverySourceRows as Array<Record<string, unknown>>), ...(considerationSourceRows as Array<Record<string, unknown>>)];
+  }, [considerationSourceRows, discoverySourceRows, googleConsiderationSourceRows, googleDiscoverySourceRows, isGoogleSheetView, project?.source_type, sourceRows]);
+
+  const sheetCampaignOptionColumnKey = useMemo(
+    () =>
+      findColumnKey(sheetCampaignOptionRows, [
+        'campaign name',
+        'campaign',
+        'nome da campanha',
+        'campanha',
+      ]),
+    [sheetCampaignOptionRows],
+  );
+  const sheetAdsetOptionColumnKey = useMemo(
+    () =>
+      findColumnKey(sheetCampaignOptionRows, [
+        'adset name',
+        'adset',
+        'nome do conjunto',
+        'conjunto',
+      ]),
+    [sheetCampaignOptionRows],
+  );
+
   const sheetCampaignOptions = useMemo(() => {
     if (project?.source_type === 'meta_ads') return [];
     const values = new Set<string>();
-    if (sheetCampaignColumnKey) {
-      for (const row of sourceRows as Array<Record<string, unknown>>) {
-        const value = String(row?.[sheetCampaignColumnKey] ?? '').trim();
+    if (sheetCampaignOptionColumnKey) {
+      for (const row of sheetCampaignOptionRows) {
+        const value = String(row?.[sheetCampaignOptionColumnKey] ?? '').trim();
         if (value) values.add(value);
       }
     }
-    if (distributionCampaignColumnKey) {
-      for (const row of distributionSourceRows as Array<Record<string, unknown>>) {
-        const value = String(row?.[distributionCampaignColumnKey] ?? '').trim();
-        if (value) values.add(value);
-      }
-    }
-    if (sheetAdsetFilterColumnKey) {
-      for (const row of sourceRows as Array<Record<string, unknown>>) {
-        const value = String(row?.[sheetAdsetFilterColumnKey] ?? '').trim();
-        if (value) values.add(value);
-      }
-    }
-    if (distributionAdsetFilterColumnKey) {
-      for (const row of distributionSourceRows as Array<Record<string, unknown>>) {
-        const value = String(row?.[distributionAdsetFilterColumnKey] ?? '').trim();
+    if (sheetAdsetOptionColumnKey) {
+      for (const row of sheetCampaignOptionRows) {
+        const value = String(row?.[sheetAdsetOptionColumnKey] ?? '').trim();
         if (value) values.add(value);
       }
     }
     return Array.from(values)
       .map((name) => ({ id: name, name }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [
-    distributionAdsetFilterColumnKey,
-    distributionCampaignColumnKey,
-    distributionSourceRows,
-    project?.source_type,
-    sheetAdsetFilterColumnKey,
-    sheetCampaignColumnKey,
-    sourceRows,
-  ]);
+  }, [project?.source_type, sheetAdsetOptionColumnKey, sheetCampaignOptionColumnKey, sheetCampaignOptionRows]);
 
   const campaignOptions = project?.source_type === 'meta_ads' ? metaCampaignOptions : sheetCampaignOptions;
 
@@ -2378,7 +2481,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           thumbnail: stats.thumbnail,
           };
         })
-        .sort((a, b) => b.profileVisits - a.profileVisits)
+        .sort((a, b) => {
+          const scoreA = Number(a.profileVisits || a.clicks || a.thruplay || a.impressions || 0);
+          const scoreB = Number(b.profileVisits || b.clicks || b.thruplay || b.impressions || 0);
+          return scoreB - scoreA;
+        })
         .slice(0, 8),
       platformBreakdown,
     };
@@ -2408,6 +2515,121 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     distributionVideo3sColumnKey,
     distributionVideoViewsColumnKey,
     filteredDistributionRows,
+    project?.source_type,
+  ]);
+
+  const googleDistributionSummary = useMemo(() => {
+    if (!isGoogleSheetView || project?.source_type === 'meta_ads') return null;
+
+    let totalSpend = 0;
+    let totalUsers = 0;
+    let totalImpressions = 0;
+    let totalClicks = 0;
+    let totalVideo25 = 0;
+    let totalVideo50 = 0;
+    let totalVideo75 = 0;
+    let totalVideo100 = 0;
+    let totalTrueview = 0;
+    let totalConversions = 0;
+    let totalFrequencyFromField = 0;
+    let frequencyFieldCount = 0;
+    let totalCpcFromField = 0;
+    let cpcFieldCount = 0;
+    let totalCpvFromField = 0;
+    let cpvFieldCount = 0;
+    let totalCostPerConversionFromField = 0;
+    let costPerConversionFieldCount = 0;
+
+    for (const row of filteredDistributionRows as Array<Record<string, unknown>>) {
+      const spend = parseSheetNumber(distributionSpendColumnKey ? row?.[distributionSpendColumnKey] : 0);
+      const users = parseSheetNumber(distributionReachColumnKey ? row?.[distributionReachColumnKey] : 0);
+      const impressions = parseSheetNumber(distributionImpressionsColumnKey ? row?.[distributionImpressionsColumnKey] : 0);
+      const clicks = parseSheetNumber(distributionLinkClicksColumnKey ? row?.[distributionLinkClicksColumnKey] : 0);
+      const video25 = parseSheetNumber(distributionGoogleVideo25ColumnKey ? row?.[distributionGoogleVideo25ColumnKey] : 0);
+      const video50 = parseSheetNumber(distributionGoogleVideo50ColumnKey ? row?.[distributionGoogleVideo50ColumnKey] : 0);
+      const video75 = parseSheetNumber(distributionGoogleVideo75ColumnKey ? row?.[distributionGoogleVideo75ColumnKey] : 0);
+      const video100 = parseSheetNumber(distributionGoogleVideo100ColumnKey ? row?.[distributionGoogleVideo100ColumnKey] : 0);
+      const trueview = parseSheetNumber(distributionGoogleTrueviewColumnKey ? row?.[distributionGoogleTrueviewColumnKey] : 0);
+      const conversions = parseSheetNumber(distributionGoogleConversionsColumnKey ? row?.[distributionGoogleConversionsColumnKey] : 0);
+      const frequencyFromField = parseSheetNumber(distributionFrequencyColumnKey ? row?.[distributionFrequencyColumnKey] : 0);
+      const cpcFromField = parseSheetNumber(distributionCpcColumnKey ? row?.[distributionCpcColumnKey] : 0);
+      const cpvFromField = parseSheetNumber(distributionGoogleCpvColumnKey ? row?.[distributionGoogleCpvColumnKey] : 0);
+      const costPerConversionFromField = parseSheetNumber(distributionCpaColumnKey ? row?.[distributionCpaColumnKey] : 0);
+
+      totalSpend += spend;
+      totalUsers += users;
+      totalImpressions += impressions;
+      totalClicks += clicks;
+      totalVideo25 += video25;
+      totalVideo50 += video50;
+      totalVideo75 += video75;
+      totalVideo100 += video100;
+      totalTrueview += trueview;
+      totalConversions += conversions;
+
+      if (frequencyFromField > 0) {
+        totalFrequencyFromField += frequencyFromField;
+        frequencyFieldCount += 1;
+      }
+      if (cpcFromField > 0) {
+        totalCpcFromField += cpcFromField;
+        cpcFieldCount += 1;
+      }
+      if (cpvFromField > 0) {
+        totalCpvFromField += cpvFromField;
+        cpvFieldCount += 1;
+      }
+      if (costPerConversionFromField > 0) {
+        totalCostPerConversionFromField += costPerConversionFromField;
+        costPerConversionFieldCount += 1;
+      }
+    }
+
+    return {
+      spend: totalSpend,
+      users: totalUsers,
+      impressions: totalImpressions,
+      frequency:
+        totalUsers > 0
+          ? totalImpressions / totalUsers
+          : (frequencyFieldCount > 0 ? totalFrequencyFromField / frequencyFieldCount : 0),
+      clicks: totalClicks,
+      cpc:
+        totalClicks > 0
+          ? totalSpend / totalClicks
+          : (cpcFieldCount > 0 ? totalCpcFromField / cpcFieldCount : 0),
+      video25: totalVideo25,
+      video50: totalVideo50,
+      video75: totalVideo75,
+      video100: totalVideo100,
+      trueview: totalTrueview,
+      cpv:
+        totalTrueview > 0
+          ? totalSpend / totalTrueview
+          : (cpvFieldCount > 0 ? totalCpvFromField / cpvFieldCount : 0),
+      conversions: totalConversions,
+      costPerConversion:
+        totalConversions > 0
+          ? totalSpend / totalConversions
+          : (costPerConversionFieldCount > 0 ? totalCostPerConversionFromField / costPerConversionFieldCount : 0),
+    };
+  }, [
+    distributionCpaColumnKey,
+    distributionCpcColumnKey,
+    distributionFrequencyColumnKey,
+    distributionGoogleConversionsColumnKey,
+    distributionGoogleCpvColumnKey,
+    distributionGoogleTrueviewColumnKey,
+    distributionGoogleVideo100ColumnKey,
+    distributionGoogleVideo25ColumnKey,
+    distributionGoogleVideo50ColumnKey,
+    distributionGoogleVideo75ColumnKey,
+    distributionImpressionsColumnKey,
+    distributionLinkClicksColumnKey,
+    distributionReachColumnKey,
+    distributionSpendColumnKey,
+    filteredDistributionRows,
+    isGoogleSheetView,
     project?.source_type,
   ]);
 
@@ -3252,6 +3474,60 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     if (project?.source_type === 'meta_ads') {
       return metaWeeklyMetricOptions.filter((option) => option.format !== 'link');
     }
+    if (isGoogleSheetView) {
+      const computed = [
+        { key: 'investment', label: 'Custo', format: 'currency' as const },
+        { key: 'reach', label: 'Usuarios exclusivos', format: 'number' as const },
+        { key: 'impressions', label: 'Impressoes', format: 'number' as const },
+        { key: 'frequency', label: 'Freq. media impr. / usuario', format: 'decimal' as const },
+        { key: 'clicks', label: 'Cliques', format: 'number' as const },
+        { key: 'cpc', label: 'CPC medio', format: 'currency' as const },
+        { key: 'google_cpv', label: 'CPV medio do TrueView', format: 'currency' as const },
+        { key: 'google_trueview_views', label: 'Visualizacao do TrueView', format: 'number' as const },
+      ];
+      const optionalGoogleMetrics = [
+        distributionGoogleVideo25ColumnKey
+          ? { key: distributionGoogleVideo25ColumnKey, label: 'Video assistido ate 25%', format: 'number' as const }
+          : null,
+        distributionGoogleVideo50ColumnKey
+          ? { key: distributionGoogleVideo50ColumnKey, label: 'Video assistido ate 50%', format: 'number' as const }
+          : null,
+        distributionGoogleVideo75ColumnKey
+          ? { key: distributionGoogleVideo75ColumnKey, label: 'Video assistido ate 75%', format: 'number' as const }
+          : null,
+        distributionGoogleVideo100ColumnKey
+          ? { key: distributionGoogleVideo100ColumnKey, label: 'Video assistido ate 100%', format: 'number' as const }
+          : null,
+        distributionGoogleConversionsColumnKey
+          ? { key: distributionGoogleConversionsColumnKey, label: 'Conversoes', format: 'number' as const }
+          : null,
+        distributionCpaColumnKey
+          ? { key: distributionCpaColumnKey, label: 'Custo / Conv.', format: 'currency' as const }
+          : null,
+      ].filter(Boolean);
+      const excluded = new Set(
+        [
+          distributionReachColumnKey,
+          distributionImpressionsColumnKey,
+          distributionFrequencyColumnKey,
+          distributionLinkClicksColumnKey,
+          distributionCpcColumnKey,
+          distributionGoogleCpvColumnKey,
+          distributionGoogleTrueviewColumnKey,
+          distributionGoogleVideo25ColumnKey,
+          distributionGoogleVideo50ColumnKey,
+          distributionGoogleVideo75ColumnKey,
+          distributionGoogleVideo100ColumnKey,
+          distributionGoogleConversionsColumnKey,
+          distributionCpaColumnKey,
+          distributionSpendColumnKey,
+        ]
+          .filter(Boolean)
+          .map(String),
+      );
+      const dynamic = distributionSheetMetricOptions.filter((metric) => !excluded.has(metric.key));
+      return [...computed, ...(optionalGoogleMetrics as Array<{ key: string; label: string; format: SheetMetricFormat }>), ...dynamic];
+    }
     const computed = [
       { key: 'investment', label: 'Investimento', format: 'currency' as const },
       { key: 'reach', label: 'Alcance', format: 'number' as const },
@@ -3283,7 +3559,26 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       return true;
     });
     return [...computed, ...dynamic];
-  }, [distributionSheetMetricOptions, metaWeeklyMetricOptions, project?.source_type]);
+  }, [
+    distributionCpaColumnKey,
+    distributionCpcColumnKey,
+    distributionFrequencyColumnKey,
+    distributionGoogleConversionsColumnKey,
+    distributionGoogleCpvColumnKey,
+    distributionGoogleTrueviewColumnKey,
+    distributionGoogleVideo100ColumnKey,
+    distributionGoogleVideo25ColumnKey,
+    distributionGoogleVideo50ColumnKey,
+    distributionGoogleVideo75ColumnKey,
+    distributionImpressionsColumnKey,
+    distributionLinkClicksColumnKey,
+    distributionReachColumnKey,
+    distributionSheetMetricOptions,
+    distributionSpendColumnKey,
+    isGoogleSheetView,
+    metaWeeklyMetricOptions,
+    project?.source_type,
+  ]);
 
   const distributionCreativeColumns = useMemo(() => {
     const available = new Set(distributionCreativeMetricOptions.map((option) => option.key));
@@ -3291,18 +3586,24 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       .map((key) => String(key))
       .filter((key) => available.has(key))
       .slice(0, 5);
-    const defaults = ['investment', 'impressions', 'clicks', 'ctr', 'cpc'].filter((key) => available.has(key));
+    const defaults = (
+      isGoogleSheetView
+        ? ['investment', 'impressions', 'clicks', 'google_trueview_views', 'google_cpv']
+        : ['investment', 'impressions', 'clicks', 'ctr', 'cpc']
+    ).filter((key) => available.has(key));
     const merged = [...normalized];
     for (const fallbackKey of defaults) {
       if (merged.length >= 5) break;
       merged.push(fallbackKey);
     }
     return merged.slice(0, 5);
-  }, [distributionCreativeMetricColumns, distributionCreativeMetricOptions]);
+  }, [distributionCreativeMetricColumns, distributionCreativeMetricOptions, isGoogleSheetView]);
 
   const setDistributionCreativeColumnAtIndex = (index: number, value: string) => {
     setDistributionCreativeMetricColumns((prev) => {
-      const defaults = ['investment', 'impressions', 'clicks', 'ctr', 'cpc'];
+      const defaults = isGoogleSheetView
+        ? ['investment', 'impressions', 'clicks', 'google_trueview_views', 'google_cpv']
+        : ['investment', 'impressions', 'clicks', 'ctr', 'cpc'];
       const next = [...prev];
       while (next.length < 5) {
         next.push(defaults[next.length] || defaults[0]);
@@ -3638,6 +3939,37 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       ? metaBigNumbers
       : (sheetBigNumbers.length > 0 ? sheetBigNumbers : processedData.bigNumbers);
 
+  const googleSummaryCards = useMemo(() => {
+    if (!isGoogleSheetView || !googleDistributionSummary) return [];
+
+    const baseCards = [
+      { label: 'Custo', value: googleDistributionSummary.spend, format: 'currency' as const },
+      { label: 'Usuarios exclusivos', value: googleDistributionSummary.users, format: 'number' as const },
+      { label: 'Impressoes', value: googleDistributionSummary.impressions, format: 'number' as const },
+      { label: 'Freq. media impr. / usuario', value: googleDistributionSummary.frequency, format: 'decimal' as const },
+      { label: 'CPV medio do TrueView', value: googleDistributionSummary.cpv, format: 'currency' as const },
+      { label: 'Visualizacao do TrueView', value: googleDistributionSummary.trueview, format: 'number' as const },
+    ];
+
+    if (activeTab === 'descoberta') {
+      return [
+        ...baseCards,
+        { label: 'Cliques', value: googleDistributionSummary.clicks, format: 'number' as const },
+        { label: 'CPC medio', value: googleDistributionSummary.cpc, format: 'currency' as const },
+        { label: 'Conversoes', value: googleDistributionSummary.conversions, format: 'number' as const },
+        { label: 'Custo / Conv.', value: googleDistributionSummary.costPerConversion, format: 'currency' as const },
+      ];
+    }
+
+    return [
+      ...baseCards,
+      { label: 'Video assistido ate 25%', value: googleDistributionSummary.video25, format: 'number' as const },
+      { label: 'Video assistido ate 50%', value: googleDistributionSummary.video50, format: 'number' as const },
+      { label: 'Video assistido ate 75%', value: googleDistributionSummary.video75, format: 'number' as const },
+      { label: 'Video assistido ate 100%', value: googleDistributionSummary.video100, format: 'number' as const },
+    ];
+  }, [activeTab, googleDistributionSummary, isGoogleSheetView]);
+
   const isLoading =
     loadingProject ||
     (loadingMappings && !(shareToken && initialMappings)) ||
@@ -3792,10 +4124,36 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         onViewModeChange={(v) => setViewMode(v)}
       />
 
+      {project?.source_type === 'sheet' && hasGoogleSheetView && (
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Button
+            type="button"
+            variant={sheetDashboardSource === 'meta' ? 'default' : 'outline'}
+            onClick={() => {
+              setSheetDashboardSource('meta');
+              setActiveTab('perpetua');
+            }}
+          >
+            Meta
+          </Button>
+          <Button
+            type="button"
+            variant={sheetDashboardSource === 'google' ? 'default' : 'outline'}
+            onClick={() => {
+              setSheetDashboardSource('google');
+              setActiveTab((prev) => (prev === 'consideracao' ? 'consideracao' : 'descoberta'));
+            }}
+          >
+            Google
+          </Button>
+        </div>
+      )}
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-        <TabsList className="grid w-full max-w-md grid-cols-3">
+        <TabsList className={`grid w-full [&>*:first-child]:hidden ${isGoogleSheetView ? 'max-w-sm grid-cols-2' : 'max-w-md grid-cols-3'}`}>
           <TabsTrigger value="perpetua">Perpétua</TabsTrigger>
+          {!isGoogleSheetView && <TabsTrigger value="perpetua">Perpetua</TabsTrigger>}
           <TabsTrigger value="descoberta">Descoberta</TabsTrigger>
           <TabsTrigger value="consideracao">Consideracao</TabsTrigger>
         </TabsList>
@@ -4041,7 +4399,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               transition={{ duration: 0.2 }}
               className="space-y-8"
             >
-              {project?.source_type !== 'meta_ads' && (
+              {project?.source_type !== 'meta_ads' && !isGoogleSheetView && (
                 <section>
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-semibold">Visao de Descoberta</h3>
@@ -4060,56 +4418,69 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               )}
               <section>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-                  <BigNumberCard
-                    label="Investimento"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.spend || 0) : (sheetDistributionData?.spend || 0)}
-                    format="currency"
-                  />
-                  <BigNumberCard
-                    label="Alcance"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalReach || 0) : (sheetDistributionData?.totalReach || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="Impressoes"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalImpressions || 0) : (sheetDistributionData?.totalImpressions || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="Frequencia"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.frequency || 0) : (sheetDistributionData?.frequency || 0)}
-                    format="percentage"
-                  />
-                  <BigNumberCard
-                    label="Cliques no Link"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.clicks || 0) : (sheetDistributionData?.totalLinkClicks || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="CPC"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.cpc || 0) : (sheetDistributionData?.cpc || 0)}
-                    format="currency"
-                  />
-                  <BigNumberCard
-                    label="CTR"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.ctr || 0) : (sheetDistributionData?.ctr || 0)}
-                    format="percentage"
-                  />
-                  <BigNumberCard
-                    label="Seguidores"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followers || 0) : (sheetDistributionData?.followersGained || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="Custo por Seguidor"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.costPerFollower || 0) : (sheetDistributionData?.costPerFollower || 0)}
-                    format="currency"
-                  />
-                  <BigNumberCard
-                    label="Visitas ao Perfil"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.profileVisits || 0) : (sheetDistributionData?.profileVisits || 0)}
-                    format="number"
-                  />
+                  {isGoogleSheetView
+                    ? googleSummaryCards.map((card) => (
+                        <BigNumberCard
+                          key={`${activeTab}-${card.label}`}
+                          label={card.label}
+                          value={card.value}
+                          format={card.format}
+                        />
+                      ))
+                    : (
+                      <>
+                        <BigNumberCard
+                          label="Investimento"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.spend || 0) : (sheetDistributionData?.spend || 0)}
+                          format="currency"
+                        />
+                        <BigNumberCard
+                          label="Alcance"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalReach || 0) : (sheetDistributionData?.totalReach || 0)}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="Impressoes"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalImpressions || 0) : (sheetDistributionData?.totalImpressions || 0)}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="Frequencia"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.frequency || 0) : (sheetDistributionData?.frequency || 0)}
+                          format="percentage"
+                        />
+                        <BigNumberCard
+                          label="Cliques no Link"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.clicks || 0) : (sheetDistributionData?.totalLinkClicks || 0)}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="CPC"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.cpc || 0) : (sheetDistributionData?.cpc || 0)}
+                          format="currency"
+                        />
+                        <BigNumberCard
+                          label="CTR"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.ctr || 0) : (sheetDistributionData?.ctr || 0)}
+                          format="percentage"
+                        />
+                        <BigNumberCard
+                          label="Seguidores"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followers || 0) : (sheetDistributionData?.followersGained || 0)}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="Custo por Seguidor"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.costPerFollower || 0) : (sheetDistributionData?.costPerFollower || 0)}
+                          format="currency"
+                        />
+                        <BigNumberCard
+                          label="Visitas ao Perfil"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.profileVisits || 0) : (sheetDistributionData?.profileVisits || 0)}
+                          format="number"
+                        />
+                      </>
+                    )}
                 </div>
               </section>
 
@@ -4211,6 +4582,20 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                         return Number(item.frequency || 0);
                                       case 'clicks':
                                         return Number(item.clicks || 0);
+                                      case 'google_trueview_views':
+                                        return distributionGoogleTrueviewColumnKey
+                                          ? Number((item.metrics && item.metrics[distributionGoogleTrueviewColumnKey]) || 0)
+                                          : 0;
+                                      case 'google_cpv': {
+                                        const trueviewViews = distributionGoogleTrueviewColumnKey
+                                          ? Number((item.metrics && item.metrics[distributionGoogleTrueviewColumnKey]) || 0)
+                                          : 0;
+                                        if (trueviewViews > 0) return Number(item.spend || 0) / trueviewViews;
+                                        if (distributionGoogleCpvColumnKey) {
+                                          return Number((item.metrics && item.metrics[distributionGoogleCpvColumnKey]) || 0);
+                                        }
+                                        return 0;
+                                      }
                                       case 'video3s':
                                         return Number(item.video3s || 0);
                                       case 'thruplay':
@@ -4267,7 +4652,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               transition={{ duration: 0.2 }}
               className="space-y-8"
             >
-              {project?.source_type !== 'meta_ads' && (
+              {project?.source_type !== 'meta_ads' && !isGoogleSheetView && (
                 <section>
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-semibold">Visao de Consideracao</h3>
@@ -4286,56 +4671,69 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               )}
               <section>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-                  <BigNumberCard
-                    label="Investimento"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.spend || 0) : (sheetDistributionData?.spend || 0)}
-                    format="currency"
-                  />
-                  <BigNumberCard
-                    label="Alcance"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalReach || 0) : (sheetDistributionData?.totalReach || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="Impressoes"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalImpressions || 0) : (sheetDistributionData?.totalImpressions || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="Frequencia"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.frequency || 0) : (sheetDistributionData?.frequency || 0)}
-                    format="percentage"
-                  />
-                  <BigNumberCard
-                    label="Cliques no Link"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.clicks || 0) : (sheetDistributionData?.totalLinkClicks || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="CPC"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.cpc || 0) : (sheetDistributionData?.cpc || 0)}
-                    format="currency"
-                  />
-                  <BigNumberCard
-                    label="CTR"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.ctr || 0) : (sheetDistributionData?.ctr || 0)}
-                    format="percentage"
-                  />
-                  <BigNumberCard
-                    label="Seguidores"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followers || 0) : (sheetDistributionData?.followersGained || 0)}
-                    format="number"
-                  />
-                  <BigNumberCard
-                    label="Custo por Seguidor"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.costPerFollower || 0) : (sheetDistributionData?.costPerFollower || 0)}
-                    format="currency"
-                  />
-                  <BigNumberCard
-                    label="Visitas ao Perfil"
-                    value={project?.source_type === 'meta_ads' ? (metaDistributionData?.profileVisits || 0) : (sheetDistributionData?.profileVisits || 0)}
-                    format="number"
-                  />
+                  {isGoogleSheetView
+                    ? googleSummaryCards.map((card) => (
+                        <BigNumberCard
+                          key={`${activeTab}-${card.label}`}
+                          label={card.label}
+                          value={card.value}
+                          format={card.format}
+                        />
+                      ))
+                    : (
+                      <>
+                        <BigNumberCard
+                          label="Investimento"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.spend || 0) : (sheetDistributionData?.spend || 0)}
+                          format="currency"
+                        />
+                        <BigNumberCard
+                          label="Alcance"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalReach || 0) : (sheetDistributionData?.totalReach || 0)}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="Impressoes"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.totalImpressions || 0) : (sheetDistributionData?.totalImpressions || 0)}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="Frequencia"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.frequency || 0) : (sheetDistributionData?.frequency || 0)}
+                          format="percentage"
+                        />
+                        <BigNumberCard
+                          label="Cliques no Link"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.clicks || 0) : (sheetDistributionData?.totalLinkClicks || 0)}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="CPC"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.cpc || 0) : (sheetDistributionData?.cpc || 0)}
+                          format="currency"
+                        />
+                        <BigNumberCard
+                          label="CTR"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.ctr || 0) : (sheetDistributionData?.ctr || 0)}
+                          format="percentage"
+                        />
+                        <BigNumberCard
+                          label="Seguidores"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.followers || 0) : (sheetDistributionData?.followersGained || 0)}
+                          format="number"
+                        />
+                        <BigNumberCard
+                          label="Custo por Seguidor"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.costPerFollower || 0) : (sheetDistributionData?.costPerFollower || 0)}
+                          format="currency"
+                        />
+                        <BigNumberCard
+                          label="Visitas ao Perfil"
+                          value={project?.source_type === 'meta_ads' ? (metaDistributionData?.profileVisits || 0) : (sheetDistributionData?.profileVisits || 0)}
+                          format="number"
+                        />
+                      </>
+                    )}
                 </div>
               </section>
 
@@ -4437,6 +4835,20 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                                         return Number(item.frequency || 0);
                                       case 'clicks':
                                         return Number(item.clicks || 0);
+                                      case 'google_trueview_views':
+                                        return distributionGoogleTrueviewColumnKey
+                                          ? Number((item.metrics && item.metrics[distributionGoogleTrueviewColumnKey]) || 0)
+                                          : 0;
+                                      case 'google_cpv': {
+                                        const trueviewViews = distributionGoogleTrueviewColumnKey
+                                          ? Number((item.metrics && item.metrics[distributionGoogleTrueviewColumnKey]) || 0)
+                                          : 0;
+                                        if (trueviewViews > 0) return Number(item.spend || 0) / trueviewViews;
+                                        if (distributionGoogleCpvColumnKey) {
+                                          return Number((item.metrics && item.metrics[distributionGoogleCpvColumnKey]) || 0);
+                                        }
+                                        return 0;
+                                      }
                                       case 'video3s':
                                         return Number(item.video3s || 0);
                                       case 'thruplay':

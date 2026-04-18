@@ -189,6 +189,8 @@ export default function ProjectConfig() {
             sheet_distribuicao: null,
             sheet_consideracao: null,
             sheet_criativos: null,
+            sheet_google_descoberta: null,
+            sheet_google_consideracao: null,
           },
         })
         .eq('id', project.id);
@@ -207,6 +209,8 @@ export default function ProjectConfig() {
           sheet_distribuicao: null,
           sheet_consideracao: null,
           sheet_criativos: null,
+          sheet_google_descoberta: null,
+          sheet_google_consideracao: null,
         },
       });
       setSheetSelectorOpen(false);
@@ -246,10 +250,26 @@ export default function ProjectConfig() {
     }
   };
 
-  const handleTabsSelect = async ({ perpetua, distribuicao, consideracao, criativos }: { perpetua: string; distribuicao: string; consideracao: string; criativos: string }) => {
+  const handleTabsSelect = async ({
+    perpetua,
+    distribuicao,
+    consideracao,
+    criativos,
+    googleDescoberta,
+    googleConsideracao,
+  }: {
+    perpetua: string;
+    distribuicao: string;
+    consideracao: string;
+    criativos: string;
+    googleDescoberta: string | null;
+    googleConsideracao: string | null;
+  }) => {
     if (!project) return;
     try {
-      const sheetNames = Array.from(new Set([perpetua, distribuicao, consideracao, criativos]));
+      const sheetNames = Array.from(
+        new Set([perpetua, distribuicao, consideracao, criativos, googleDescoberta, googleConsideracao].filter(Boolean)),
+      ) as string[];
       const { error } = await supabase
         .from('projects')
         .update({
@@ -261,6 +281,8 @@ export default function ProjectConfig() {
             sheet_distribuicao: distribuicao,
             sheet_consideracao: consideracao,
             sheet_criativos: criativos,
+            sheet_google_descoberta: googleDescoberta,
+            sheet_google_consideracao: googleConsideracao,
           },
         })
         .eq('id', project.id);
@@ -277,6 +299,8 @@ export default function ProjectConfig() {
           sheet_distribuicao: distribuicao,
           sheet_consideracao: consideracao,
           sheet_criativos: criativos,
+          sheet_google_descoberta: googleDescoberta,
+          sheet_google_consideracao: googleConsideracao,
         },
       });
       setCurrentStep(2);
@@ -533,6 +557,8 @@ export default function ProjectConfig() {
                   selectedDistribuicao={project.source_config?.sheet_distribuicao || project.sheet_names?.[1] || project.sheet_names?.[0] || null}
                   selectedConsideracao={project.source_config?.sheet_consideracao || project.sheet_names?.[2] || project.sheet_names?.[1] || project.sheet_names?.[0] || null}
                   selectedCriativos={project.source_config?.sheet_criativos || project.sheet_names?.[3] || project.sheet_names?.[2] || project.sheet_names?.[1] || project.sheet_names?.[0] || null}
+                  selectedGoogleDescoberta={project.source_config?.sheet_google_descoberta || null}
+                  selectedGoogleConsideracao={project.source_config?.sheet_google_consideracao || null}
                   onSelect={handleTabsSelect}
                   onBack={() => setCurrentStep(1)}
                 />
