@@ -167,7 +167,7 @@ export function ShareManager({ projectId }: ShareManagerProps) {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{token.name || 'Link de Acesso'}</p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      {token.password_hash && (
+                      {token.has_password && (
                         <Badge variant="outline" className="text-xs">
                           <Shield className="h-3 w-3 mr-1" />
                           Protegido
