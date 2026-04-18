@@ -8,7 +8,7 @@ export interface ShareToken {
   project_id: string;
   token: string;
   name: string | null;
-  password_hash: string | null;
+  has_password: boolean;
   expires_at: string | null;
   is_active: boolean;
   allowed_filters: Record<string, unknown> | null;
@@ -34,12 +34,18 @@ export function useShareTokens(projectId: string) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('share_tokens')
-        .select('*')
+        .select('id, project_id, token, name, password_hash, expires_at, is_active, allowed_filters, created_at, created_by')
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as ShareToken[];
+      return (data ?? []).map((row) => {
+        const { password_hash, ...rest } = row as { password_hash: string | null } & Record<string, unknown>;
+        return {
+          ...rest,
+          has_password: !!password_hash,
+        } as ShareToken;
+      });
     },
     enabled: !!projectId,
   });
