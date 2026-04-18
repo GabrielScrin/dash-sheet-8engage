@@ -4121,7 +4121,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       />
 
       {project?.source_type === 'sheet' && (
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap items-center gap-3">
           <Button
             type="button"
             variant={sheetDashboardSource === 'meta' ? 'default' : 'outline'}
@@ -4135,6 +4135,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           <Button
             type="button"
             variant={sheetDashboardSource === 'google' ? 'default' : 'outline'}
+            disabled={!hasGoogleSheetConfig}
+            title={!hasGoogleSheetConfig ? 'Configure as abas do Google na etapa de Conexão' : undefined}
             onClick={() => {
               setSheetDashboardSource('google');
               setActiveTab((prev) => (prev === 'consideracao' ? 'consideracao' : 'descoberta'));
@@ -4142,6 +4144,18 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           >
             Google
           </Button>
+          {!hasGoogleSheetConfig && !isPreview && !shareToken && (
+            <span className="text-xs text-muted-foreground">
+              Configure as abas Google na{' '}
+              <a
+                href={`/app/projects/${projectId}/config?step=2`}
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                etapa de Conexão
+              </a>
+              {' '}para habilitar.
+            </span>
+          )}
         </div>
       )}
 
@@ -4150,7 +4164,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Abas Google não configuradas</AlertTitle>
           <AlertDescription>
-            Vá para a etapa 2 e selecione `Aba da Descoberta Google` e `Aba da Consideracao Google`.
+            Vá para a etapa 2 (Conexão) e selecione "Aba da Descoberta Google" e "Aba da Consideracao Google" para habilitar esta visualização.
           </AlertDescription>
         </Alert>
       )}
