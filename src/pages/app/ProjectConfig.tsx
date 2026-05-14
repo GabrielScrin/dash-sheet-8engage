@@ -687,10 +687,10 @@ export default function ProjectConfig() {
                   <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
                     <p className="font-medium">Configuração segura</p>
                     <p className="text-sm text-muted-foreground">
-                      `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e `GOOGLE_DEVELOPER_TOKEN` devem ser definidos nas secrets da Edge Function.
+                      Esta integração depende de uma configuração protegida no backend. Nenhuma credencial sensível deve aparecer ou ser salva no navegador.
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      O `refresh_token` da conta deve ser inserido direto na tabela `project_google_ads_connections` pelo terminal/SQL.
+                      Depois que a conexão base estiver cadastrada no ambiente seguro, valide a conta e selecione o perfil correto aqui.
                     </p>
                   </div>
 
@@ -707,7 +707,7 @@ export default function ProjectConfig() {
                     <div className="rounded-lg border bg-muted/40 p-4">
                       <p className="font-medium">Conexão base detectada para este projeto</p>
                       <p className="text-sm text-muted-foreground">
-                        O backend encontrou um registro em `project_google_ads_connections` para este dashboard.
+                        O backend encontrou uma conexão base configurada para este dashboard.
                       </p>
                     </div>
                   )}
@@ -716,7 +716,7 @@ export default function ProjectConfig() {
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                       <p className="font-medium text-amber-800">Conexão não configurada</p>
                       <p className="text-sm text-amber-700">
-                        Primeiro salve a conexão pelo terminal/SQL. Depois volte aqui para validar e escolher a conta.
+                        A conexão base deste projeto ainda não foi cadastrada no backend. Depois disso, volte aqui para validar e escolher a conta.
                       </p>
                     </div>
                   )}

@@ -428,6 +428,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   ]);
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
   const [distributionPhase, setDistributionPhase] = useState<'all' | 'descoberta' | 'consideracao'>('all');
+  const [paidMediaDetailTab, setPaidMediaDetailTab] = useState<'meta' | 'google'>('meta');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -4022,6 +4023,65 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       ? metaBigNumbers
       : (sheetBigNumbers.length > 0 ? sheetBigNumbers : processedData.bigNumbers);
 
+  const paidMediaDetailCards = useMemo(() => {
+    if (project?.source_type !== 'meta_ads' || googleAdsInsightsQuery.data == null) {
+      return null;
+    }
+
+    const metaRow: any = metaTotalsRow;
+    if (!metaRow) return null;
+
+    const metaSpend = Number(metaRow?.spend || 0);
+    const metaReach = Number(metaRow?.reach || 0);
+    const metaImpressions = Number(metaRow?.impressions || 0);
+    const metaClicks = Number(metaRow?.clicks || 0);
+    const metaLeads = Number(metaRow?.leads || 0);
+    const metaPurchases = Number(metaRow?.purchases || 0);
+    const metaPurchaseValue = Number(metaRow?.purchase_value || 0);
+    const metaResults = metaPurchases > 0 ? metaPurchases : metaLeads;
+    const metaCtr = metaImpressions > 0 ? metaClicks / metaImpressions : 0;
+    const metaCpc = metaClicks > 0 ? metaSpend / metaClicks : 0;
+    const metaCpr = metaResults > 0 ? metaSpend / metaResults : 0;
+    const metaRoas = metaSpend > 0 ? metaPurchaseValue / metaSpend : Number(metaRow?.roas || 0);
+    const metaFrequency = metaReach > 0 ? metaImpressions / metaReach : 0;
+
+    const googleSpend = Number(googleAdsInsightsQuery.data?.spend || 0);
+    const googleImpressions = Number(googleAdsInsightsQuery.data?.impressions || 0);
+    const googleClicks = Number(googleAdsInsightsQuery.data?.clicks || 0);
+    const googleConversions = Number(googleAdsInsightsQuery.data?.conversions || 0);
+    const googleCtr = googleImpressions > 0 ? googleClicks / googleImpressions : 0;
+    const googleCpc = googleClicks > 0 ? googleSpend / googleClicks : 0;
+    const googleCpa = googleConversions > 0 ? googleSpend / googleConversions : 0;
+    const googleCvr = googleClicks > 0 ? googleConversions / googleClicks : 0;
+    const googleCpm = googleImpressions > 0 ? (googleSpend / googleImpressions) * 1000 : 0;
+
+    return {
+      meta: [
+        { label: 'Investimento Meta', value: metaSpend, format: 'currency' as const, subtitle: 'Meta Ads' },
+        { label: 'Alcance', value: metaReach, format: 'number' as const, subtitle: 'Meta Ads' },
+        { label: 'Impressões', value: metaImpressions, format: 'number' as const, subtitle: 'Meta Ads' },
+        { label: 'Cliques', value: metaClicks, format: 'number' as const, subtitle: 'Meta Ads' },
+        { label: 'CTR', value: metaCtr, format: 'percentage' as const, subtitle: 'Meta Ads' },
+        { label: 'Frequência', value: metaFrequency, format: 'decimal' as const, subtitle: 'Meta Ads' },
+        { label: 'CPC', value: metaCpc, format: 'currency' as const, subtitle: 'Meta Ads' },
+        { label: metaPurchases > 0 ? 'Vendas' : 'Leads', value: metaResults, format: 'number' as const, subtitle: 'Meta Ads' },
+        { label: metaPurchases > 0 ? 'CPA' : 'CPL', value: metaCpr, format: 'currency' as const, subtitle: 'Meta Ads' },
+        { label: 'ROAS', value: metaRoas, format: 'decimal' as const, subtitle: 'Meta Ads' },
+      ],
+      google: [
+        { label: 'Investimento Google', value: googleSpend, format: 'currency' as const, subtitle: 'Google Ads' },
+        { label: 'Impressões', value: googleImpressions, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Cliques', value: googleClicks, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'CTR', value: googleCtr, format: 'percentage' as const, subtitle: 'Google Ads' },
+        { label: 'CPC', value: googleCpc, format: 'currency' as const, subtitle: 'Google Ads' },
+        { label: 'CPM', value: googleCpm, format: 'currency' as const, subtitle: 'Google Ads' },
+        { label: 'Conversões', value: googleConversions, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Taxa de Conversão', value: googleCvr, format: 'percentage' as const, subtitle: 'Google Ads' },
+        { label: 'CPA', value: googleCpa, format: 'currency' as const, subtitle: 'Google Ads' },
+      ],
+    };
+  }, [googleAdsInsightsQuery.data, metaTotalsRow, project?.source_type]);
+
   const googleSummaryCards = useMemo(() => {
     if (!isGoogleSheetView || !googleDistributionSummary) return [];
 
@@ -4361,6 +4421,49 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                       })}
                     </div>
                   )}
+                </section>
+              )}
+
+              {paidMediaDetailCards && (
+                <section>
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold">Detalhe por Mídia</h3>
+                    <p className="mt-0.5 text-sm text-muted-foreground">Visualização separada das métricas principais de Meta Ads e Google Ads.</p>
+                  </div>
+                  <Tabs value={paidMediaDetailTab} onValueChange={(value) => setPaidMediaDetailTab(value as 'meta' | 'google')}>
+                    <TabsList className="grid w-full max-w-xs grid-cols-2">
+                      <TabsTrigger value="meta">Meta</TabsTrigger>
+                      <TabsTrigger value="google">Google</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="meta" className="mt-4">
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {paidMediaDetailCards.meta.map((kpi, index) => (
+                          <BigNumberCard
+                            key={`meta-detail-${kpi.label}`}
+                            label={kpi.label}
+                            value={kpi.value}
+                            format={kpi.format}
+                            delay={index * 0.05}
+                            subtitle={kpi.subtitle}
+                          />
+                        ))}
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="google" className="mt-4">
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {paidMediaDetailCards.google.map((kpi, index) => (
+                          <BigNumberCard
+                            key={`google-detail-${kpi.label}`}
+                            label={kpi.label}
+                            value={kpi.value}
+                            format={kpi.format}
+                            delay={index * 0.05}
+                            subtitle={kpi.subtitle}
+                          />
+                        ))}
+                      </div>
+                    </TabsContent>
+                  </Tabs>
                 </section>
               )}
 
