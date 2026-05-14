@@ -67,6 +67,7 @@ export default function ProjectConfig() {
   const [adAccountSearch, setAdAccountSearch] = useState('');
   const [metaCheckStartedAt, setMetaCheckStartedAt] = useState<number | null>(null);
   const [googleAdsConnected, setGoogleAdsConnected] = useState(false);
+  const [googleAdsChecking, setGoogleAdsChecking] = useState(false);
   const [googleAdsValidating, setGoogleAdsValidating] = useState(false);
   const [googleAdsListing, setGoogleAdsListing] = useState(false);
   const [googleAdsCustomers, setGoogleAdsCustomers] = useState<GoogleAdsCustomerOption[]>([]);
@@ -126,31 +127,33 @@ export default function ProjectConfig() {
     if (!project?.id || project.source_type !== 'meta_ads') return;
 
     const loadGoogleAdsConnection = async () => {
-      const { data, error } = await supabase
-        .from('project_google_ads_connections')
-        .select('customer_id, login_customer_id, customer_name, currency_code, time_zone, last_validated_at')
-        .eq('project_id', project.id)
-        .maybeSingle();
+      setGoogleAdsChecking(true);
+      const [{ data: tokenData, error: tokenError }, { data, error }] = await Promise.all([
+        supabase
+          .from('service_tokens')
+          .select('provider')
+          .eq('provider', 'google_ads')
+          .maybeSingle(),
+        supabase
+          .from('project_google_ads_connections')
+          .select('customer_id, login_customer_id, customer_name, currency_code, time_zone, last_validated_at')
+          .eq('project_id', project.id)
+          .maybeSingle(),
+      ]);
 
-      if (error) {
+      if (tokenError || error) {
         toast({
           title: 'Erro ao carregar Google Ads',
-          description: error.message,
+          description: tokenError?.message || error?.message || 'Não foi possível verificar a conexão com o Google Ads.',
           variant: 'destructive',
         });
+        setGoogleAdsChecking(false);
         return;
       }
 
-      if (!data) {
-        setGoogleAdsConnected(false);
-        setGoogleAdsValidation(null);
-        setGoogleAdsCustomers([]);
-        return;
-      }
-
-      setGoogleAdsConnected(true);
+      setGoogleAdsConnected(Boolean(tokenData));
       setGoogleAdsValidation(
-        data.customer_id
+        data?.customer_id
           ? {
               id: data.customer_id,
               name: data.customer_name || data.customer_id,
@@ -160,6 +163,10 @@ export default function ProjectConfig() {
             }
           : null,
       );
+      if (!data?.customer_id) {
+        setGoogleAdsCustomers([]);
+      }
+      setGoogleAdsChecking(false);
     };
 
     loadGoogleAdsConnection();
@@ -285,6 +292,24 @@ export default function ProjectConfig() {
     }
   };
 
+  const connectGoogleAds = async () => {
+    if (!project?.id) return;
+
+    try {
+      const returnTo = `/app/projects/${project.id}/config`;
+      const { data, error } = await supabase.functions.invoke(
+        `google-ads-auth?action=authorize&return_to=${encodeURIComponent(returnTo)}`,
+      );
+
+      if (error) throw error;
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro na conexão', description: e.message, variant: 'destructive' });
+    }
+  };
+
   const handleSourceSelect = async (type: 'sheet' | 'meta_ads') => {
     if (!project) return;
     try {
@@ -398,21 +423,22 @@ export default function ProjectConfig() {
     if (!project?.id) return;
 
     try {
-      const { error } = await supabase
-        .from('project_google_ads_connections')
-        .update({
-          customer_id: customer.id,
-        })
-        .eq('project_id', project.id);
-
+      const { data, error } = await supabase.functions.invoke('google-ads-api?action=validate-connection', {
+        body: {
+          projectId: project.id,
+          customerId: customer.id,
+          loginCustomerId: customer.loginCustomerId || null,
+        },
+      });
       if (error) throw error;
 
-      setGoogleAdsValidation(customer);
-      await syncGoogleAdsProjectConfig(customer);
+      const validatedCustomer = (data?.customer as GoogleAdsCustomerOption | undefined) ?? customer;
+      setGoogleAdsValidation(validatedCustomer);
+      await syncGoogleAdsProjectConfig(validatedCustomer);
 
       toast({
         title: 'Conta Google Ads selecionada',
-        description: `${customer.name} vinculada ao projeto.`,
+        description: `${validatedCustomer.name} vinculada ao projeto.`,
       });
     } catch (error: any) {
       toast({
@@ -424,12 +450,16 @@ export default function ProjectConfig() {
   };
 
   const validateGoogleAdsConnection = async () => {
-    if (!project?.id || !googleAdsConnected) return;
+    if (!project?.id || !googleAdsConnected || !googleAdsValidation?.id) return;
 
     setGoogleAdsValidating(true);
     try {
       const { data, error } = await supabase.functions.invoke('google-ads-api?action=validate-connection', {
-        body: { projectId: project.id },
+        body: {
+          projectId: project.id,
+          customerId: googleAdsValidation.id,
+          loginCustomerId: googleAdsValidation.loginCustomerId || null,
+        },
       });
 
       if (error) throw error;
@@ -459,7 +489,10 @@ export default function ProjectConfig() {
     setGoogleAdsListing(true);
     try {
       const { data, error } = await supabase.functions.invoke('google-ads-api?action=list-accessible-customers', {
-        body: { projectId: project.id },
+        body: {
+          projectId: project.id,
+          loginCustomerId: googleAdsValidation?.loginCustomerId || null,
+        },
       });
 
       if (error) throw error;
@@ -680,45 +713,56 @@ export default function ProjectConfig() {
                 <CardHeader>
                   <CardTitle>Google Ads</CardTitle>
                   <CardDescription>
-                    Conexão segura por projeto. As credenciais globais ficam nas secrets do backend e o refresh token deve ser salvo direto no banco, nunca no navegador.
+                    Conecte sua conta Google Ads e escolha qual conta alimenta este dashboard.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
-                    <p className="font-medium">Configuração segura</p>
+                    <p className="font-medium">Como funciona</p>
                     <p className="text-sm text-muted-foreground">
-                      Esta integração depende de uma configuração protegida no backend. Nenhuma credencial sensível deve aparecer ou ser salva no navegador.
+                      Essa integração lista as contas disponíveis no seu Google Ads para que você escolha qual delas será usada neste projeto.
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Depois que a conexão base estiver cadastrada no ambiente seguro, valide a conta e selecione o perfil correto aqui.
+                      Depois de conectar sua conta, selecione o perfil correto e o dashboard passa a buscar as métricas automaticamente.
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => void validateGoogleAdsConnection()} disabled={!googleAdsConnected || googleAdsValidating || googleAdsListing}>
-                      {googleAdsValidating ? 'Validando...' : 'Validar conexão'}
-                    </Button>
-                    <Button variant="outline" onClick={() => void listGoogleAdsCustomers()} disabled={!googleAdsConnected || googleAdsValidating || googleAdsListing}>
-                      {googleAdsListing ? 'Listando...' : 'Listar contas acessíveis'}
-                    </Button>
-                  </div>
-
-                  {googleAdsConnected && (
-                    <div className="rounded-lg border bg-muted/40 p-4">
-                      <p className="font-medium">Conexão base detectada para este projeto</p>
-                      <p className="text-sm text-muted-foreground">
-                        O backend encontrou uma conexão base configurada para este dashboard.
+                  {!googleAdsConnected ? (
+                    <div className="rounded-lg border-2 border-dashed p-8 text-center">
+                      <h3 className="text-lg font-semibold mb-2">Conectar Google Ads</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Autorize sua conta Google Ads para listar suas contas e vincular uma delas ao projeto atual.
                       </p>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        <Button size="lg" onClick={() => void connectGoogleAds()} disabled={googleAdsChecking}>
+                          {googleAdsChecking ? 'Verificando...' : 'Conectar Conta'}
+                        </Button>
+                        <Button variant="outline" size="lg" onClick={() => window.location.reload()} disabled={googleAdsChecking}>
+                          Atualizar
+                        </Button>
+                      </div>
                     </div>
-                  )}
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={() => void listGoogleAdsCustomers()} disabled={googleAdsValidating || googleAdsListing}>
+                          {googleAdsListing ? 'Listando...' : 'Listar contas acessíveis'}
+                        </Button>
+                        <Button onClick={() => void validateGoogleAdsConnection()} disabled={!googleAdsValidation?.id || googleAdsValidating || googleAdsListing}>
+                          {googleAdsValidating ? 'Validando...' : 'Validar conexão'}
+                        </Button>
+                        <Button variant="outline" onClick={() => void connectGoogleAds()} disabled={googleAdsValidating || googleAdsListing}>
+                          Trocar conta Google
+                        </Button>
+                      </div>
 
-                  {!googleAdsConnected && (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                      <p className="font-medium text-amber-800">Conexão não configurada</p>
-                      <p className="text-sm text-amber-700">
-                        A conexão base deste projeto ainda não foi cadastrada no backend. Depois disso, volte aqui para validar e escolher a conta.
-                      </p>
-                    </div>
+                      <div className="rounded-lg border bg-muted/40 p-4">
+                        <p className="font-medium">Conta Google conectada</p>
+                        <p className="text-sm text-muted-foreground">
+                          Escolha abaixo qual conta do Google Ads deve ser usada neste projeto.
+                        </p>
+                      </div>
+                    </>
                   )}
 
                   {googleAdsValidation && (
@@ -737,7 +781,7 @@ export default function ProjectConfig() {
                       <div>
                         <h4 className="font-medium">Contas acessíveis</h4>
                         <p className="text-sm text-muted-foreground">
-                          Clique em uma conta para preencher o customer_id e validar.
+                          Clique em uma conta para vinculá-la ao projeto atual.
                         </p>
                       </div>
                       <div className="grid gap-3">

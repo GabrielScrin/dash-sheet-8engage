@@ -14,6 +14,7 @@ import Projects from "./pages/app/Projects";
 import ProjectConfig from "./pages/app/ProjectConfig";
 import ProjectPreview from "./pages/app/ProjectPreview";
 import MetaCallback from "./pages/app/MetaCallback";
+import GoogleAdsCallback from "./pages/app/GoogleAdsCallback";
 import Settings from "./pages/app/Settings";
 import ViewDashboard from "./pages/ViewDashboard";
 import PublicClientPortal from "./pages/PublicClientPortal";
@@ -55,6 +56,11 @@ const App = () => (
               <Route path="/app/meta/callback" element={
                 <ProtectedRoute>
                   <MetaCallback />
+                </ProtectedRoute>
+              } />
+              <Route path="/app/google-ads/callback" element={
+                <ProtectedRoute>
+                  <GoogleAdsCallback />
                 </ProtectedRoute>
               } />
               <Route path="/app/settings" element={

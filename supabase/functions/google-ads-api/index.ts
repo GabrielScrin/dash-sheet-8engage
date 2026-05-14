@@ -9,7 +9,6 @@ const corsHeaders = {
 type GoogleAdsConnectionRow = {
   project_id: string;
   user_id: string;
-  refresh_token: string;
   customer_id: string | null;
   login_customer_id: string | null;
   customer_name: string | null;
@@ -23,7 +22,7 @@ const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v20";
 const normalizeCustomerId = (value: string | null | undefined) =>
   String(value || "").replace(/\D/g, "");
 
-async function refreshAccessToken(connection: GoogleAdsConnectionRow) {
+async function refreshAccessToken(refreshToken: string) {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
   if (!clientId || !clientSecret) {
@@ -37,7 +36,7 @@ async function refreshAccessToken(connection: GoogleAdsConnectionRow) {
       grant_type: "refresh_token",
       client_id: clientId,
       client_secret: clientSecret,
-      refresh_token: connection.refresh_token,
+      refresh_token: refreshToken,
     }),
   });
 
@@ -51,7 +50,7 @@ async function refreshAccessToken(connection: GoogleAdsConnectionRow) {
 
 async function googleAdsRequest<T>(
   accessToken: string,
-  connection: GoogleAdsConnectionRow,
+  loginCustomerId: string | null | undefined,
   path: string,
   init?: RequestInit,
 ): Promise<T> {
@@ -65,9 +64,9 @@ async function googleAdsRequest<T>(
   headers.set("developer-token", developerToken);
   headers.set("Content-Type", "application/json");
 
-  const loginCustomerId = normalizeCustomerId(connection.login_customer_id);
-  if (loginCustomerId) {
-    headers.set("login-customer-id", loginCustomerId);
+  const normalizedLoginCustomerId = normalizeCustomerId(loginCustomerId);
+  if (normalizedLoginCustomerId) {
+    headers.set("login-customer-id", normalizedLoginCustomerId);
   }
 
   const response = await fetch(`${GOOGLE_ADS_API_BASE}${path}`, {
@@ -87,10 +86,10 @@ async function googleAdsRequest<T>(
   return data as T;
 }
 
-async function listAccessibleCustomers(accessToken: string, connection: GoogleAdsConnectionRow) {
+async function listAccessibleCustomers(accessToken: string, loginCustomerId: string | null | undefined) {
   const accessible = await googleAdsRequest<{ resourceNames?: string[] }>(
     accessToken,
-    connection,
+    loginCustomerId,
     "/customers:listAccessibleCustomers",
     { method: "GET" },
   );
@@ -100,19 +99,18 @@ async function listAccessibleCustomers(accessToken: string, connection: GoogleAd
     .map(normalizeCustomerId)
     .filter(Boolean);
 
-  const customers: Array<{ id: string; name: string; currencyCode: string | null; timeZone: string | null }> = [];
+  const customers: Array<{ id: string; name: string; currencyCode: string | null; timeZone: string | null; loginCustomerId: string | null | undefined }> = [];
 
   for (const customerId of customerIds) {
     try {
       const details = await googleAdsRequest<Array<{ results?: Array<{ customer?: { id?: string; descriptiveName?: string; currencyCode?: string; timeZone?: string } }> }>>(
         accessToken,
-        connection,
+        loginCustomerId,
         `/customers/${customerId}/googleAds:searchStream`,
         {
           method: "POST",
           body: JSON.stringify({
-            query:
-              "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer LIMIT 1",
+            query: "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer LIMIT 1",
           }),
         },
       );
@@ -123,7 +121,7 @@ async function listAccessibleCustomers(accessToken: string, connection: GoogleAd
         name: String(customer?.descriptiveName || customerId),
         currencyCode: customer?.currencyCode || null,
         timeZone: customer?.timeZone || null,
-        loginCustomerId: connection.login_customer_id,
+        loginCustomerId,
       });
     } catch {
       customers.push({
@@ -131,7 +129,7 @@ async function listAccessibleCustomers(accessToken: string, connection: GoogleAd
         name: customerId,
         currencyCode: null,
         timeZone: null,
-        loginCustomerId: connection.login_customer_id,
+        loginCustomerId,
       });
     }
   }
@@ -139,21 +137,24 @@ async function listAccessibleCustomers(accessToken: string, connection: GoogleAd
   return customers;
 }
 
-async function validateCustomer(accessToken: string, connection: GoogleAdsConnectionRow) {
-  const customerId = normalizeCustomerId(connection.customer_id);
+async function validateCustomer(
+  accessToken: string,
+  customerIdValue: string | null | undefined,
+  loginCustomerId: string | null | undefined,
+) {
+  const customerId = normalizeCustomerId(customerIdValue);
   if (!customerId) {
     throw new Error("customer_id inválido");
   }
 
   const details = await googleAdsRequest<Array<{ results?: Array<{ customer?: { id?: string; descriptiveName?: string; currencyCode?: string; timeZone?: string } }> }>>(
     accessToken,
-    connection,
+    loginCustomerId,
     `/customers/${customerId}/googleAds:searchStream`,
     {
       method: "POST",
       body: JSON.stringify({
-        query:
-          "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer LIMIT 1",
+        query: "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer LIMIT 1",
       }),
     },
   );
@@ -168,17 +169,18 @@ async function validateCustomer(accessToken: string, connection: GoogleAdsConnec
     name: String(customer.descriptiveName || customer.id),
     currencyCode: customer.currencyCode || null,
     timeZone: customer.timeZone || null,
-    loginCustomerId: connection.login_customer_id,
+    loginCustomerId,
   };
 }
 
 async function fetchInsights(
   accessToken: string,
-  connection: GoogleAdsConnectionRow,
+  customerIdValue: string | null | undefined,
+  loginCustomerId: string | null | undefined,
   startDate: string,
   endDate: string,
 ) {
-  const customerId = normalizeCustomerId(connection.customer_id);
+  const customerId = normalizeCustomerId(customerIdValue);
   if (!customerId) {
     throw new Error("customer_id não configurado. Configure o Google Ads no painel do projeto.");
   }
@@ -201,7 +203,7 @@ async function fetchInsights(
     }>;
   }>>(
     accessToken,
-    connection,
+    loginCustomerId,
     `/customers/${customerId}/googleAds:searchStream`,
     { method: "POST", body: JSON.stringify({ query }) },
   );
@@ -245,7 +247,6 @@ Deno.serve(async (req) => {
     const projectId = String(body?.projectId || "").trim();
     if (!projectId) throw new Error("projectId é obrigatório");
 
-    // Auth: share token OR user JWT
     let userId: string | null = null;
 
     if (shareTokenHeader) {
@@ -262,7 +263,6 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      // userId stays null — share token path bypasses user ownership check
     } else if (authHeader?.startsWith("Bearer ")) {
       const userClient = createClient(supabaseUrl, supabaseAnonKey, {
         global: { headers: { Authorization: authHeader } },
@@ -282,34 +282,59 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch Google Ads connection
     let connectionQuery = adminClient
       .from("project_google_ads_connections")
-      .select("*")
+      .select("project_id, user_id, customer_id, login_customer_id, customer_name, currency_code, time_zone")
       .eq("project_id", projectId);
 
     if (userId) {
       connectionQuery = connectionQuery.eq("user_id", userId);
     }
 
-    const { data: connection, error: connectionError } = await connectionQuery.single();
+    const { data: connection } = await connectionQuery.maybeSingle();
+    const typedConnection = (connection as GoogleAdsConnectionRow | null) ?? null;
 
-    if (connectionError || !connection) {
-      return new Response(JSON.stringify({ error: "Conexão do Google Ads não encontrada para este projeto" }), {
+    let tokenOwnerUserId = typedConnection?.user_id ?? userId;
+    if (!tokenOwnerUserId) {
+      const { data: projectOwner } = await adminClient
+        .from("projects")
+        .select("user_id")
+        .eq("id", projectId)
+        .maybeSingle();
+      tokenOwnerUserId = String(projectOwner?.user_id || "").trim() || null;
+    }
+
+    if (!tokenOwnerUserId) {
+      return new Response(JSON.stringify({ error: "Projeto não encontrado" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const typedConnection = connection as GoogleAdsConnectionRow;
-    const accessToken = await refreshAccessToken(typedConnection);
+    const { data: tokenRow, error: tokenError } = await adminClient
+      .from("service_tokens")
+      .select("refresh_token")
+      .eq("user_id", tokenOwnerUserId)
+      .eq("provider", "google_ads")
+      .maybeSingle();
+
+    if (tokenError || !tokenRow?.refresh_token) {
+      return new Response(JSON.stringify({ error: "Google Ads não conectado. Autorize sua conta para continuar." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const accessToken = await refreshAccessToken(String(tokenRow.refresh_token));
+    const loginCustomerId = String(body?.loginCustomerId || typedConnection?.login_customer_id || "").trim() || null;
+    const selectedCustomerId = String(body?.customerId || typedConnection?.customer_id || "").trim() || null;
 
     if (action === "insights") {
       const startDate = String(body?.startDate || "").trim();
       const endDate = String(body?.endDate || "").trim();
       if (!startDate || !endDate) throw new Error("startDate e endDate são obrigatórios");
 
-      const totals = await fetchInsights(accessToken, typedConnection, startDate, endDate);
+      const totals = await fetchInsights(accessToken, selectedCustomerId, loginCustomerId, startDate, endDate);
       return new Response(JSON.stringify({ totals }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -320,7 +345,7 @@ Deno.serve(async (req) => {
       const endDate = String(body?.endDate || "").trim();
       if (!startDate || !endDate) throw new Error("startDate e endDate são obrigatórios");
 
-      const customerId = normalizeCustomerId(typedConnection.customer_id);
+      const customerId = normalizeCustomerId(selectedCustomerId);
       if (!customerId) throw new Error("customer_id não configurado. Configure o Google Ads no painel do projeto.");
 
       const timeseriesQuery = [
@@ -346,11 +371,11 @@ Deno.serve(async (req) => {
       }>;
 
       const [tsRes, campRes] = await Promise.all([
-        googleAdsRequest<BatchResult>(accessToken, typedConnection, `/customers/${customerId}/googleAds:searchStream`, {
+        googleAdsRequest<BatchResult>(accessToken, loginCustomerId, `/customers/${customerId}/googleAds:searchStream`, {
           method: "POST",
           body: JSON.stringify({ query: timeseriesQuery }),
         }),
-        googleAdsRequest<BatchResult>(accessToken, typedConnection, `/customers/${customerId}/googleAds:searchStream`, {
+        googleAdsRequest<BatchResult>(accessToken, loginCustomerId, `/customers/${customerId}/googleAds:searchStream`, {
           method: "POST",
           body: JSON.stringify({ query: campaignsQuery }),
         }),
@@ -404,26 +429,31 @@ Deno.serve(async (req) => {
     }
 
     if (action === "list-accessible-customers") {
-      const customers = await listAccessibleCustomers(accessToken, typedConnection);
+      const customers = await listAccessibleCustomers(accessToken, loginCustomerId);
       return new Response(JSON.stringify({ customers }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     if (action === "validate-connection") {
-      const customer = await validateCustomer(accessToken, typedConnection);
+      if (!userId) {
+        throw new Error("Autenticação de usuário é obrigatória para validar a conexão");
+      }
+
+      const customer = await validateCustomer(accessToken, selectedCustomerId, loginCustomerId);
 
       await adminClient
         .from("project_google_ads_connections")
-        .update({
+        .upsert({
+          project_id: projectId,
+          user_id: userId,
           customer_id: customer.id,
           customer_name: customer.name,
           currency_code: customer.currencyCode,
           time_zone: customer.timeZone,
+          login_customer_id: customer.loginCustomerId,
           last_validated_at: new Date().toISOString(),
-        })
-        .eq("project_id", projectId)
-        .eq("user_id", userId ?? "");
+        }, { onConflict: "project_id" });
 
       return new Response(JSON.stringify({ customer, valid: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
