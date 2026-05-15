@@ -406,59 +406,6 @@ export type Database = {
           },
         ]
       }
-      project_google_ads_connections: {
-        Row: {
-          created_at: string
-          currency_code: string | null
-          customer_id: string | null
-          customer_name: string | null
-          id: string
-          last_validated_at: string | null
-          login_customer_id: string | null
-          project_id: string
-          refresh_token: string
-          time_zone: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          currency_code?: string | null
-          customer_id?: string | null
-          customer_name?: string | null
-          id?: string
-          last_validated_at?: string | null
-          login_customer_id?: string | null
-          project_id: string
-          refresh_token: string
-          time_zone?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          currency_code?: string | null
-          customer_id?: string | null
-          customer_name?: string | null
-          id?: string
-          last_validated_at?: string | null
-          login_customer_id?: string | null
-          project_id?: string
-          refresh_token?: string
-          time_zone?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_google_ads_connections_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: true
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -484,6 +431,51 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      project_google_ads_connections: {
+        Row: {
+          created_at: string
+          currency_code: string | null
+          customer_id: string | null
+          customer_name: string | null
+          id: string
+          last_validated_at: string | null
+          login_customer_id: string | null
+          project_id: string
+          refresh_token: string | null
+          time_zone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency_code?: string | null
+          customer_id?: string | null
+          customer_name?: string | null
+          id?: string
+          last_validated_at?: string | null
+          login_customer_id?: string | null
+          project_id: string
+          refresh_token?: string | null
+          time_zone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          currency_code?: string | null
+          customer_id?: string | null
+          customer_name?: string | null
+          id?: string
+          last_validated_at?: string | null
+          login_customer_id?: string | null
+          project_id?: string
+          refresh_token?: string | null
+          time_zone?: string | null
           updated_at?: string
           user_id?: string
         }
