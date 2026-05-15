@@ -463,6 +463,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const [funnelType, setFunnelType] = useState<'captacao' | 'mensagem' | 'conversao'>('captacao');
   const [distributionPhase, setDistributionPhase] = useState<'all' | 'descoberta' | 'consideracao'>('all');
   const [paidMediaDetailTab, setPaidMediaDetailTab] = useState<'meta' | 'google'>('meta');
+  const [paidMediaDetailPhaseTab, setPaidMediaDetailPhaseTab] = useState<'descoberta' | 'consideracao'>('descoberta');
   const [googleReconnectRequired, setGoogleReconnectRequired] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -4271,6 +4272,104 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       </section>
     );
   };
+
+  const paidMediaMetaPhaseCards = useMemo(() => {
+    if (project?.source_type !== 'meta_ads' || !metaDistributionData) return null;
+
+    const discovery = [
+      { label: 'Investimento', value: metaDistributionData.spend || 0, format: 'currency' as const, subtitle: 'Meta Ads' },
+      { label: 'Alcance', value: metaDistributionData.totalReach || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+      { label: 'Impressões', value: metaDistributionData.totalImpressions || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+      { label: 'Frequência', value: metaDistributionData.frequency || 0, format: 'decimal' as const, subtitle: 'Meta Ads' },
+      { label: 'Cliques no Link', value: metaDistributionData.clicks || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+      { label: 'CPC', value: metaDistributionData.cpc || 0, format: 'currency' as const, subtitle: 'Meta Ads' },
+      { label: 'CTR', value: metaDistributionData.ctr || 0, format: 'percentage' as const, subtitle: 'Meta Ads' },
+      { label: 'Seguidores', value: metaDistributionData.followers || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+      { label: 'Custo por Seguidor', value: metaDistributionData.costPerFollower || 0, format: 'currency' as const, subtitle: 'Meta Ads' },
+      { label: 'Visitas ao Perfil', value: metaDistributionData.profileVisits || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+    ];
+
+    const consideration = [
+      { label: 'Investimento', value: metaDistributionData.spend || 0, format: 'currency' as const, subtitle: 'Meta Ads' },
+      { label: 'Alcance', value: metaDistributionData.totalReach || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+      { label: 'Impressões', value: metaDistributionData.totalImpressions || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+      { label: 'Frequência', value: metaDistributionData.frequency || 0, format: 'decimal' as const, subtitle: 'Meta Ads' },
+      { label: 'Cliques no Link', value: metaDistributionData.clicks || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+      { label: 'CPC', value: metaDistributionData.cpc || 0, format: 'currency' as const, subtitle: 'Meta Ads' },
+      { label: 'CTR', value: metaDistributionData.ctr || 0, format: 'percentage' as const, subtitle: 'Meta Ads' },
+      { label: 'Visualizações de Vídeo', value: metaDistributionData.videoViews || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+      { label: 'Thruplay', value: metaDistributionData.thruplay || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+      { label: 'Vídeo 3s', value: metaDistributionData.video3s || 0, format: 'number' as const, subtitle: 'Meta Ads' },
+    ];
+
+    return { descoberta: discovery, consideracao: consideration };
+  }, [metaDistributionData, project?.source_type]);
+
+  const paidMediaGooglePhaseCards = useMemo(() => {
+    if (project?.source_type !== 'meta_ads' || googleAdsDetailRows.length === 0) return null;
+
+    const totals = googleAdsDetailRows.reduce(
+      (acc, row) => {
+        acc.cost += Number(row.cost || 0);
+        acc.uniqueUsers += Number(row.uniqueUsers || 0);
+        acc.impressions += Number(row.impressions || 0);
+        acc.clicks += Number(row.clicks || 0);
+        acc.trueviewAverageCpvWeightedCost += Number(row.trueviewAverageCpv || 0) * Number(row.trueviewViews || 0);
+        acc.trueviewViews += Number(row.trueviewViews || 0);
+        acc.conversions += Number(row.conversions || 0);
+        acc.videoViews25 += Number(row.videoViews25 || 0);
+        acc.videoViews50 += Number(row.videoViews50 || 0);
+        acc.videoViews75 += Number(row.videoViews75 || 0);
+        acc.videoViews100 += Number(row.videoViews100 || 0);
+        return acc;
+      },
+      {
+        cost: 0,
+        uniqueUsers: 0,
+        impressions: 0,
+        clicks: 0,
+        trueviewAverageCpvWeightedCost: 0,
+        trueviewViews: 0,
+        conversions: 0,
+        videoViews25: 0,
+        videoViews50: 0,
+        videoViews75: 0,
+        videoViews100: 0,
+      }
+    );
+
+    const frequency = totals.uniqueUsers > 0 ? totals.impressions / totals.uniqueUsers : 0;
+    const cpc = totals.clicks > 0 ? totals.cost / totals.clicks : 0;
+    const cpv = totals.trueviewViews > 0 ? totals.cost / totals.trueviewViews : 0;
+    const costPerConversion = totals.conversions > 0 ? totals.cost / totals.conversions : 0;
+
+    return {
+      descoberta: [
+        { label: 'Custo', value: totals.cost, format: 'currency' as const, subtitle: 'Google Ads' },
+        { label: 'Usuários exclusivos', value: totals.uniqueUsers, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Impressões', value: totals.impressions, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Freq. média impr. / usuário', value: frequency, format: 'decimal' as const, subtitle: 'Google Ads' },
+        { label: 'CPV médio do TrueView', value: cpv, format: 'currency' as const, subtitle: 'Google Ads' },
+        { label: 'Visualização do TrueView', value: totals.trueviewViews, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Cliques', value: totals.clicks, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'CPC médio', value: cpc, format: 'currency' as const, subtitle: 'Google Ads' },
+        { label: 'Conversões', value: totals.conversions, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Custo / Conv.', value: costPerConversion, format: 'currency' as const, subtitle: 'Google Ads' },
+      ],
+      consideracao: [
+        { label: 'Custo', value: totals.cost, format: 'currency' as const, subtitle: 'Google Ads' },
+        { label: 'Usuários exclusivos', value: totals.uniqueUsers, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Impressões', value: totals.impressions, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Freq. média impr. / usuário', value: frequency, format: 'decimal' as const, subtitle: 'Google Ads' },
+        { label: 'Vídeo assistido até 25%', value: totals.videoViews25, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Vídeo assistido até 50%', value: totals.videoViews50, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Vídeo assistido até 75%', value: totals.videoViews75, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'Vídeo assistido até 100%', value: totals.videoViews100, format: 'number' as const, subtitle: 'Google Ads' },
+        { label: 'CPV médio do TrueView', value: cpv, format: 'currency' as const, subtitle: 'Google Ads' },
+        { label: 'Visualização do TrueView', value: totals.trueviewViews, format: 'number' as const, subtitle: 'Google Ads' },
+      ],
+    };
+  }, [googleAdsDetailRows, project?.source_type]);
 
   const isLoading =
     loadingProject ||
