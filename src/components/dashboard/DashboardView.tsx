@@ -372,6 +372,27 @@ const isCostPerFollowerMetricKey = (key: string, label?: string) => {
   const source = `${key} ${label || ''}`;
   return /\b(cost per follow|cost per follower|custo por seguidores?|custo por seguidor)\b/.test(normalizeMetricName(source));
 };
+const inferMetaPhase = (row: Record<string, unknown>): 'perpetua' | 'descoberta' | 'consideracao' | null => {
+  const haystack = normalizeMetricName(
+    [
+      row?.campaign_name,
+      row?.adset_name,
+      row?.ad_name,
+      row?.name,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  );
+
+  if (!haystack) return null;
+  if (/\bperpet(ua)?\b/.test(haystack)) return 'perpetua';
+  if (/\bconsider(ac|at|a|)ao\b|\bconsideration\b/.test(haystack)) return 'consideracao';
+  if (/\bdescob(erta|rir)?\b|\bdiscovery\b/.test(haystack)) return 'descoberta';
+  return null;
+};
+const matchesMetaPhase = (row: Record<string, unknown>, phase: 'perpetua' | 'descoberta' | 'consideracao') =>
+  inferMetaPhase(row) === phase;
 const sumMetricValues = (rows: Array<Record<string, unknown>>, key: string) =>
   rows.reduce((sum, row) => sum + parseSheetNumber(row?.[key]), 0);
 
@@ -3516,9 +3537,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     });
   }, [metaAdThumbnailsQuery.data, metaCreativeData, project?.source_type]);
 
+  const metaVisibleCreativeData = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [];
+    if (activeTab !== 'descoberta' && activeTab !== 'consideracao') return metaCreativeDataWithThumbs;
+
+    return (metaCreativeDataWithThumbs || []).filter((row: any) => matchesMetaPhase(row, activeTab));
+  }, [activeTab, metaCreativeDataWithThumbs, project?.source_type]);
+
   const distributionTopCreatives = useMemo(() => {
     if (project?.source_type === 'meta_ads') {
-      return (metaCreativeDataWithThumbs || [])
+      return (metaVisibleCreativeData || [])
         .slice(0, 8)
         .map((row: any) => ({
           ...row,
@@ -3559,7 +3587,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       link?: string;
       thumbnail?: string;
     }>;
-  }, [metaCreativeDataWithThumbs, project?.source_type, sheetDistributionData?.topCreatives]);
+  }, [metaVisibleCreativeData, project?.source_type, sheetDistributionData?.topCreatives]);
 
   const distributionCreativeMetricOptions = useMemo(() => {
     if (project?.source_type === 'meta_ads') {
@@ -3743,83 +3771,89 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     return steps;
   }, [filteredRows, project?.source_type]);
 
+  const aggregateMetaTotals = React.useMemo(
+    () =>
+      (
+        rows: any[],
+        extra: Record<string, unknown> = {},
+        paymentSummary?: { orders?: number; netRevenue?: number },
+      ) => {
+        const totals = rows.reduce(
+          (acc, r) => {
+            acc.spend += Number(r?.spend || 0);
+            acc.impressions += Number(r?.impressions || 0);
+            acc.clicks += Number(r?.clicks || 0);
+            acc.inline_link_clicks += Number(r?.inline_link_clicks || 0);
+            acc.leads += Number(r?.leads || 0);
+            acc.messages += Number(r?.messages || 0);
+            acc.purchases += Number(r?.purchases || 0);
+            acc.purchase_value += Number(r?.purchase_value || 0);
+            acc.landing_views += Number(r?.landing_views || 0);
+            acc.checkout_views += Number(r?.checkout_views || 0);
+            acc.video3s += Number(r?.video3s || 0);
+            acc.video15s += Number(r?.video15s || 0);
+            acc.thruplay += Number(r?.thruplay || 0);
+            acc.profile_visits += Number(r?.profile_visits || 0);
+            acc.instagram_follows += Number(r?.instagram_follows || 0);
+            acc.reach = Math.max(acc.reach, Number(r?.reach || 0));
+            return acc;
+          },
+          {
+            spend: 0,
+            impressions: 0,
+            reach: 0,
+            clicks: 0,
+            inline_link_clicks: 0,
+            leads: 0,
+            messages: 0,
+            profile_visits: 0,
+            instagram_follows: 0,
+            purchases: 0,
+            purchase_value: 0,
+            landing_views: 0,
+            checkout_views: 0,
+            video3s: 0,
+            video15s: 0,
+            thruplay: 0,
+          }
+        );
+
+        const spend = totals.spend;
+        const impressions = totals.impressions;
+        const reach = totals.reach;
+        const clicks = totals.clicks;
+        const leads = totals.leads;
+        const purchases = totals.purchases;
+        const purchaseValue = totals.purchase_value;
+        const video3s = totals.video3s;
+        const video15s = totals.video15s;
+        const thruplay = totals.thruplay;
+        const paymentOrders = Number(paymentSummary?.orders || 0);
+        const paymentRevenue = Number(paymentSummary?.netRevenue || 0);
+        const effectivePurchases = paymentOrders > 0 ? paymentOrders : purchases;
+        const effectivePurchaseValue = paymentRevenue > 0 ? paymentRevenue : purchaseValue;
+
+        return {
+          ...totals,
+          purchases: effectivePurchases,
+          purchase_value: effectivePurchaseValue,
+          frequency: reach > 0 ? impressions / reach : 0,
+          ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+          cpc: clicks > 0 ? spend / clicks : 0,
+          cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
+          cpl: leads > 0 ? spend / leads : 0,
+          cpa: effectivePurchases > 0 ? spend / effectivePurchases : 0,
+          roas: spend > 0 ? effectivePurchaseValue / spend : 0,
+          hook_rate: impressions > 0 ? video3s / impressions : 0,
+          hold_rate: impressions > 0 ? (video15s || thruplay) / impressions : 0,
+          ...extra,
+        };
+      },
+    [],
+  );
+
   const metaTotalsRow = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return null;
-
-    const aggregateMetaTotals = (
-      rows: any[],
-      extra: Record<string, unknown> = {},
-      paymentSummary?: { orders?: number; netRevenue?: number },
-    ) => {
-      const totals = rows.reduce(
-        (acc, r) => {
-          acc.spend += Number(r?.spend || 0);
-          acc.impressions += Number(r?.impressions || 0);
-          acc.clicks += Number(r?.clicks || 0);
-          acc.inline_link_clicks += Number(r?.inline_link_clicks || 0);
-          acc.leads += Number(r?.leads || 0);
-          acc.messages += Number(r?.messages || 0);
-          acc.purchases += Number(r?.purchases || 0);
-          acc.purchase_value += Number(r?.purchase_value || 0);
-          acc.landing_views += Number(r?.landing_views || 0);
-          acc.checkout_views += Number(r?.checkout_views || 0);
-          acc.video3s += Number(r?.video3s || 0);
-          acc.video15s += Number(r?.video15s || 0);
-          acc.thruplay += Number(r?.thruplay || 0);
-          acc.reach = Math.max(acc.reach, Number(r?.reach || 0));
-          return acc;
-        },
-        {
-          spend: 0,
-          impressions: 0,
-          reach: 0,
-          clicks: 0,
-          inline_link_clicks: 0,
-          leads: 0,
-          messages: 0,
-          profile_visits: 0,
-          instagram_follows: 0,
-          purchases: 0,
-          purchase_value: 0,
-          landing_views: 0,
-          checkout_views: 0,
-          video3s: 0,
-          video15s: 0,
-          thruplay: 0,
-        }
-      );
-
-      const spend = totals.spend;
-      const impressions = totals.impressions;
-      const reach = totals.reach;
-      const clicks = totals.clicks;
-      const leads = totals.leads;
-      const purchases = totals.purchases;
-      const purchaseValue = totals.purchase_value;
-      const video3s = totals.video3s;
-      const video15s = totals.video15s;
-      const thruplay = totals.thruplay;
-      const paymentOrders = Number(paymentSummary?.orders || 0);
-      const paymentRevenue = Number(paymentSummary?.netRevenue || 0);
-      const effectivePurchases = paymentOrders > 0 ? paymentOrders : purchases;
-      const effectivePurchaseValue = paymentRevenue > 0 ? paymentRevenue : purchaseValue;
-
-      return {
-        ...totals,
-        purchases: effectivePurchases,
-        purchase_value: effectivePurchaseValue,
-        frequency: reach > 0 ? impressions / reach : 0,
-        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
-        cpc: clicks > 0 ? spend / clicks : 0,
-        cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
-        cpl: leads > 0 ? spend / leads : 0,
-        cpa: effectivePurchases > 0 ? spend / effectivePurchases : 0,
-        roas: spend > 0 ? effectivePurchaseValue / spend : 0,
-        hook_rate: impressions > 0 ? video3s / impressions : 0,
-        hold_rate: impressions > 0 ? (video15s || thruplay) / impressions : 0,
-        ...extra,
-      };
-    };
 
     const paymentSummary = (paymentAttributionSummaryQuery.data as any)?.summary || undefined;
 
@@ -3846,6 +3880,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     if (!accountTotals.length) return null;
     return aggregateMetaTotals(accountTotals, {}, paymentSummary);
   }, [
+    aggregateMetaTotals,
     metaAccountTotalsQuery.data,
     metaCampaignTotalsQuery.data,
     metaCampaignsQuery.data,
@@ -3853,6 +3888,26 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     project?.source_type,
     selectedCampaignIds,
   ]);
+
+  const metaTabTotalsRow = useMemo(() => {
+    if (project?.source_type !== 'meta_ads' || (activeTab !== 'descoberta' && activeTab !== 'consideracao')) {
+      return null;
+    }
+
+    const selectedSet = selectedCampaignIds.length > 0 ? new Set(selectedCampaignIds.map((id) => String(id))) : null;
+    const phaseRows = ((metaCampaignTotalsQuery.data || []) as any[]).filter((row) => {
+      if (selectedSet && !selectedSet.has(String(row?.campaign_id || ''))) return false;
+      return matchesMetaPhase(row, activeTab);
+    });
+
+    if (!phaseRows.length) return null;
+    return aggregateMetaTotals(phaseRows, { phase: activeTab });
+  }, [activeTab, aggregateMetaTotals, metaCampaignTotalsQuery.data, project?.source_type, selectedCampaignIds]);
+
+  const currentMetaDistributionRow =
+    project?.source_type === 'meta_ads' && activeTab !== 'perpetua'
+      ? metaTabTotalsRow
+      : metaTotalsRow;
 
   const metaFunnelSteps = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
@@ -3917,7 +3972,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
 
   const metaDistributionData = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return null;
-    const r: any = metaTotalsRow;
+    const r: any = currentMetaDistributionRow;
+    if (!r) return null;
 
     const reachFromField = Number(r?.reach || 0);
     const freq = Number(r?.frequency || 0);
@@ -3994,7 +4050,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       costPerFollower: followersGained > 0 ? spend / followersGained : 0,
       platformBreakdown,
     };
-  }, [metaPlatformBreakdownQuery.data, metaTotalsRow, project?.source_type]);
+  }, [currentMetaDistributionRow, metaPlatformBreakdownQuery.data, project?.source_type]);
 
   const metaBigNumbers = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [];
@@ -4798,6 +4854,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                   </div>
                 </section>
               )}
+              {project?.source_type === 'meta_ads' && !metaTabTotalsRow && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Sem campanhas classificadas para esta etapa</AlertTitle>
+                  <AlertDescription>
+                    Para a conexao direta com a Meta, as abas de Descoberta e Consideracao sao separadas pelo nome da campanha, conjunto ou anuncio.
+                    Use nomes contendo "descoberta" ou "consideracao" para alimentar cada aba.
+                  </AlertDescription>
+                </Alert>
+              )}
               <section>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   {isGoogleSheetView
@@ -5052,6 +5118,16 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     </Select>
                   </div>
                 </section>
+              )}
+              {project?.source_type === 'meta_ads' && !metaTabTotalsRow && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Sem campanhas classificadas para esta etapa</AlertTitle>
+                  <AlertDescription>
+                    Para a conexao direta com a Meta, as abas de Descoberta e Consideracao sao separadas pelo nome da campanha, conjunto ou anuncio.
+                    Use nomes contendo "descoberta" ou "consideracao" para alimentar cada aba.
+                  </AlertDescription>
+                </Alert>
               )}
               <section>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
