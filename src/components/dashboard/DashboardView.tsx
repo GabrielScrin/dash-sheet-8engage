@@ -405,6 +405,40 @@ interface DashboardViewProps {
   initialMappings?: any[];
 }
 
+type GoogleAdsCampaignDetailRow = {
+  date: string;
+  campaignName: string;
+  adName: string;
+  cost: number;
+  uniqueUsers: number;
+  averageImpressionFrequencyPerUser: number;
+  impressions: number;
+  clicks: number;
+  averageCpc: number;
+  trueviewAverageCpv: number;
+  trueviewViews: number;
+  conversions: number;
+  costPerConversion: number;
+  videoViews25: number;
+  videoViews50: number;
+  videoViews75: number;
+  videoViews100: number;
+  videoLink: string | null;
+};
+
+const formatGoogleAdsTableDate = (value: string) => {
+  const parsed = parseSheetDateValue(value);
+  return parsed ? format(parsed, 'dd/MM/yyyy') : value;
+};
+
+const formatGoogleAdsTableNumber = (value: number) => Math.round(Number(value || 0)).toLocaleString('pt-BR');
+
+const formatGoogleAdsTableDecimal = (value: number) =>
+  Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const formatGoogleAdsTableCurrency = (value: number) =>
+  Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
 export function DashboardView({ projectId, isPreview = false, shareToken, initialProject, initialMappings }: DashboardViewProps) {
   const { signInWithGoogle } = useAuth();
   const [activeTab, setActiveTab] = useState('perpetua');
@@ -765,6 +799,28 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         return (data?.totals ?? null) as { spend: number; impressions: number; clicks: number; conversions: number } | null;
       } catch {
         return null;
+      }
+    },
+    enabled: project?.source_type === 'meta_ads' && !!projectId,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const googleAdsCampaignDetailsQuery = useQuery({
+    queryKey: [
+      'google-ads-campaign-details',
+      projectId,
+      dateRange?.from ? dateRange.from.toISOString() : null,
+      dateRange?.to ? dateRange.to.toISOString() : null,
+    ],
+    queryFn: async () => {
+      const startDate = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : format(subDays(new Date(), 30), 'yyyy-MM-dd');
+      const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
+      try {
+        const data = await invokeEdge('google-ads-api?action=ad-performance', { projectId, startDate, endDate });
+        return (Array.isArray(data?.rows) ? data.rows : []) as GoogleAdsCampaignDetailRow[];
+      } catch {
+        return [] as GoogleAdsCampaignDetailRow[];
       }
     },
     enabled: project?.source_type === 'meta_ads' && !!projectId,
@@ -4113,6 +4169,109 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     ];
   }, [activeTab, googleDistributionSummary, isGoogleSheetView]);
 
+  const googleAdsDetailRows = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [] as GoogleAdsCampaignDetailRow[];
+    return (googleAdsCampaignDetailsQuery.data || []) as GoogleAdsCampaignDetailRow[];
+  }, [googleAdsCampaignDetailsQuery.data, project?.source_type]);
+
+  const renderGoogleAdsDetailTable = (mode: 'descoberta' | 'consideracao') => {
+    if (project?.source_type !== 'meta_ads' || googleAdsDetailRows.length === 0) return null;
+
+    return (
+      <section>
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold">Google Ads</h3>
+          <p className="text-sm text-muted-foreground">
+            {mode === 'descoberta'
+              ? 'Detalhamento de campanhas e anúncios do Google Ads para a etapa de descoberta.'
+              : 'Detalhamento de campanhas e anúncios do Google Ads para a etapa de consideração.'}
+          </p>
+        </div>
+        <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-muted/50 border-b whitespace-nowrap">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">Data</th>
+                <th className="px-4 py-3 text-left font-medium">Nome da Campanha</th>
+                <th className="px-4 py-3 text-left font-medium">Nome do Anúncio</th>
+                <th className="px-4 py-3 text-right font-medium">Custo</th>
+                <th className="px-4 py-3 text-right font-medium">Usuários Exclusivos</th>
+                <th className="px-4 py-3 text-right font-medium">Impressões</th>
+                <th className="px-4 py-3 text-right font-medium">Freq. Méd. Impr. / Usuário</th>
+                {mode === 'descoberta' ? (
+                  <>
+                    <th className="px-4 py-3 text-right font-medium">Cliques</th>
+                    <th className="px-4 py-3 text-right font-medium">CPC Méd.</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 25%</th>
+                    <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 50%</th>
+                    <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 75%</th>
+                    <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 100%</th>
+                  </>
+                )}
+                <th className="px-4 py-3 text-right font-medium">CPV Médio do TrueView</th>
+                <th className="px-4 py-3 text-right font-medium">Visualização do TrueView</th>
+                {mode === 'descoberta' && (
+                  <>
+                    <th className="px-4 py-3 text-right font-medium">Conversões</th>
+                    <th className="px-4 py-3 text-right font-medium">Custo / Conv.</th>
+                  </>
+                )}
+                <th className="px-4 py-3 text-left font-medium">Video Link</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {googleAdsDetailRows.map((row, index) => (
+                <tr key={`${mode}-${row.date}-${row.campaignName}-${row.adName}-${index}`} className="hover:bg-muted/30">
+                  <td className="px-4 py-3 whitespace-nowrap">{formatGoogleAdsTableDate(row.date)}</td>
+                  <td className="px-4 py-3 min-w-[220px]">{row.campaignName}</td>
+                  <td className="px-4 py-3 min-w-[220px]">{row.adName}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.cost)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.uniqueUsers)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.impressions)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableDecimal(row.averageImpressionFrequencyPerUser)}</td>
+                  {mode === 'descoberta' ? (
+                    <>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.clicks)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.averageCpc)}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews25)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews50)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews75)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews100)}</td>
+                    </>
+                  )}
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.trueviewAverageCpv)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.trueviewViews)}</td>
+                  {mode === 'descoberta' && (
+                    <>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.conversions)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.costPerConversion)}</td>
+                    </>
+                  )}
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {row.videoLink ? (
+                      <a href={row.videoLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                        <ExternalLink className="h-3 w-3" />
+                        Abrir
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">Sem link</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  };
+
   const isLoading =
     loadingProject ||
     (loadingMappings && !(shareToken && initialMappings)) ||
@@ -4123,6 +4282,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     metaCampaignTotalsQuery.isLoading ||
     metaPlatformBreakdownQuery.isLoading ||
     metaAdsQuery.isLoading ||
+    googleAdsCampaignDetailsQuery.isLoading ||
     paymentAttributionSummaryQuery.isLoading;
 
   if (isLoading) {
@@ -4706,6 +4866,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 </div>
               </section>
 
+              {renderGoogleAdsDetailTable('descoberta')}
+
 
               {distributionTopCreatives.length > 0 && (
                 <section>
@@ -4958,6 +5120,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     )}
                 </div>
               </section>
+
+              {renderGoogleAdsDetailTable('consideracao')}
 
 
               {distributionTopCreatives.length > 0 && (

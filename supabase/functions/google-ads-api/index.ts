@@ -226,6 +226,144 @@ async function fetchInsights(
   return { spend, impressions, clicks, conversions };
 }
 
+type GoogleAdsDetailRow = {
+  date: string;
+  campaignName: string;
+  adName: string;
+  cost: number;
+  uniqueUsers: number;
+  impressions: number;
+  averageImpressionFrequencyPerUser: number;
+  clicks: number;
+  averageCpc: number;
+  trueviewAverageCpv: number;
+  trueviewViews: number;
+  conversions: number;
+  costPerConversion: number;
+  videoViews25: number;
+  videoViews50: number;
+  videoViews75: number;
+  videoViews100: number;
+  videoLink: string | null;
+};
+
+async function fetchAdPerformanceRows(
+  accessToken: string,
+  customerIdValue: string | null | undefined,
+  loginCustomerId: string | null | undefined,
+  startDate: string,
+  endDate: string,
+) {
+  const customerId = normalizeCustomerId(customerIdValue);
+  if (!customerId) {
+    throw new Error("customer_id nÃ£o configurado. Configure o Google Ads no painel do projeto.");
+  }
+
+  const query = [
+    "SELECT",
+    "segments.date,",
+    "campaign.name,",
+    "ad_group_ad.ad.id,",
+    "ad_group_ad.ad.name,",
+    "ad_group_ad.ad.final_urls,",
+    "metrics.cost_micros,",
+    "metrics.unique_users,",
+    "metrics.impressions,",
+    "metrics.clicks,",
+    "metrics.average_cpc,",
+    "metrics.trueview_average_cpv,",
+    "metrics.video_views,",
+    "metrics.conversions,",
+    "metrics.cost_per_conversion,",
+    "metrics.video_quartile_p25_rate,",
+    "metrics.video_quartile_p50_rate,",
+    "metrics.video_quartile_p75_rate,",
+    "metrics.video_quartile_p100_rate",
+    "FROM ad_group_ad",
+    `WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'`,
+    "AND campaign.status != 'REMOVED'",
+    "AND ad_group_ad.status != 'REMOVED'",
+  ].join(" ");
+
+  type BatchResult = Array<{
+    results?: Array<{
+      segments?: { date?: string };
+      campaign?: { name?: string };
+      adGroupAd?: {
+        ad?: {
+          id?: string | number;
+          name?: string;
+          finalUrls?: string[];
+        };
+      };
+      metrics?: {
+        costMicros?: string;
+        uniqueUsers?: string | number;
+        impressions?: string | number;
+        clicks?: string | number;
+        averageCpc?: string;
+        trueviewAverageCpv?: number;
+        videoViews?: string | number;
+        conversions?: number;
+        costPerConversion?: number;
+        videoQuartileP25Rate?: number;
+        videoQuartileP50Rate?: number;
+        videoQuartileP75Rate?: number;
+        videoQuartileP100Rate?: number;
+      };
+    }>;
+  }>;
+
+  const response = await googleAdsRequest<BatchResult>(
+    accessToken,
+    loginCustomerId,
+    `/customers/${customerId}/googleAds:searchStream`,
+    { method: "POST", body: JSON.stringify({ query }) },
+  );
+
+  const rows: GoogleAdsDetailRow[] = [];
+  const batches = Array.isArray(response) ? response : [response];
+
+  for (const batch of batches) {
+    for (const result of batch.results || []) {
+      const impressions = Number(result.metrics?.impressions || 0);
+      const uniqueUsers = Number(result.metrics?.uniqueUsers || 0);
+      const videoViews = Number(result.metrics?.videoViews || 0);
+      const p25Rate = Number(result.metrics?.videoQuartileP25Rate || 0);
+      const p50Rate = Number(result.metrics?.videoQuartileP50Rate || 0);
+      const p75Rate = Number(result.metrics?.videoQuartileP75Rate || 0);
+      const p100Rate = Number(result.metrics?.videoQuartileP100Rate || 0);
+      const adId = String(result.adGroupAd?.ad?.id || "").trim();
+      const adName = String(result.adGroupAd?.ad?.name || adId || "AnÃºncio sem nome");
+
+      const estimatedVideoBase = videoViews > 0 ? videoViews : impressions;
+
+      rows.push({
+        date: String(result.segments?.date || ""),
+        campaignName: String(result.campaign?.name || "Campanha sem nome"),
+        adName,
+        cost: Number(result.metrics?.costMicros || 0) / 1_000_000,
+        uniqueUsers,
+        impressions,
+        averageImpressionFrequencyPerUser: uniqueUsers > 0 ? impressions / uniqueUsers : 0,
+        clicks: Number(result.metrics?.clicks || 0),
+        averageCpc: Number(result.metrics?.averageCpc || 0) / 1_000_000,
+        trueviewAverageCpv: Number(result.metrics?.trueviewAverageCpv || 0),
+        trueviewViews: videoViews,
+        conversions: Number(result.metrics?.conversions || 0),
+        costPerConversion: Number(result.metrics?.costPerConversion || 0),
+        videoViews25: Math.round(estimatedVideoBase * p25Rate),
+        videoViews50: Math.round(estimatedVideoBase * p50Rate),
+        videoViews75: Math.round(estimatedVideoBase * p75Rate),
+        videoViews100: Math.round(estimatedVideoBase * p100Rate),
+        videoLink: result.adGroupAd?.ad?.finalUrls?.[0] || null,
+      });
+    }
+  }
+
+  return rows.filter((row) => row.date && row.campaignName);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -424,6 +562,17 @@ Deno.serve(async (req) => {
       );
 
       return new Response(JSON.stringify({ timeseries, campaigns, totals }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (action === "ad-performance") {
+      const startDate = String(body?.startDate || "").trim();
+      const endDate = String(body?.endDate || "").trim();
+      if (!startDate || !endDate) throw new Error("startDate e endDate sÃ£o obrigatÃ³rios");
+
+      const rows = await fetchAdPerformanceRows(accessToken, selectedCustomerId, loginCustomerId, startDate, endDate);
+      return new Response(JSON.stringify({ rows }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
