@@ -4336,6 +4336,104 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     [filteredGoogleAdsRows],
   );
 
+  const computeGoogleAdsTotals = (rows: GoogleAdsCampaignDetailRow[]) => {
+    const totals = rows.reduce(
+      (acc, row) => {
+        acc.cost += row.cost || 0;
+        acc.impressions += row.impressions || 0;
+        acc.clicks += row.clicks || 0;
+        acc.conversions += row.conversions || 0;
+        acc.videoViews += row.trueviewViews || 0;
+        acc.uniqueUsers += row.uniqueUsers || 0;
+        acc.videoViews25 += row.videoViews25 || 0;
+        acc.videoViews50 += row.videoViews50 || 0;
+        acc.videoViews75 += row.videoViews75 || 0;
+        acc.videoViews100 += row.videoViews100 || 0;
+        return acc;
+      },
+      {
+        cost: 0, impressions: 0, clicks: 0, conversions: 0, videoViews: 0, uniqueUsers: 0,
+        videoViews25: 0, videoViews50: 0, videoViews75: 0, videoViews100: 0,
+      },
+    );
+    return {
+      ...totals,
+      ctr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
+      cpc: totals.clicks > 0 ? totals.cost / totals.clicks : 0,
+      cpv: totals.videoViews > 0 ? totals.cost / totals.videoViews : 0,
+      costPerConversion: totals.conversions > 0 ? totals.cost / totals.conversions : 0,
+      avgImpressionFrequency: totals.uniqueUsers > 0 ? totals.impressions / totals.uniqueUsers : 0,
+    };
+  };
+
+  const renderGoogleAdsBigNumbers = (mode: 'descoberta' | 'consideracao') => {
+    if (project?.source_type !== 'meta_ads') return null;
+    const rows = mode === 'descoberta' ? googleAdsRowsByChannel.youtube : googleAdsRowsByChannel.search;
+    if (rows.length === 0) return null;
+    const totals = computeGoogleAdsTotals(rows);
+    const isVideo = mode === 'descoberta';
+    const cards: Array<{ label: string; value: number; format: 'currency' | 'number' | 'percentage' | 'decimal' }> = isVideo
+      ? [
+          { label: 'Investimento', value: totals.cost, format: 'currency' },
+          { label: 'Impressões', value: totals.impressions, format: 'number' },
+          { label: 'Usuários Únicos', value: totals.uniqueUsers, format: 'number' },
+          { label: 'Freq. Média / Usuário', value: totals.avgImpressionFrequency, format: 'decimal' },
+          { label: 'Visualizações TrueView', value: totals.videoViews, format: 'number' },
+          { label: 'CPV Médio', value: totals.cpv, format: 'currency' },
+          { label: 'Vídeo 25%', value: totals.videoViews25, format: 'number' },
+          { label: 'Vídeo 50%', value: totals.videoViews50, format: 'number' },
+          { label: 'Vídeo 75%', value: totals.videoViews75, format: 'number' },
+          { label: 'Vídeo 100%', value: totals.videoViews100, format: 'number' },
+        ]
+      : [
+          { label: 'Investimento', value: totals.cost, format: 'currency' },
+          { label: 'Impressões', value: totals.impressions, format: 'number' },
+          { label: 'Cliques', value: totals.clicks, format: 'number' },
+          { label: 'CTR', value: totals.ctr, format: 'percentage' },
+          { label: 'CPC Médio', value: totals.cpc, format: 'currency' },
+          { label: 'Conversões', value: totals.conversions, format: 'number' },
+          { label: 'Custo / Conv.', value: totals.costPerConversion, format: 'currency' },
+        ];
+    return (
+      <section>
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold">{isVideo ? 'YouTube · Descoberta' : 'Pesquisa · Consideração'}</h3>
+          <p className="text-sm text-muted-foreground">
+            Indicadores das campanhas {isVideo ? 'de vídeo (YouTube/Demand Gen)' : 'de Pesquisa'} do Google Ads no período.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {cards.map((card) => (
+            <BigNumberCard
+              key={`${mode}-google-${card.label}`}
+              label={card.label}
+              value={card.value}
+              format={card.format}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  };
+
+  const renderGoogleAdsEmptyAlert = (mode: 'descoberta' | 'consideracao') => {
+    if (project?.source_type !== 'meta_ads') return null;
+    const rows = mode === 'descoberta' ? googleAdsRowsByChannel.youtube : googleAdsRowsByChannel.search;
+    if (rows.length > 0) return null;
+    const isVideo = mode === 'descoberta';
+    if (googleAdsCampaignDetailsQuery.isLoading) return null;
+    return (
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>{isVideo ? 'Sem campanhas de YouTube ativas' : 'Sem campanhas de Pesquisa ativas'}</AlertTitle>
+        <AlertDescription>
+          Nenhuma campanha {isVideo ? 'de vídeo (YouTube/Demand Gen)' : 'de Pesquisa'} do Google Ads retornou dados no período selecionado.
+          Verifique se a conexão do Google Ads está ativa e se existem campanhas ativas desse tipo.
+        </AlertDescription>
+      </Alert>
+    );
+  };
+
   const renderGoogleAdsDetailTable = (mode: 'descoberta' | 'consideracao') => {
     if (project?.source_type !== 'meta_ads') return null;
     // Mapeamento: Descoberta = YouTube/Video; Consideração = Search.
