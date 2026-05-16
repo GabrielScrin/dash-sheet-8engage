@@ -1,72 +1,55 @@
+## Problema atual
 
+No projeto Meta Ads (`metatataaa`):
 
-# Correção de Encoding Quebrado + Deploy de Edge Functions
+1. **Abas Descoberta e Consideração ficam vazias**: hoje elas filtram dados da Meta procurando os termos "descoberta"/"consideracao" no nome da campanha/conjunto/anúncio. Como as campanhas reais não têm esses nomes, o resultado é vazio.
+2. **"Detalhe por Mídia → Google" mostra só os 4 big numbers** (gasto, impressões, cliques, conversões). A "Visão Semanal" e a "Performance por Criativo" logo abaixo continuam puxando da Meta.
+3. **Falta diferenciar campanhas Search (Pesquisa) e YouTube (Video)** do Google Ads, que têm métricas e leituras totalmente diferentes.
 
-## Problema 1: Encoding quebrado na Etapa 2 (Conexão)
+## O que vou fazer
 
-O arquivo `src/components/sheets/SheetTabSelector.tsx` tem caracteres UTF-8 corrompidos em 6 locais. Caracteres como `ã`, `é`, `ç` foram substituídos por `�` (replacement character).
+### 1. Edge function `google-ads-api`
 
-**Locais afetados:**
-- Linha 84: `Perp�tua` e `Distribui��o` → `Perpétua` e `Distribuição`
-- Linha 114: `visualiza��o` → `visualização`
-- Linha 116: `Perp�tua + Distribui��o` → `Perpétua + Distribuição`
-- Linha 122: `vis�o Perp�tua` → `visão Perpétua`
-- Linha 140: `Distribui��o` → `Distribuição`
-- Linha 162: `Sele��o` → `Seleção`
+- Em `fetchAdPerformanceRows`, incluir no SELECT:
+  - `campaign.advertising_channel_type` (SEARCH, VIDEO, DISPLAY, DEMAND_GEN, PERFORMANCE_MAX, …)
+  - `campaign.advertising_channel_sub_type`
+  - `campaign.status`
+- Devolver em cada `row` um campo novo `channelType` normalizado em 3 grupos:
+  - `search` → SEARCH
+  - `youtube` → VIDEO + DEMAND_GEN (descoberta no YouTube/Discovery)
+  - `other` → restante
+- Adicionar nova action `active-campaigns` que retorna a lista de campanhas ativas (`status = ENABLED`) com `id`, `name`, `channelType`, métricas agregadas (cost, impressions, clicks, conversions, video_views, ctr, cpc, cpv).
 
-Também no `src/pages/app/ProjectConfig.tsx`:
-- Linha 1: remover BOM character (`﻿`)
-- Linha 434: `â€¢` → `•` (bullet corrompido)
+### 2. Frontend — Abas Descoberta e Consideração (projetos Meta Ads)
 
-## Problema 2: Deploy de Edge Functions falhando
+Redefinir o significado das abas quando `source_type = meta_ads`:
 
-O arquivo `.github/workflows/deploy-functions.yml` só deploia 2 funções (`meta-auth` e `meta-api`), mas o projeto tem 5:
-- `google-sheets`
-- `validate-share-token`
-- `create-share-token`
-- `payment-attribution`
+- **Descoberta** = campanhas Google Ads do tipo **YouTube** (VIDEO + DEMAND_GEN) — etapa de topo de funil.
+  - Big numbers: Custo, Impressões, Usuários únicos, Frequência média, CPV médio, Visualizações TrueView, Vídeo 25/50/75/100%, CTR.
+  - Tabela detalhada já existente em modo "vídeo".
+- **Consideração** = campanhas Google Ads do tipo **Search** — etapa de consideração/decisão.
+  - Big numbers: Custo, Impressões, Cliques, CTR, CPC médio, Conversões, Custo/Conv., Taxa de conversão.
+  - Tabela detalhada em modo "search".
+- A aba **Perpetua** continua exibindo a Meta como hoje.
+- Remover o alerta antigo de "use nomes contendo descoberta/consideracao". Mostrar alerta novo só quando o Google Ads não estiver conectado ou não retornar campanhas daquele tipo.
 
-As funções mais recentes não estão no workflow, então qualquer push que altere essas funções dispara o workflow mas não as deploia.
+### 3. Frontend — "Detalhe por Mídia" → Google
 
-**Correção:** Adicionar os 4 deploys faltantes ao workflow, respeitando a configuração de `verify_jwt` do `config.toml`.
+Quando o usuário seleciona a aba **Google** dentro de "Detalhe por Mídia":
 
-## Sequência de Execução
+- A seção **Visão Semanal/Diária/Mensal** passa a usar o timeseries do Google Ads (já temos `portal-overview`; reutilizar o `ad-performance` agregado por data) com colunas: Investimento, Impressões, Cliques, CTR, CPC, Conversões, Custo/Conv.
+- A seção **Performance por Criativo** passa a usar `ad-performance` do Google Ads agrupado por anúncio, com colunas adaptadas ao tipo da campanha (Search → Cliques/CPC/Conv; YouTube → Views/CPV/Quartis).
+- Quando o usuário volta para a aba **Meta**, mantém o comportamento atual.
+- Adicionar um sub-toggle dentro do Google: **Todas | Pesquisa | YouTube** para filtrar essas duas seções.
 
-1. Reescrever `SheetTabSelector.tsx` com encoding UTF-8 correto
-2. Corrigir BOM e bullet em `ProjectConfig.tsx` (linha 1 e 434)
-3. Atualizar `.github/workflows/deploy-functions.yml` para incluir todas as 6 funções
-4. Deploy imediato da `payment-attribution` (já feito anteriormente, mas garantir que está ativo)
+### 4. Detalhes técnicos
 
-## Detalhes Técnicos
+- Tipos atualizados em `GoogleAdsCampaignDetailRow` para incluir `channelType` e `campaignStatus`.
+- Reuso do `googleAdsCampaignDetailsQuery` (action `ad-performance`) — já roda para projetos Meta Ads.
+- Sem mudanças de schema no banco — toda a inteligência fica na edge function e no frontend.
+- Deploy automático da edge function `google-ads-api` ao final.
 
-### SheetTabSelector.tsx - Strings corrigidas:
-```
-Linha 84:  'Escolha uma aba para Perpétua e outra para Distribuição.'
-Linha 114: 'Escolha qual aba alimenta cada visualização do dashboard:'
-Linha 116: 'Perpétua + Distribuição'
-Linha 122: 'Aba da visão Perpétua'
-Linha 140: 'Aba da Distribuição'
-Linha 162: 'Confirmar Seleção'
-```
+### 5. Verificação
 
-### ProjectConfig.tsx - Correções:
-```
-Linha 1:   Remover BOM (﻿) do início do arquivo
-Linha 434: Trocar â€¢ por •
-```
-
-### deploy-functions.yml - Adicionar steps:
-```yaml
-- name: Deploy google-sheets
-  run: supabase functions deploy google-sheets --project-ref $PROJECT_ID --no-verify-jwt
-
-- name: Deploy validate-share-token
-  run: supabase functions deploy validate-share-token --project-ref $PROJECT_ID --no-verify-jwt
-
-- name: Deploy create-share-token
-  run: supabase functions deploy create-share-token --project-ref $PROJECT_ID --no-verify-jwt
-
-- name: Deploy payment-attribution
-  run: supabase functions deploy payment-attribution --project-ref $PROJECT_ID --no-verify-jwt
-```
-
+- Após deploy, conferir via curl `google-ads-api?action=ad-performance` se `channelType` aparece nas linhas.
+- Visualmente no preview: clicar Descoberta, Consideração e Detalhe por Mídia → Google e validar que cada visualização traz dados do Google (e específicos por tipo).
