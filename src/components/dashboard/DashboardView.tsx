@@ -4233,8 +4233,115 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     return (googleAdsCampaignDetailsQuery.data || []) as GoogleAdsCampaignDetailRow[];
   }, [googleAdsCampaignDetailsQuery.data, project?.source_type]);
 
+  const googleAdsRowsByChannel = useMemo(() => {
+    const search: GoogleAdsCampaignDetailRow[] = [];
+    const youtube: GoogleAdsCampaignDetailRow[] = [];
+    const other: GoogleAdsCampaignDetailRow[] = [];
+    for (const row of googleAdsDetailRows) {
+      const ct = row.channelType || 'other';
+      if (ct === 'search') search.push(row);
+      else if (ct === 'youtube') youtube.push(row);
+      else other.push(row);
+    }
+    return { search, youtube, other };
+  }, [googleAdsDetailRows]);
+
+  // Aggregate Google Ads rows by date (for "Visão Semanal/Diária/Mensal" inside Detalhe por Mídia → Google).
+  const aggregateGoogleAdsByPeriod = (
+    rows: GoogleAdsCampaignDetailRow[],
+    mode: 'day' | 'week' | 'month',
+  ) => {
+    const map = new Map<string, { period: string; cost: number; impressions: number; clicks: number; conversions: number; videoViews: number }>();
+    for (const row of rows) {
+      const date = parseSheetDateValue(row.date);
+      if (!date) continue;
+      let key: string;
+      if (mode === 'day') key = format(date, 'yyyy-MM-dd');
+      else if (mode === 'month') key = format(startOfMonth(date), 'yyyy-MM');
+      else key = format(startOfWeek(date, { weekStartsOn: 0 }), 'yyyy-MM-dd');
+      const cur = map.get(key) || { period: key, cost: 0, impressions: 0, clicks: 0, conversions: 0, videoViews: 0 };
+      cur.cost += row.cost || 0;
+      cur.impressions += row.impressions || 0;
+      cur.clicks += row.clicks || 0;
+      cur.conversions += row.conversions || 0;
+      cur.videoViews += row.trueviewViews || 0;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => a.period.localeCompare(b.period));
+  };
+
+  // Aggregate Google Ads rows by ad (for "Performance por Criativo" inside Detalhe por Mídia → Google).
+  const aggregateGoogleAdsByAd = (rows: GoogleAdsCampaignDetailRow[]) => {
+    const map = new Map<string, {
+      adName: string;
+      campaignName: string;
+      channelType: GoogleAdsCampaignDetailRow['channelType'];
+      videoLink: string | null;
+      cost: number;
+      impressions: number;
+      clicks: number;
+      conversions: number;
+      videoViews: number;
+      videoViews25: number;
+      videoViews50: number;
+      videoViews75: number;
+      videoViews100: number;
+    }>();
+    for (const row of rows) {
+      const key = `${row.campaignName}::${row.adName}`;
+      const cur = map.get(key) || {
+        adName: row.adName,
+        campaignName: row.campaignName,
+        channelType: row.channelType,
+        videoLink: row.videoLink,
+        cost: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        videoViews: 0,
+        videoViews25: 0,
+        videoViews50: 0,
+        videoViews75: 0,
+        videoViews100: 0,
+      };
+      cur.cost += row.cost || 0;
+      cur.impressions += row.impressions || 0;
+      cur.clicks += row.clicks || 0;
+      cur.conversions += row.conversions || 0;
+      cur.videoViews += row.trueviewViews || 0;
+      cur.videoViews25 += row.videoViews25 || 0;
+      cur.videoViews50 += row.videoViews50 || 0;
+      cur.videoViews75 += row.videoViews75 || 0;
+      cur.videoViews100 += row.videoViews100 || 0;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
+  };
+
+  const [googleSubChannel, setGoogleSubChannel] = useState<'all' | 'search' | 'youtube'>('all');
+
+  const filteredGoogleAdsRows = useMemo(() => {
+    if (googleSubChannel === 'search') return googleAdsRowsByChannel.search;
+    if (googleSubChannel === 'youtube') return googleAdsRowsByChannel.youtube;
+    return googleAdsDetailRows;
+  }, [googleSubChannel, googleAdsRowsByChannel, googleAdsDetailRows]);
+
+  const googleAdsWeeklyData = useMemo(
+    () => aggregateGoogleAdsByPeriod(filteredGoogleAdsRows, viewMode),
+    [filteredGoogleAdsRows, viewMode],
+  );
+
+  const googleAdsCreativeData = useMemo(
+    () => aggregateGoogleAdsByAd(filteredGoogleAdsRows),
+    [filteredGoogleAdsRows],
+  );
+
   const renderGoogleAdsDetailTable = (mode: 'descoberta' | 'consideracao') => {
-    if (project?.source_type !== 'meta_ads' || googleAdsDetailRows.length === 0) return null;
+    if (project?.source_type !== 'meta_ads') return null;
+    // Mapeamento: Descoberta = YouTube/Video; Consideração = Search.
+    const rowsForMode = mode === 'descoberta' ? googleAdsRowsByChannel.youtube : googleAdsRowsByChannel.search;
+    if (rowsForMode.length === 0) return null;
+    const isVideoMode = mode === 'descoberta';
 
     return (
       <section>
@@ -4257,22 +4364,22 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 <th className="px-4 py-3 text-right font-medium">Usuários Exclusivos</th>
                 <th className="px-4 py-3 text-right font-medium">Impressões</th>
                 <th className="px-4 py-3 text-right font-medium">Freq. Méd. Impr. / Usuário</th>
-                {mode === 'descoberta' ? (
-                  <>
-                    <th className="px-4 py-3 text-right font-medium">Cliques</th>
-                    <th className="px-4 py-3 text-right font-medium">CPC Méd.</th>
-                  </>
-                ) : (
+                {isVideoMode ? (
                   <>
                     <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 25%</th>
                     <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 50%</th>
                     <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 75%</th>
                     <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 100%</th>
                   </>
+                ) : (
+                  <>
+                    <th className="px-4 py-3 text-right font-medium">Cliques</th>
+                    <th className="px-4 py-3 text-right font-medium">CPC Méd.</th>
+                  </>
                 )}
                 <th className="px-4 py-3 text-right font-medium">CPV Médio do TrueView</th>
                 <th className="px-4 py-3 text-right font-medium">Visualização do TrueView</th>
-                {mode === 'descoberta' && (
+                {!isVideoMode && (
                   <>
                     <th className="px-4 py-3 text-right font-medium">Conversões</th>
                     <th className="px-4 py-3 text-right font-medium">Custo / Conv.</th>
@@ -4282,7 +4389,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               </tr>
             </thead>
             <tbody className="divide-y">
-              {googleAdsDetailRows.map((row, index) => (
+              {rowsForMode.map((row, index) => (
                 <tr key={`${mode}-${row.date}-${row.campaignName}-${row.adName}-${index}`} className="hover:bg-muted/30">
                   <td className="px-4 py-3 whitespace-nowrap">{formatGoogleAdsTableDate(row.date)}</td>
                   <td className="px-4 py-3 min-w-[220px]">{row.campaignName}</td>
@@ -4291,22 +4398,22 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                   <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.uniqueUsers)}</td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.impressions)}</td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableDecimal(row.averageImpressionFrequencyPerUser)}</td>
-                  {mode === 'descoberta' ? (
-                    <>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.clicks)}</td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.averageCpc)}</td>
-                    </>
-                  ) : (
+                  {isVideoMode ? (
                     <>
                       <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews25)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews50)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews75)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews100)}</td>
                     </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.clicks)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.averageCpc)}</td>
+                    </>
                   )}
                   <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.trueviewAverageCpv)}</td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.trueviewViews)}</td>
-                  {mode === 'descoberta' && (
+                  {!isVideoMode && (
                     <>
                       <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.conversions)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.costPerConversion)}</td>
