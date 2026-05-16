@@ -5321,16 +5321,9 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                   </div>
                 </section>
               )}
-              {project?.source_type === 'meta_ads' && !metaTabTotalsRow && (
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Sem campanhas classificadas para esta etapa</AlertTitle>
-                  <AlertDescription>
-                    Para a conexao direta com a Meta, as abas de Descoberta e Consideracao sao separadas pelo nome da campanha, conjunto ou anuncio.
-                    Use nomes contendo "descoberta" ou "consideracao" para alimentar cada aba.
-                  </AlertDescription>
-                </Alert>
-              )}
+              {renderGoogleAdsEmptyAlert('consideracao')}
+              {renderGoogleAdsBigNumbers('consideracao')}
+              {project?.source_type !== 'meta_ads' && (
               <section>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   {isGoogleSheetView
@@ -5398,6 +5391,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     )}
                 </div>
               </section>
+              )}
 
               {renderGoogleAdsDetailTable('consideracao')}
 
