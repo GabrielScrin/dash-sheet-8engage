@@ -4886,6 +4886,147 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                           />
                         ))}
                       </div>
+                      {googleAdsDetailRows.length > 0 && (
+                        <div className="mt-6 space-y-6">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Filtrar por tipo de campanha:</span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={googleSubChannel === 'all' ? 'default' : 'outline'}
+                              onClick={() => setGoogleSubChannel('all')}
+                            >
+                              Todas
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={googleSubChannel === 'search' ? 'default' : 'outline'}
+                              onClick={() => setGoogleSubChannel('search')}
+                              disabled={googleAdsRowsByChannel.search.length === 0}
+                            >
+                              Pesquisa ({googleAdsRowsByChannel.search.length})
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={googleSubChannel === 'youtube' ? 'default' : 'outline'}
+                              onClick={() => setGoogleSubChannel('youtube')}
+                              disabled={googleAdsRowsByChannel.youtube.length === 0}
+                            >
+                              YouTube ({googleAdsRowsByChannel.youtube.length})
+                            </Button>
+                          </div>
+
+                          {googleAdsWeeklyData.length > 0 && (
+                            <section>
+                              <h4 className="mb-3 text-base font-semibold">
+                                {viewMode === 'day' ? 'Visão Diária' : viewMode === 'month' ? 'Visão Mensal' : 'Visão Semanal'} — Google Ads
+                              </h4>
+                              <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-x-auto">
+                                <table className="min-w-full text-sm">
+                                  <thead className="bg-muted/50 border-b whitespace-nowrap">
+                                    <tr>
+                                      <th className="px-4 py-3 text-left font-medium">Período</th>
+                                      <th className="px-4 py-3 text-right font-medium">Investimento</th>
+                                      <th className="px-4 py-3 text-right font-medium">Impressões</th>
+                                      <th className="px-4 py-3 text-right font-medium">Cliques</th>
+                                      <th className="px-4 py-3 text-right font-medium">CTR</th>
+                                      <th className="px-4 py-3 text-right font-medium">CPC</th>
+                                      <th className="px-4 py-3 text-right font-medium">Conversões</th>
+                                      <th className="px-4 py-3 text-right font-medium">Custo / Conv.</th>
+                                      <th className="px-4 py-3 text-right font-medium">Views (TrueView)</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y">
+                                    {googleAdsWeeklyData.map((row) => {
+                                      const ctr = row.impressions > 0 ? (row.clicks / row.impressions) * 100 : 0;
+                                      const cpc = row.clicks > 0 ? row.cost / row.clicks : 0;
+                                      const cpa = row.conversions > 0 ? row.cost / row.conversions : 0;
+                                      return (
+                                        <tr key={row.period} className="hover:bg-muted/30">
+                                          <td className="px-4 py-3 whitespace-nowrap">{formatGoogleAdsTableDate(row.period)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.cost)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.impressions)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.clicks)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableDecimal(ctr)}%</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(cpc)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.conversions)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(cpa)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews)}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </section>
+                          )}
+
+                          {googleAdsCreativeData.length > 0 && (
+                            <section>
+                              <h4 className="mb-3 text-base font-semibold">Performance por Criativo — Google Ads</h4>
+                              <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-x-auto">
+                                <table className="min-w-full text-sm">
+                                  <thead className="bg-muted/50 border-b whitespace-nowrap">
+                                    <tr>
+                                      <th className="px-4 py-3 text-left font-medium">Anúncio</th>
+                                      <th className="px-4 py-3 text-left font-medium">Campanha</th>
+                                      <th className="px-4 py-3 text-left font-medium">Tipo</th>
+                                      <th className="px-4 py-3 text-right font-medium">Investimento</th>
+                                      <th className="px-4 py-3 text-right font-medium">Impressões</th>
+                                      <th className="px-4 py-3 text-right font-medium">Cliques</th>
+                                      <th className="px-4 py-3 text-right font-medium">CTR</th>
+                                      <th className="px-4 py-3 text-right font-medium">CPC</th>
+                                      <th className="px-4 py-3 text-right font-medium">Views TrueView</th>
+                                      <th className="px-4 py-3 text-right font-medium">CPV</th>
+                                      <th className="px-4 py-3 text-right font-medium">Conversões</th>
+                                      <th className="px-4 py-3 text-left font-medium">Link</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y">
+                                    {googleAdsCreativeData.map((row, i) => {
+                                      const ctr = row.impressions > 0 ? (row.clicks / row.impressions) * 100 : 0;
+                                      const cpc = row.clicks > 0 ? row.cost / row.clicks : 0;
+                                      const cpv = row.videoViews > 0 ? row.cost / row.videoViews : 0;
+                                      const tipoLabel = row.channelType === 'youtube' ? 'YouTube' : row.channelType === 'search' ? 'Pesquisa' : (row.channelType || 'Outros');
+                                      return (
+                                        <tr key={`${row.campaignName}-${row.adName}-${i}`} className="hover:bg-muted/30">
+                                          <td className="px-4 py-3 min-w-[200px] font-medium">{row.adName}</td>
+                                          <td className="px-4 py-3 min-w-[200px]">{row.campaignName}</td>
+                                          <td className="px-4 py-3 whitespace-nowrap">
+                                            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs">
+                                              {tipoLabel}
+                                            </span>
+                                          </td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.cost)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.impressions)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.clicks)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableDecimal(ctr)}%</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(cpc)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(cpv)}</td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.conversions)}</td>
+                                          <td className="px-4 py-3 whitespace-nowrap">
+                                            {row.videoLink ? (
+                                              <a href={row.videoLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                                                <ExternalLink className="h-3 w-3" />
+                                                Abrir
+                                              </a>
+                                            ) : (
+                                              <span className="text-muted-foreground">—</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </section>
+                          )}
+                        </div>
+                      )}
                     </TabsContent>
                   </Tabs>
                 </section>
