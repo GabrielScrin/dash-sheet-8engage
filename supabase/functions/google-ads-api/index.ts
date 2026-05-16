@@ -245,7 +245,24 @@ type GoogleAdsDetailRow = {
   videoViews75: number;
   videoViews100: number;
   videoLink: string | null;
+  channelType: "search" | "youtube" | "display" | "shopping" | "performance_max" | "other";
+  rawChannelType: string;
+  campaignStatus: string;
 };
+
+function normalizeChannelType(
+  channelType: string | undefined | null,
+  subType: string | undefined | null,
+): GoogleAdsDetailRow["channelType"] {
+  const ct = String(channelType || "").toUpperCase();
+  const st = String(subType || "").toUpperCase();
+  if (ct === "SEARCH") return "search";
+  if (ct === "VIDEO" || ct === "DEMAND_GEN" || ct === "DISCOVERY" || st.includes("VIDEO") || st.includes("YOUTUBE")) return "youtube";
+  if (ct === "DISPLAY") return "display";
+  if (ct === "SHOPPING") return "shopping";
+  if (ct === "PERFORMANCE_MAX") return "performance_max";
+  return "other";
+}
 
 async function fetchAdPerformanceRows(
   accessToken: string,
@@ -263,6 +280,9 @@ async function fetchAdPerformanceRows(
     "SELECT",
     "segments.date,",
     "campaign.name,",
+    "campaign.status,",
+    "campaign.advertising_channel_type,",
+    "campaign.advertising_channel_sub_type,",
     "ad_group_ad.ad.id,",
     "ad_group_ad.ad.name,",
     "ad_group_ad.ad.final_urls,",
@@ -288,7 +308,12 @@ async function fetchAdPerformanceRows(
   type BatchResult = Array<{
     results?: Array<{
       segments?: { date?: string };
-      campaign?: { name?: string };
+      campaign?: {
+        name?: string;
+        status?: string;
+        advertisingChannelType?: string;
+        advertisingChannelSubType?: string;
+      };
       adGroupAd?: {
         ad?: {
           id?: string | number;
@@ -337,6 +362,8 @@ async function fetchAdPerformanceRows(
       const adName = String(result.adGroupAd?.ad?.name || adId || "AnÃºncio sem nome");
 
       const estimatedVideoBase = videoViews > 0 ? videoViews : impressions;
+      const rawChannelType = String(result.campaign?.advertisingChannelType || "");
+      const rawChannelSubType = String(result.campaign?.advertisingChannelSubType || "");
 
       rows.push({
         date: String(result.segments?.date || ""),
@@ -357,6 +384,9 @@ async function fetchAdPerformanceRows(
         videoViews75: Math.round(estimatedVideoBase * p75Rate),
         videoViews100: Math.round(estimatedVideoBase * p100Rate),
         videoLink: result.adGroupAd?.ad?.finalUrls?.[0] || null,
+        channelType: normalizeChannelType(rawChannelType, rawChannelSubType),
+        rawChannelType: rawChannelType || rawChannelSubType || "",
+        campaignStatus: String(result.campaign?.status || ""),
       });
     }
   }
