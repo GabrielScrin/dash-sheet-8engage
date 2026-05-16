@@ -445,6 +445,9 @@ type GoogleAdsCampaignDetailRow = {
   videoViews75: number;
   videoViews100: number;
   videoLink: string | null;
+  channelType?: 'search' | 'youtube' | 'display' | 'shopping' | 'performance_max' | 'other';
+  rawChannelType?: string;
+  campaignStatus?: string;
 };
 
 const formatGoogleAdsTableDate = (value: string) => {
