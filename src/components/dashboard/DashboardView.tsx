@@ -901,6 +901,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     project?.source_type === 'sheet' && Boolean(sheetGoogleDescobertaName && sheetGoogleConsideracaoName);
   const isGoogleSheetView =
     project?.source_type === 'sheet' && sheetDashboardSource === 'google';
+  const isGoogleMetaView =
+    project?.source_type === 'meta_ads' && sheetDashboardSource === 'google';
 
   const sheetNames: string[] = Array.from(
     new Set(
@@ -916,12 +918,12 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   );
 
   React.useEffect(() => {
-    if (project?.source_type !== 'sheet') {
+    // Apenas reseta para fontes que não são sheet nem meta_ads
+    if (project?.source_type !== 'sheet' && project?.source_type !== 'meta_ads') {
       if (sheetDashboardSource !== 'meta') setSheetDashboardSource('meta');
-      // Não reseta a tab para meta_ads — descoberta e consideracao são abas válidas
       return;
     }
-
+    // Ao mudar para Google view, sai da aba perpetua (que não existe no Google view)
     if (sheetDashboardSource === 'google' && activeTab === 'perpetua') {
       setActiveTab('descoberta');
     }
@@ -4435,6 +4437,123 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     );
   };
 
+  const renderGoogleMetaTable = (mode: 'descoberta' | 'consideracao') => {
+    if (project?.source_type !== 'meta_ads') return null;
+    const rows = googleAdsDetailRows.filter((r) => r.cost > 0);
+    const isDescoberta = mode === 'descoberta';
+
+    if (googleAdsCampaignDetailsQuery.isLoading) {
+      return (
+        <div className="flex h-32 items-center justify-center rounded-lg border border-dashed">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <span className="ml-2 text-sm text-muted-foreground">Carregando dados do Google Ads...</span>
+        </div>
+      );
+    }
+
+    if (rows.length === 0) {
+      return (
+        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          Nenhuma campanha com gasto no período selecionado.
+        </div>
+      );
+    }
+
+    return (
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold">
+            {isDescoberta ? 'Descoberta' : 'Consideração'} — Google Ads
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            {rows.length} linha(s) · apenas campanhas com gasto no período
+          </p>
+        </div>
+        <div className="overflow-x-auto rounded-md border bg-card text-card-foreground shadow-sm">
+          <table className="min-w-full text-sm">
+            <thead className="whitespace-nowrap border-b bg-muted/50">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">Data</th>
+                <th className="px-4 py-3 text-left font-medium min-w-[180px]">Nome da Campanha</th>
+                <th className="px-4 py-3 text-left font-medium min-w-[180px]">Nome do Anúncio</th>
+                <th className="px-4 py-3 text-right font-medium">Custo</th>
+                <th className="px-4 py-3 text-right font-medium">Usuários Exclusivos</th>
+                <th className="px-4 py-3 text-right font-medium">Impressões</th>
+                <th className="px-4 py-3 text-right font-medium">Freq. Méd. Impr. / Usuário</th>
+                {isDescoberta ? (
+                  <>
+                    <th className="px-4 py-3 text-right font-medium">Cliques</th>
+                    <th className="px-4 py-3 text-right font-medium">CPC Méd.</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 25%</th>
+                    <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 50%</th>
+                    <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 75%</th>
+                    <th className="px-4 py-3 text-right font-medium">Vídeo Assistido até 100%</th>
+                  </>
+                )}
+                <th className="px-4 py-3 text-right font-medium">CPV Médio do TrueView</th>
+                <th className="px-4 py-3 text-right font-medium">Visualização do TrueView</th>
+                {isDescoberta && (
+                  <>
+                    <th className="px-4 py-3 text-right font-medium">Conversões</th>
+                    <th className="px-4 py-3 text-right font-medium">Custo / Conv.</th>
+                  </>
+                )}
+                <th className="px-4 py-3 text-left font-medium">Video Link</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {rows.map((row, index) => (
+                <tr key={`google-meta-${mode}-${row.date}-${row.adName}-${index}`} className="hover:bg-muted/30">
+                  <td className="px-4 py-3 whitespace-nowrap">{formatGoogleAdsTableDate(row.date)}</td>
+                  <td className="px-4 py-3">{row.campaignName}</td>
+                  <td className="px-4 py-3">{row.adName}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.cost)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.uniqueUsers)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.impressions)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableDecimal(row.averageImpressionFrequencyPerUser)}</td>
+                  {isDescoberta ? (
+                    <>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.clicks)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.averageCpc)}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews25)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews50)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews75)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.videoViews100)}</td>
+                    </>
+                  )}
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.trueviewAverageCpv)}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.trueviewViews)}</td>
+                  {isDescoberta && (
+                    <>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableNumber(row.conversions)}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">{formatGoogleAdsTableCurrency(row.costPerConversion)}</td>
+                    </>
+                  )}
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {row.videoLink ? (
+                      <a href={row.videoLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                        <ExternalLink className="h-3 w-3" />
+                        Abrir
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  };
+
   const renderGoogleAdsDetailTable = (mode: 'descoberta' | 'consideracao') => {
     if (project?.source_type !== 'meta_ads') return null;
     // Mapeamento: Descoberta = YouTube/Video; Consideração = Search.
@@ -4692,6 +4811,53 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         onViewModeChange={(v) => setViewMode(v)}
       />
 
+      {/* Indicadores Principais acima das tabs — somente para meta_ads */}
+      {project?.source_type === 'meta_ads' && bigNumbersToRender.length > 0 && (
+        <section className="mt-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold">Indicadores Principais</h3>
+            {googleAdsInsightsQuery.data != null && (
+              <p className="mt-0.5 text-sm text-muted-foreground">Painel consolidado de mídia paga · visão combinada do período selecionado</p>
+            )}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {bigNumbersToRender.map((kpi, index) => {
+              const { label, value, format } = kpi as any;
+              const previousValue = (kpi as any).previousValue;
+              return (
+                <BigNumberCard
+                  key={`top-kpi-${index}`}
+                  label={label}
+                  value={value}
+                  format={format}
+                  previousValue={previousValue}
+                />
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Toggle META | GOOGLE para meta_ads */}
+      {project?.source_type === 'meta_ads' && (
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant={sheetDashboardSource === 'meta' ? 'default' : 'outline'}
+            onClick={() => { setSheetDashboardSource('meta'); setActiveTab('perpetua'); }}
+          >
+            Meta
+          </Button>
+          <Button
+            type="button"
+            variant={sheetDashboardSource === 'google' ? 'default' : 'outline'}
+            onClick={() => { setSheetDashboardSource('google'); setActiveTab('descoberta'); }}
+          >
+            Google
+          </Button>
+        </div>
+      )}
+
       {project?.source_type === 'sheet' && (
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <Button
@@ -4743,14 +4909,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-        <TabsList className={`grid w-full ${isGoogleSheetView ? 'max-w-sm grid-cols-2' : 'max-w-md grid-cols-3'}`}>
-          {!isGoogleSheetView && <TabsTrigger value="perpetua">Perpetua</TabsTrigger>}
+        <TabsList className={`grid w-full ${(isGoogleSheetView || isGoogleMetaView) ? 'max-w-sm grid-cols-2' : 'max-w-md grid-cols-3'}`}>
+          {!isGoogleSheetView && !isGoogleMetaView && <TabsTrigger value="perpetua">Perpetua</TabsTrigger>}
           <TabsTrigger value="descoberta">Descoberta</TabsTrigger>
           <TabsTrigger value="consideracao">Consideracao</TabsTrigger>
         </TabsList>
 
         <AnimatePresence mode="wait">
-          {!isGoogleSheetView && <TabsContent value="perpetua" className="mt-6">
+          {!isGoogleSheetView && !isGoogleMetaView && <TabsContent value="perpetua" className="mt-6">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -4758,8 +4924,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               transition={{ duration: 0.2 }}
               className="space-y-8"
             >
-              {/* Big Numbers */}
-              {bigNumbersToRender.length > 0 && (
+              {/* Big Numbers — não renderizar para meta_ads (já aparece acima das tabs) */}
+              {project?.source_type !== 'meta_ads' && bigNumbersToRender.length > 0 && (
                 <section>
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold">Indicadores Principais</h3>
@@ -5187,7 +5353,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               transition={{ duration: 0.2 }}
               className="space-y-8"
             >
-              {project?.source_type !== 'meta_ads' && !isGoogleSheetView && (
+              {/* Google view para meta_ads — mostra tabela com colunas de descoberta */}
+              {isGoogleMetaView && renderGoogleMetaTable('descoberta')}
+
+              {/* Meta view e sheet view */}
+              {!isGoogleMetaView && project?.source_type !== 'meta_ads' && !isGoogleSheetView && (
                 <section>
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-semibold">Visao de Descoberta</h3>
@@ -5204,16 +5374,34 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                   </div>
                 </section>
               )}
-              {project?.source_type === 'meta_ads' && (
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                    Meta Ads
-                  </span>
-                  <h3 className="text-lg font-semibold">Descoberta</h3>
-                </div>
+              {!isGoogleMetaView && project?.source_type === 'meta_ads' && !metaTabTotalsRow && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Sem campanhas Meta para Descoberta</AlertTitle>
+                  <AlertDescription>
+                    Campanhas com "descoberta" no nome aparecerão aqui. Use o botão Google para ver dados do Google Ads.
+                  </AlertDescription>
+                </Alert>
               )}
-              {renderGoogleAdsEmptyAlert('descoberta')}
-              {renderGoogleAdsBigNumbers('descoberta')}
+              {!isGoogleMetaView && renderGoogleAdsEmptyAlert('descoberta')}
+              {!isGoogleMetaView && renderGoogleAdsBigNumbers('descoberta')}
+              {/* Meta BigNumbers para meta_ads em META view */}
+              {!isGoogleMetaView && project?.source_type === 'meta_ads' && metaTabTotalsRow && (
+                <section>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                    <BigNumberCard label="Investimento" value={metaDistributionData?.spend || 0} format="currency" />
+                    <BigNumberCard label="Alcance" value={metaDistributionData?.totalReach || 0} format="number" />
+                    <BigNumberCard label="Impressoes" value={metaDistributionData?.totalImpressions || 0} format="number" />
+                    <BigNumberCard label="Frequencia" value={metaDistributionData?.frequency || 0} format="percentage" />
+                    <BigNumberCard label="Cliques no Link" value={metaDistributionData?.clicks || 0} format="number" />
+                    <BigNumberCard label="CPC" value={metaDistributionData?.cpc || 0} format="currency" />
+                    <BigNumberCard label="CTR" value={metaDistributionData?.ctr || 0} format="percentage" />
+                    <BigNumberCard label="Seguidores" value={metaDistributionData?.followers || 0} format="number" />
+                    <BigNumberCard label="Custo por Seguidor" value={metaDistributionData?.costPerFollower || 0} format="currency" />
+                    <BigNumberCard label="Visitas ao Perfil" value={metaDistributionData?.profileVisits || 0} format="number" />
+                  </div>
+                </section>
+              )}
               {project?.source_type !== 'meta_ads' && (
               <section>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -5284,7 +5472,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               </section>
               )}
 
-              {distributionTopCreatives.length > 0 && (
+              {!isGoogleMetaView && distributionTopCreatives.length > 0 && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">
                     {project?.source_type === 'meta_ads' ? 'Melhores Criativos — Meta Ads' : 'Melhores Criativos'}
@@ -5443,16 +5631,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 </section>
               )}
 
-              {project?.source_type === 'meta_ads' && (
-                <div className="relative flex items-center py-2">
-                  <div className="flex-grow border-t border-border" />
-                  <span className="mx-4 flex-shrink-0 inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-300">
-                    Google Ads — YouTube
-                  </span>
-                  <div className="flex-grow border-t border-border" />
-                </div>
-              )}
-              {renderGoogleAdsDetailTable('descoberta')}
+              {!isGoogleMetaView && renderGoogleAdsDetailTable('descoberta')}
             </motion.div>
           </TabsContent>
 
@@ -5464,7 +5643,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               transition={{ duration: 0.2 }}
               className="space-y-8"
             >
-              {project?.source_type !== 'meta_ads' && !isGoogleSheetView && (
+              {/* Google view para meta_ads — mostra tabela com colunas de consideração */}
+              {isGoogleMetaView && renderGoogleMetaTable('consideracao')}
+
+              {/* Meta view e sheet view */}
+              {!isGoogleMetaView && project?.source_type !== 'meta_ads' && !isGoogleSheetView && (
                 <section>
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-semibold">Visao de Consideracao</h3>
@@ -5481,16 +5664,34 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                   </div>
                 </section>
               )}
-              {project?.source_type === 'meta_ads' && (
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                    Meta Ads
-                  </span>
-                  <h3 className="text-lg font-semibold">Consideração</h3>
-                </div>
+              {!isGoogleMetaView && project?.source_type === 'meta_ads' && !metaTabTotalsRow && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Sem campanhas Meta para Consideração</AlertTitle>
+                  <AlertDescription>
+                    Campanhas com "consideração" no nome aparecerão aqui. Use o botão Google para ver dados do Google Ads.
+                  </AlertDescription>
+                </Alert>
               )}
-              {renderGoogleAdsEmptyAlert('consideracao')}
-              {renderGoogleAdsBigNumbers('consideracao')}
+              {!isGoogleMetaView && renderGoogleAdsEmptyAlert('consideracao')}
+              {!isGoogleMetaView && renderGoogleAdsBigNumbers('consideracao')}
+              {/* Meta BigNumbers para meta_ads em META view */}
+              {!isGoogleMetaView && project?.source_type === 'meta_ads' && metaTabTotalsRow && (
+                <section>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                    <BigNumberCard label="Investimento" value={metaDistributionData?.spend || 0} format="currency" />
+                    <BigNumberCard label="Alcance" value={metaDistributionData?.totalReach || 0} format="number" />
+                    <BigNumberCard label="Impressoes" value={metaDistributionData?.totalImpressions || 0} format="number" />
+                    <BigNumberCard label="Frequencia" value={metaDistributionData?.frequency || 0} format="percentage" />
+                    <BigNumberCard label="Cliques no Link" value={metaDistributionData?.clicks || 0} format="number" />
+                    <BigNumberCard label="CPC" value={metaDistributionData?.cpc || 0} format="currency" />
+                    <BigNumberCard label="CTR" value={metaDistributionData?.ctr || 0} format="percentage" />
+                    <BigNumberCard label="Seguidores" value={metaDistributionData?.followers || 0} format="number" />
+                    <BigNumberCard label="Custo por Seguidor" value={metaDistributionData?.costPerFollower || 0} format="currency" />
+                    <BigNumberCard label="Visitas ao Perfil" value={metaDistributionData?.profileVisits || 0} format="number" />
+                  </div>
+                </section>
+              )}
               {project?.source_type !== 'meta_ads' && (
               <section>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -5561,7 +5762,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               </section>
               )}
 
-              {distributionTopCreatives.length > 0 && (
+              {!isGoogleMetaView && distributionTopCreatives.length > 0 && (
                 <section>
                   <h3 className="mb-4 text-lg font-semibold">
                     {project?.source_type === 'meta_ads' ? 'Melhores Criativos — Meta Ads' : 'Melhores Criativos'}
@@ -5720,16 +5921,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                 </section>
               )}
 
-              {project?.source_type === 'meta_ads' && (
-                <div className="relative flex items-center py-2">
-                  <div className="flex-grow border-t border-border" />
-                  <span className="mx-4 flex-shrink-0 inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-300">
-                    Google Ads — Search
-                  </span>
-                  <div className="flex-grow border-t border-border" />
-                </div>
-              )}
-              {renderGoogleAdsDetailTable('consideracao')}
+              {!isGoogleMetaView && renderGoogleAdsDetailTable('consideracao')}
             </motion.div>
           </TabsContent>
         </AnimatePresence>
