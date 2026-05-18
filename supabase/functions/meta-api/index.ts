@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
       const actionValueTypes = new Set<string>();
       let nextUrl: string | null =
         `https://graph.facebook.com/v19.0/act_${accountId}/insights?level=account` +
-        `&time_increment=all&time_range={'since':'${startDate}','until':'${endDate}'}` +
+        `&time_increment=all_days&time_range={'since':'${startDate}','until':'${endDate}'}` +
         `&fields=${encodeURIComponent('actions,action_values')}&limit=500&access_token=${ACCESS_TOKEN}`;
 
       while (nextUrl) {

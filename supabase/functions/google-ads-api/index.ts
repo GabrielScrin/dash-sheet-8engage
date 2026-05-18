@@ -76,9 +76,15 @@ async function googleAdsRequest<T>(
 
   const data = await response.json();
   if (!response.ok) {
+    // Extrai a mensagem de erro em múltiplos formatos da Google Ads API
+    const detailErrors = (data?.error?.details || [])
+      .flatMap((d: any) => d?.errors || [])
+      .map((e: any) => e?.message)
+      .filter(Boolean);
     const message =
       data?.error?.message ||
-      data?.error?.details?.[0]?.errors?.[0]?.message ||
+      detailErrors[0] ||
+      JSON.stringify(data?.error).slice(0, 300) ||
       "Erro na API do Google Ads";
     throw new Error(message);
   }
@@ -247,7 +253,6 @@ type GoogleAdsDetailRow = {
   videoLink: string | null;
   channelType: "search" | "youtube" | "display" | "shopping" | "performance_max" | "other";
   rawChannelType: string;
-  campaignStatus: string;
 };
 
 function normalizeChannelType(
@@ -280,14 +285,12 @@ async function fetchAdPerformanceRows(
     "SELECT",
     "segments.date,",
     "campaign.name,",
-    "campaign.status,",
     "campaign.advertising_channel_type,",
     "campaign.advertising_channel_sub_type,",
     "ad_group_ad.ad.id,",
     "ad_group_ad.ad.name,",
     "ad_group_ad.ad.final_urls,",
     "metrics.cost_micros,",
-    "metrics.unique_users,",
     "metrics.impressions,",
     "metrics.clicks,",
     "metrics.average_cpc,",
@@ -303,6 +306,7 @@ async function fetchAdPerformanceRows(
     `WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'`,
     "AND campaign.status != 'REMOVED'",
     "AND ad_group_ad.status != 'REMOVED'",
+    "AND metrics.cost_micros > 0",
   ].join(" ");
 
   type BatchResult = Array<{
@@ -352,14 +356,15 @@ async function fetchAdPerformanceRows(
   for (const batch of batches) {
     for (const result of batch.results || []) {
       const impressions = Number(result.metrics?.impressions || 0);
-      const uniqueUsers = Number(result.metrics?.uniqueUsers || 0);
+      // metrics.unique_users é beta/restrito — usa impressions como base de frequência
+      const uniqueUsers = 0;
       const videoViews = Number(result.metrics?.videoViews || 0);
       const p25Rate = Number(result.metrics?.videoQuartileP25Rate || 0);
       const p50Rate = Number(result.metrics?.videoQuartileP50Rate || 0);
       const p75Rate = Number(result.metrics?.videoQuartileP75Rate || 0);
       const p100Rate = Number(result.metrics?.videoQuartileP100Rate || 0);
       const adId = String(result.adGroupAd?.ad?.id || "").trim();
-      const adName = String(result.adGroupAd?.ad?.name || adId || "AnÃºncio sem nome");
+      const adName = String(result.adGroupAd?.ad?.name || adId || "Anúncio sem nome");
 
       const estimatedVideoBase = videoViews > 0 ? videoViews : impressions;
       const rawChannelType = String(result.campaign?.advertisingChannelType || "");
@@ -372,7 +377,7 @@ async function fetchAdPerformanceRows(
         cost: Number(result.metrics?.costMicros || 0) / 1_000_000,
         uniqueUsers,
         impressions,
-        averageImpressionFrequencyPerUser: uniqueUsers > 0 ? impressions / uniqueUsers : 0,
+        averageImpressionFrequencyPerUser: 0,
         clicks: Number(result.metrics?.clicks || 0),
         averageCpc: Number(result.metrics?.averageCpc || 0) / 1_000_000,
         trueviewAverageCpv: Number(result.metrics?.trueviewAverageCpv || 0),
@@ -386,7 +391,6 @@ async function fetchAdPerformanceRows(
         videoLink: result.adGroupAd?.ad?.finalUrls?.[0] || null,
         channelType: normalizeChannelType(rawChannelType, rawChannelSubType),
         rawChannelType: rawChannelType || rawChannelSubType || "",
-        campaignStatus: String(result.campaign?.status || ""),
       });
     }
   }
