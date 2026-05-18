@@ -918,14 +918,15 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   React.useEffect(() => {
     if (project?.source_type !== 'sheet') {
       if (sheetDashboardSource !== 'meta') setSheetDashboardSource('meta');
-      if (activeTab !== 'perpetua') setActiveTab('perpetua');
+      // Não reseta a tab para meta_ads — descoberta e consideracao são abas válidas
       return;
     }
 
     if (sheetDashboardSource === 'google' && activeTab === 'perpetua') {
       setActiveTab('descoberta');
     }
-  }, [activeTab, project?.source_type, sheetDashboardSource]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.source_type, sheetDashboardSource]);
 
   // We'll use a custom query to fetch all sheets in parallel
   const allSheetsQuery = useQuery({
@@ -5203,6 +5204,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                   </div>
                 </section>
               )}
+              {project?.source_type === 'meta_ads' && (
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                    Meta Ads
+                  </span>
+                  <h3 className="text-lg font-semibold">Descoberta</h3>
+                </div>
+              )}
               {renderGoogleAdsEmptyAlert('descoberta')}
               {renderGoogleAdsBigNumbers('descoberta')}
               {project?.source_type !== 'meta_ads' && (
@@ -5275,12 +5284,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               </section>
               )}
 
-              {renderGoogleAdsDetailTable('descoberta')}
-
-
               {distributionTopCreatives.length > 0 && (
                 <section>
-                  <h3 className="mb-4 text-lg font-semibold">Melhores Criativos</h3>
+                  <h3 className="mb-4 text-lg font-semibold">
+                    {project?.source_type === 'meta_ads' ? 'Melhores Criativos — Meta Ads' : 'Melhores Criativos'}
+                  </h3>
                   <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50 border-b">
@@ -5434,6 +5442,17 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                   </div>
                 </section>
               )}
+
+              {project?.source_type === 'meta_ads' && (
+                <div className="relative flex items-center py-2">
+                  <div className="flex-grow border-t border-border" />
+                  <span className="mx-4 flex-shrink-0 inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                    Google Ads — YouTube
+                  </span>
+                  <div className="flex-grow border-t border-border" />
+                </div>
+              )}
+              {renderGoogleAdsDetailTable('descoberta')}
             </motion.div>
           </TabsContent>
 
@@ -5461,6 +5480,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                     </Select>
                   </div>
                 </section>
+              )}
+              {project?.source_type === 'meta_ads' && (
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                    Meta Ads
+                  </span>
+                  <h3 className="text-lg font-semibold">Consideração</h3>
+                </div>
               )}
               {renderGoogleAdsEmptyAlert('consideracao')}
               {renderGoogleAdsBigNumbers('consideracao')}
@@ -5534,12 +5561,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               </section>
               )}
 
-              {renderGoogleAdsDetailTable('consideracao')}
-
-
               {distributionTopCreatives.length > 0 && (
                 <section>
-                  <h3 className="mb-4 text-lg font-semibold">Melhores Criativos</h3>
+                  <h3 className="mb-4 text-lg font-semibold">
+                    {project?.source_type === 'meta_ads' ? 'Melhores Criativos — Meta Ads' : 'Melhores Criativos'}
+                  </h3>
                   <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50 border-b">
@@ -5693,6 +5719,17 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
                   </div>
                 </section>
               )}
+
+              {project?.source_type === 'meta_ads' && (
+                <div className="relative flex items-center py-2">
+                  <div className="flex-grow border-t border-border" />
+                  <span className="mx-4 flex-shrink-0 inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                    Google Ads — Search
+                  </span>
+                  <div className="flex-grow border-t border-border" />
+                </div>
+              )}
+              {renderGoogleAdsDetailTable('consideracao')}
             </motion.div>
           </TabsContent>
         </AnimatePresence>
