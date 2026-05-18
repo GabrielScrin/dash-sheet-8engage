@@ -84,7 +84,7 @@ async function googleAdsRequest<T>(
     const message =
       data?.error?.message ||
       detailErrors[0] ||
-      JSON.stringify(data?.error).slice(0, 300) ||
+      (data?.error ? String(JSON.stringify(data.error)).slice(0, 300) : null) ||
       "Erro na API do Google Ads";
     throw new Error(message);
   }
