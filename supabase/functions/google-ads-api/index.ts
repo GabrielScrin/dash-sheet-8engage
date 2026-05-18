@@ -286,7 +286,6 @@ async function fetchAdPerformanceRows(
     "segments.date,",
     "campaign.name,",
     "campaign.advertising_channel_type,",
-    "campaign.advertising_channel_sub_type,",
     "ad_group_ad.ad.id,",
     "ad_group_ad.ad.name,",
     "ad_group_ad.ad.final_urls,",
@@ -314,9 +313,7 @@ async function fetchAdPerformanceRows(
       segments?: { date?: string };
       campaign?: {
         name?: string;
-        status?: string;
         advertisingChannelType?: string;
-        advertisingChannelSubType?: string;
       };
       adGroupAd?: {
         ad?: {
@@ -368,7 +365,7 @@ async function fetchAdPerformanceRows(
 
       const estimatedVideoBase = videoViews > 0 ? videoViews : impressions;
       const rawChannelType = String(result.campaign?.advertisingChannelType || "");
-      const rawChannelSubType = String(result.campaign?.advertisingChannelSubType || "");
+      const rawChannelSubType = "";
 
       rows.push({
         date: String(result.segments?.date || ""),
