@@ -80,18 +80,22 @@ async function googleAdsRequest<T>(
     headers,
   });
 
-  const data = await response.json();
+  let rawBody = "";
+  try { rawBody = await response.text(); } catch { rawBody = ""; }
+  let data: any = null;
+  try { data = rawBody ? JSON.parse(rawBody) : null; } catch { data = null; }
+
   if (!response.ok) {
-    // Extrai a mensagem de erro em múltiplos formatos da Google Ads API
-    const detailErrors = (data?.error?.details || [])
+    // searchStream pode retornar array ou objeto com campo error
+    const errorRoot = Array.isArray(data) ? (data[0] ?? {}) : (data ?? {});
+    const detailErrors = ((errorRoot?.error?.details || []) as any[])
       .flatMap((d: any) => d?.errors || [])
       .map((e: any) => e?.message)
       .filter(Boolean);
     const message =
-      data?.error?.message ||
+      errorRoot?.error?.message ||
       detailErrors[0] ||
-      (data?.raw ? String(data.raw).slice(0, 500) : null) ||
-      (data?.error ? String(JSON.stringify(data.error)).slice(0, 300) : null) ||
+      (rawBody ? rawBody.slice(0, 600) : null) ||
       "Erro na API do Google Ads";
     throw new Error(message);
   }
@@ -288,22 +292,20 @@ async function fetchAdPerformanceRows(
     throw new Error("customer_id nÃ£o configurado. Configure o Google Ads no painel do projeto.");
   }
 
+  // Usa apenas métricas garantidamente disponíveis no recurso ad_group_ad v20.
+  // average_cpc, cpv e cost_per_conversion são calculados client-side.
   const query = [
     "SELECT",
     "segments.date,",
     "campaign.name,",
     "campaign.advertising_channel_type,",
-    "ad_group_ad.ad.id,",
     "ad_group_ad.ad.name,",
     "ad_group_ad.ad.final_urls,",
     "metrics.cost_micros,",
     "metrics.impressions,",
     "metrics.clicks,",
-    "metrics.average_cpc,",
-    "metrics.average_cpv,",
     "metrics.video_views,",
     "metrics.conversions,",
-    "metrics.cost_per_conversion,",
     "metrics.video_quartile_p25_rate,",
     "metrics.video_quartile_p50_rate,",
     "metrics.video_quartile_p75_rate,",
@@ -333,11 +335,8 @@ async function fetchAdPerformanceRows(
         costMicros?: string;
         impressions?: string | number;
         clicks?: string | number;
-        averageCpc?: string;
-        averageCpv?: number;
         videoViews?: string | number;
         conversions?: number;
-        costPerConversion?: number;
         videoQuartileP25Rate?: number;
         videoQuartileP50Rate?: number;
         videoQuartileP75Rate?: number;
@@ -358,43 +357,44 @@ async function fetchAdPerformanceRows(
 
   for (const batch of batches) {
     for (const result of batch.results || []) {
+      const cost = Number(result.metrics?.costMicros || 0) / 1_000_000;
       const impressions = Number(result.metrics?.impressions || 0);
-      // metrics.unique_users é beta/restrito — usa impressions como base de frequência
-      const averageImpressionFrequencyPerUser = 0;
-      const uniqueUsers = 0;
+      const clicks = Number(result.metrics?.clicks || 0);
       const videoViews = Number(result.metrics?.videoViews || 0);
+      const conversions = Number(result.metrics?.conversions || 0);
       const p25Rate = Number(result.metrics?.videoQuartileP25Rate || 0);
       const p50Rate = Number(result.metrics?.videoQuartileP50Rate || 0);
       const p75Rate = Number(result.metrics?.videoQuartileP75Rate || 0);
       const p100Rate = Number(result.metrics?.videoQuartileP100Rate || 0);
-      const adId = String(result.adGroupAd?.ad?.id || "").trim();
-      const adName = String(result.adGroupAd?.ad?.name || adId || "Anúncio sem nome");
-
+      const adName = String(result.adGroupAd?.ad?.name || "Anúncio sem nome");
+      // Cálculo client-side das métricas derivadas
+      const averageCpc = clicks > 0 ? cost / clicks : 0;
+      const trueviewCpv = videoViews > 0 ? cost / videoViews : 0;
+      const costPerConversion = conversions > 0 ? cost / conversions : 0;
       const estimatedVideoBase = videoViews > 0 ? videoViews : impressions;
       const rawChannelType = String(result.campaign?.advertisingChannelType || "");
-      const rawChannelSubType = "";
 
       rows.push({
         date: String(result.segments?.date || ""),
         campaignName: String(result.campaign?.name || "Campanha sem nome"),
         adName,
-        cost: Number(result.metrics?.costMicros || 0) / 1_000_000,
-        uniqueUsers,
+        cost,
+        uniqueUsers: 0,
         impressions,
-        averageImpressionFrequencyPerUser,
-        clicks: Number(result.metrics?.clicks || 0),
-        averageCpc: Number(result.metrics?.averageCpc || 0) / 1_000_000,
-        trueviewAverageCpv: Number(result.metrics?.averageCpv || 0) / 1_000_000,
+        averageImpressionFrequencyPerUser: 0,
+        clicks,
+        averageCpc,
+        trueviewAverageCpv: trueviewCpv,
         trueviewViews: videoViews,
-        conversions: Number(result.metrics?.conversions || 0),
-        costPerConversion: Number(result.metrics?.costPerConversion || 0),
+        conversions,
+        costPerConversion,
         videoViews25: Math.round(estimatedVideoBase * p25Rate),
         videoViews50: Math.round(estimatedVideoBase * p50Rate),
         videoViews75: Math.round(estimatedVideoBase * p75Rate),
         videoViews100: Math.round(estimatedVideoBase * p100Rate),
         videoLink: result.adGroupAd?.ad?.finalUrls?.[0] || null,
-        channelType: normalizeChannelType(rawChannelType, rawChannelSubType),
-        rawChannelType: rawChannelType || rawChannelSubType || "",
+        channelType: normalizeChannelType(rawChannelType, ""),
+        rawChannelType,
       });
     }
   }
