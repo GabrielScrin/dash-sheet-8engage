@@ -880,7 +880,7 @@ export default function ProjectConfig() {
                 />
 
                 {/* Google Ads connection — minimal */}
-                <div className="border-t pt-4">
+                <div className="border-t pt-4 space-y-3">
                   {googleAdsChecking ? (
                     <div className="h-9 w-36 animate-pulse rounded-md bg-muted" />
                   ) : !googleAdsConnected ? (
@@ -888,26 +888,59 @@ export default function ProjectConfig() {
                       variant="outline"
                       size="sm"
                       onClick={() => void connectGoogleAds()}
-                      className="gap-2"
                     >
                       Conectar Google Ads
                     </Button>
-                  ) : (
+                  ) : googleAdsValidation ? (
+                    /* Conta já selecionada */
                     <div className="flex items-center justify-between rounded-lg border px-3 py-2">
                       <div className="flex items-center gap-2">
                         <span className="h-2 w-2 rounded-full bg-green-500" />
-                        <span className="text-sm font-medium">
-                          {googleAdsValidation?.name ?? 'Google Ads'}
-                        </span>
+                        <span className="text-sm font-medium">{googleAdsValidation.name}</span>
                       </div>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void listGoogleAdsCustomers()}
+                          disabled={googleAdsListing}
+                        >
+                          {googleAdsListing ? 'Carregando...' : 'Trocar conta'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void connectGoogleAds()}
+                        >
+                          Reconectar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Conectado mas sem conta selecionada */
+                    <div className="space-y-2">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        onClick={() => void connectGoogleAds()}
-                        disabled={googleAdsValidating || googleAdsListing}
+                        onClick={() => void listGoogleAdsCustomers()}
+                        disabled={googleAdsListing}
                       >
-                        Trocar
+                        {googleAdsListing ? 'Carregando...' : 'Selecionar conta Google Ads'}
                       </Button>
+                      {googleAdsCustomers.length > 0 && (
+                        <div className="rounded-md border divide-y max-h-48 overflow-y-auto">
+                          {googleAdsCustomers.map((c) => (
+                            <button
+                              key={c.id}
+                              className="w-full px-3 py-2 text-left text-sm hover:bg-muted/50 flex items-center justify-between"
+                              onClick={() => void saveGoogleAdsCustomerSelection(c)}
+                            >
+                              <span>{c.name}</span>
+                              <span className="text-xs text-muted-foreground">{c.id}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
