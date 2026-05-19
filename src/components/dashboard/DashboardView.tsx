@@ -825,7 +825,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         return null;
       }
     },
-    enabled: project?.source_type === 'meta_ads' && !!projectId,
+    enabled: !!projectId && (project?.source_type === 'meta_ads' || project?.source_type === 'sheet'),
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
@@ -847,7 +847,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
         return [] as GoogleAdsCampaignDetailRow[];
       }
     },
-    enabled: project?.source_type === 'meta_ads' && !!projectId,
+    enabled: !!projectId && (project?.source_type === 'meta_ads' || project?.source_type === 'sheet'),
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
@@ -4534,7 +4534,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   };
 
   const renderGoogleMetaTable = (mode: 'descoberta' | 'consideracao') => {
-    if (project?.source_type !== 'meta_ads') return null;
+    if (project?.source_type !== 'meta_ads' && project?.source_type !== 'sheet') return null;
     const rows = googleAdsDetailRows.filter((r) => r.cost > 0);
     const isDescoberta = mode === 'descoberta';
 
@@ -5449,8 +5449,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               transition={{ duration: 0.2 }}
               className="space-y-8"
             >
-              {/* Google view para meta_ads — mostra tabela com colunas de descoberta */}
-              {isGoogleMetaView && renderGoogleMetaTable('descoberta')}
+              {/* Google view — meta_ads ou sheet com Google Ads conectado */}
+              {(isGoogleMetaView || (isGoogleSheetView && googleAdsDetailRows.length > 0)) && renderGoogleMetaTable('descoberta')}
 
               {/* Meta view e sheet view */}
               {!isGoogleMetaView && project?.source_type !== 'meta_ads' && !isGoogleSheetView && (
@@ -5739,8 +5739,8 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               transition={{ duration: 0.2 }}
               className="space-y-8"
             >
-              {/* Google view para meta_ads — mostra tabela com colunas de consideração */}
-              {isGoogleMetaView && renderGoogleMetaTable('consideracao')}
+              {/* Google view — meta_ads ou sheet com Google Ads conectado */}
+              {(isGoogleMetaView || (isGoogleSheetView && googleAdsDetailRows.length > 0)) && renderGoogleMetaTable('consideracao')}
 
               {/* Meta view e sheet view */}
               {!isGoogleMetaView && project?.source_type !== 'meta_ads' && !isGoogleSheetView && (
