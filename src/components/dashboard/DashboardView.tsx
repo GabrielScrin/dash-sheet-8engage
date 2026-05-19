@@ -427,6 +427,7 @@ interface DashboardViewProps {
 }
 
 type GoogleAdsCampaignDetailRow = {
+  campaignId?: string;
   date: string;
   campaignName: string;
   adName: string;
@@ -2001,7 +2002,10 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }, [project?.source_type, sheetAdsetOptionColumnKey, sheetCampaignOptionColumnKey, sheetCampaignOptionRows]);
 
-  const campaignOptions = project?.source_type === 'meta_ads' ? metaCampaignOptions : sheetCampaignOptions;
+  const campaignOptions =
+    project?.source_type === 'meta_ads'
+      ? (isGoogleMetaView ? googleCampaignOptions : metaCampaignOptions)
+      : sheetCampaignOptions;
 
   const metaWeeklyMetricOptions = useMemo(() => {
     const allowedKeys = [
@@ -4235,18 +4239,39 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     return (googleAdsCampaignDetailsQuery.data || []) as GoogleAdsCampaignDetailRow[];
   }, [googleAdsCampaignDetailsQuery.data, project?.source_type]);
 
+  const googleCampaignOptions = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [] as Array<{ id: string; name: string; effective_status?: string }>;
+    const campaigns = new Map<string, { id: string; name: string; effective_status?: string }>();
+    for (const row of googleAdsDetailRows) {
+      const id = String(row.campaignId || row.campaignName || '').trim();
+      const name = String(row.campaignName || row.campaignId || '').trim();
+      if (!id || !name) continue;
+      if (!campaigns.has(id)) {
+        campaigns.set(id, { id, name, effective_status: 'ACTIVE' });
+      }
+    }
+    return Array.from(campaigns.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [googleAdsDetailRows, project?.source_type]);
+
+  const filteredGoogleRowsByCampaign = useMemo(() => {
+    if (project?.source_type !== 'meta_ads') return [] as GoogleAdsCampaignDetailRow[];
+    if (selectedCampaignIds.length === 0) return googleAdsDetailRows;
+    const selectedSet = new Set(selectedCampaignIds.map((id) => String(id)));
+    return googleAdsDetailRows.filter((row) => selectedSet.has(String(row.campaignId || row.campaignName || '')));
+  }, [googleAdsDetailRows, project?.source_type, selectedCampaignIds]);
+
   const googleAdsRowsByChannel = useMemo(() => {
     const search: GoogleAdsCampaignDetailRow[] = [];
     const youtube: GoogleAdsCampaignDetailRow[] = [];
     const other: GoogleAdsCampaignDetailRow[] = [];
-    for (const row of googleAdsDetailRows) {
+    for (const row of filteredGoogleRowsByCampaign) {
       const ct = row.channelType || 'other';
       if (ct === 'search') search.push(row);
       else if (ct === 'youtube') youtube.push(row);
       else other.push(row);
     }
     return { search, youtube, other };
-  }, [googleAdsDetailRows]);
+  }, [filteredGoogleRowsByCampaign]);
 
   // Aggregate Google Ads rows by date (for "Visão Semanal/Diária/Mensal" inside Detalhe por Mídia → Google).
   const aggregateGoogleAdsByPeriod = (
@@ -4325,8 +4350,80 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
   const filteredGoogleAdsRows = useMemo(() => {
     if (googleSubChannel === 'search') return googleAdsRowsByChannel.search;
     if (googleSubChannel === 'youtube') return googleAdsRowsByChannel.youtube;
-    return googleAdsDetailRows;
-  }, [googleSubChannel, googleAdsRowsByChannel, googleAdsDetailRows]);
+    return filteredGoogleRowsByCampaign;
+  }, [filteredGoogleRowsByCampaign, googleSubChannel, googleAdsRowsByChannel]);
+
+  const getGoogleModeRows = (mode: 'descoberta' | 'consideracao') =>
+    mode === 'descoberta' ? googleAdsRowsByChannel.youtube : googleAdsRowsByChannel.search;
+
+  const googleTabWeeklyMetricOptions = useMemo(
+    () => [
+      { key: 'investment', label: 'Investimento', format: 'currency' as const },
+      { key: 'impressions', label: 'Impressões', format: 'number' as const },
+      { key: 'clicks', label: 'Cliques', format: 'number' as const },
+      { key: 'ctr', label: 'CTR', format: 'percentage' as const },
+      { key: 'cpc', label: 'CPC', format: 'currency' as const },
+      { key: 'purchases', label: 'Conversões', format: 'number' as const },
+      { key: 'cpa', label: 'Custo por Conversão', format: 'currency' as const },
+      { key: 'video_views', label: 'Views TrueView', format: 'number' as const },
+      { key: 'cpv', label: 'CPV', format: 'currency' as const },
+    ],
+    [],
+  );
+
+  const googleTabCreativeMetricOptions = googleTabWeeklyMetricOptions;
+
+  const googleTabWeeklyData = useMemo(() => {
+    if (!isGoogleMetaView) return [] as Array<Record<string, unknown>>;
+    const mode = activeTab === 'consideracao' ? 'consideracao' : 'descoberta';
+    return aggregateGoogleAdsByPeriod(getGoogleModeRows(mode), viewMode).map((row, index) => {
+      const ctr = row.impressions > 0 ? (row.clicks / row.impressions) * 100 : 0;
+      const cpc = row.clicks > 0 ? row.cost / row.clicks : 0;
+      const cpa = row.conversions > 0 ? row.cost / row.conversions : 0;
+      const cpv = row.videoViews > 0 ? row.cost / row.videoViews : 0;
+      const periodDate = viewMode === 'month' ? new Date(`${row.period}-01T00:00:00`) : new Date(`${row.period}T00:00:00`);
+      const label =
+        viewMode === 'day'
+          ? format(periodDate, 'dd/MM')
+          : viewMode === 'month'
+            ? format(periodDate, 'MMM/yy', { locale: ptBR })
+            : `Sem ${index + 1}`;
+      return {
+        week: label,
+        periodKey: row.period,
+        periodSort: periodDate.getTime(),
+        investment: row.cost,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        ctr,
+        cpc,
+        purchases: row.conversions,
+        cpa,
+        video_views: row.videoViews,
+        cpv,
+      };
+    });
+  }, [activeTab, getGoogleModeRows, isGoogleMetaView, viewMode]);
+
+  const googleTabCreativeData = useMemo(() => {
+    if (!isGoogleMetaView) return [] as Array<Record<string, unknown>>;
+    const mode = activeTab === 'consideracao' ? 'consideracao' : 'descoberta';
+    return aggregateGoogleAdsByAd(getGoogleModeRows(mode)).map((row) => ({
+      id: `${row.campaignName}::${row.adName}`,
+      name: row.adName,
+      campaignName: row.campaignName,
+      investment: row.cost,
+      impressions: row.impressions,
+      clicks: row.clicks,
+      ctr: row.impressions > 0 ? (row.clicks / row.impressions) * 100 : 0,
+      cpc: row.clicks > 0 ? row.cost / row.clicks : 0,
+      purchases: row.conversions,
+      cpa: row.conversions > 0 ? row.cost / row.conversions : 0,
+      video_views: row.videoViews,
+      cpv: row.videoViews > 0 ? row.cost / row.videoViews : 0,
+      link: row.videoLink,
+    }));
+  }, [activeTab, getGoogleModeRows, isGoogleMetaView]);
 
   const googleAdsWeeklyData = useMemo(
     () => aggregateGoogleAdsByPeriod(filteredGoogleAdsRows, viewMode),
