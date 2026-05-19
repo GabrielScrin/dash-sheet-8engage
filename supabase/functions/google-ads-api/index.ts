@@ -290,6 +290,7 @@ async function fetchAdPerformanceRows(
     "ad_group_ad.ad.name,",
     "ad_group_ad.ad.final_urls,",
     "metrics.cost_micros,",
+    "metrics.average_impression_frequency_per_user,",
     "metrics.impressions,",
     "metrics.clicks,",
     "metrics.average_cpc,",
@@ -324,7 +325,7 @@ async function fetchAdPerformanceRows(
       };
       metrics?: {
         costMicros?: string;
-        uniqueUsers?: string | number;
+        averageImpressionFrequencyPerUser?: number;
         impressions?: string | number;
         clicks?: string | number;
         averageCpc?: string;
@@ -354,7 +355,11 @@ async function fetchAdPerformanceRows(
     for (const result of batch.results || []) {
       const impressions = Number(result.metrics?.impressions || 0);
       // metrics.unique_users é beta/restrito — usa impressions como base de frequência
-      const uniqueUsers = 0;
+      const averageImpressionFrequencyPerUser = Number(result.metrics?.averageImpressionFrequencyPerUser || 0);
+      const uniqueUsers =
+        averageImpressionFrequencyPerUser > 0
+          ? Math.round(impressions / averageImpressionFrequencyPerUser)
+          : 0;
       const videoViews = Number(result.metrics?.videoViews || 0);
       const p25Rate = Number(result.metrics?.videoQuartileP25Rate || 0);
       const p50Rate = Number(result.metrics?.videoQuartileP50Rate || 0);
@@ -374,7 +379,7 @@ async function fetchAdPerformanceRows(
         cost: Number(result.metrics?.costMicros || 0) / 1_000_000,
         uniqueUsers,
         impressions,
-        averageImpressionFrequencyPerUser: 0,
+        averageImpressionFrequencyPerUser,
         clicks: Number(result.metrics?.clicks || 0),
         averageCpc: Number(result.metrics?.averageCpc || 0) / 1_000_000,
         trueviewAverageCpv: Number(result.metrics?.trueviewAverageCpv || 0),

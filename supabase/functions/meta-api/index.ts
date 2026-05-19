@@ -5,6 +5,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-share-token, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+const buildMetaGraphUrl = (
+  path: string,
+  params: Record<string, string | number | null | undefined>,
+) => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === undefined || value === '') continue;
+    query.set(key, String(value));
+  }
+  return `https://graph.facebook.com/v19.0/${path}?${query.toString()}`;
+};
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -267,10 +279,14 @@ Deno.serve(async (req) => {
 
       const actionTypes = new Set<string>();
       const actionValueTypes = new Set<string>();
-      let nextUrl: string | null =
-        `https://graph.facebook.com/v19.0/act_${accountId}/insights?level=account` +
-        `&time_increment=all_days&time_range={'since':'${startDate}','until':'${endDate}'}` +
-        `&fields=${encodeURIComponent('actions,action_values')}&limit=500&access_token=${ACCESS_TOKEN}`;
+      let nextUrl: string | null = buildMetaGraphUrl(`act_${accountId}/insights`, {
+        level: 'account',
+        time_increment: 'all_days',
+        time_range: JSON.stringify({ since: startDate, until: endDate }),
+        fields: 'actions,action_values',
+        limit: 500,
+        access_token: ACCESS_TOKEN,
+      });
 
       while (nextUrl) {
         const res: Response = await fetch(nextUrl);
@@ -363,15 +379,19 @@ Deno.serve(async (req) => {
               : base;
 
       const insights: any[] = [];
-      const timeIncrementParam =
+      const timeIncrementValue =
         timeIncrement === 'all' || timeIncrement === '0' || timeIncrement === 'false'
-          ? ''
-          : '&time_increment=1';
-      const breakdownsParam = breakdowns ? `&breakdowns=${encodeURIComponent(breakdowns)}` : '';
-      let nextUrl: string | null =
-        `https://graph.facebook.com/v19.0/act_${accountId}/insights?level=${encodeURIComponent(normalizedLevel)}` +
-        `${timeIncrementParam}&time_range={'since':'${startDate}','until':'${endDate}'}` +
-        `${breakdownsParam}&fields=${encodeURIComponent(fields)}&limit=500&access_token=${ACCESS_TOKEN}`;
+          ? null
+          : '1';
+      let nextUrl: string | null = buildMetaGraphUrl(`act_${accountId}/insights`, {
+        level: normalizedLevel,
+        time_increment: timeIncrementValue,
+        time_range: JSON.stringify({ since: startDate, until: endDate }),
+        breakdowns: breakdowns || null,
+        fields,
+        limit: 500,
+        access_token: ACCESS_TOKEN,
+      });
 
       while (nextUrl) {
         const res: Response = await fetch(nextUrl);

@@ -4473,7 +4473,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
             <thead className="whitespace-nowrap border-b bg-muted/50">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Data</th>
-                <th className="px-4 py-3 text-left font-medium min-w-[180px]">Nome da Campanha</th>
+                <th className="px-4 py-3 text-left font-medium min-w-[180px]">Campanha</th>
                 <th className="px-4 py-3 text-left font-medium min-w-[180px]">Nome do Anúncio</th>
                 <th className="px-4 py-3 text-right font-medium">Custo</th>
                 <th className="px-4 py-3 text-right font-medium">Usuários Exclusivos</th>
