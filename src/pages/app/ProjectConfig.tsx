@@ -124,7 +124,7 @@ export default function ProjectConfig() {
   }, [currentStep, project?.source_type, project?.source_config?.ad_account_id]);
 
   useEffect(() => {
-    if (!project?.id || project.source_type !== 'meta_ads') return;
+    if (!project?.id || (project.source_type !== 'meta_ads' && project.source_type !== 'sheet')) return;
 
     const loadGoogleAdsConnection = async () => {
       setGoogleAdsChecking(true);
@@ -878,6 +878,39 @@ export default function ProjectConfig() {
                   onSelect={handleTabsSelect}
                   onBack={() => setCurrentStep(1)}
                 />
+
+                {/* Google Ads connection — minimal */}
+                <div className="border-t pt-4">
+                  {googleAdsChecking ? (
+                    <div className="h-9 w-36 animate-pulse rounded-md bg-muted" />
+                  ) : !googleAdsConnected ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void connectGoogleAds()}
+                      className="gap-2"
+                    >
+                      Conectar Google Ads
+                    </Button>
+                  ) : (
+                    <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-green-500" />
+                        <span className="text-sm font-medium">
+                          {googleAdsValidation?.name ?? 'Google Ads'}
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void connectGoogleAds()}
+                        disabled={googleAdsValidating || googleAdsListing}
+                      >
+                        Trocar
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
