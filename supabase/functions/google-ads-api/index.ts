@@ -40,7 +40,13 @@ async function refreshAccessToken(refreshToken: string) {
     }),
   });
 
-  const data = await response.json();
+  const rawText = await response.text();
+  let data: any = null;
+  try {
+    data = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    data = { raw: rawText };
+  }
   if (!response.ok || !data?.access_token) {
     throw new Error(data?.error_description || data?.error || "Falha ao renovar token do Google Ads");
   }
@@ -84,6 +90,7 @@ async function googleAdsRequest<T>(
     const message =
       data?.error?.message ||
       detailErrors[0] ||
+      (data?.raw ? String(data.raw).slice(0, 500) : null) ||
       (data?.error ? String(JSON.stringify(data.error)).slice(0, 300) : null) ||
       "Erro na API do Google Ads";
     throw new Error(message);
@@ -290,11 +297,10 @@ async function fetchAdPerformanceRows(
     "ad_group_ad.ad.name,",
     "ad_group_ad.ad.final_urls,",
     "metrics.cost_micros,",
-    "metrics.average_impression_frequency_per_user,",
     "metrics.impressions,",
     "metrics.clicks,",
     "metrics.average_cpc,",
-    "metrics.trueview_average_cpv,",
+    "metrics.average_cpv,",
     "metrics.video_views,",
     "metrics.conversions,",
     "metrics.cost_per_conversion,",
@@ -325,11 +331,10 @@ async function fetchAdPerformanceRows(
       };
       metrics?: {
         costMicros?: string;
-        averageImpressionFrequencyPerUser?: number;
         impressions?: string | number;
         clicks?: string | number;
         averageCpc?: string;
-        trueviewAverageCpv?: number;
+        averageCpv?: number;
         videoViews?: string | number;
         conversions?: number;
         costPerConversion?: number;
@@ -355,11 +360,8 @@ async function fetchAdPerformanceRows(
     for (const result of batch.results || []) {
       const impressions = Number(result.metrics?.impressions || 0);
       // metrics.unique_users é beta/restrito — usa impressions como base de frequência
-      const averageImpressionFrequencyPerUser = Number(result.metrics?.averageImpressionFrequencyPerUser || 0);
-      const uniqueUsers =
-        averageImpressionFrequencyPerUser > 0
-          ? Math.round(impressions / averageImpressionFrequencyPerUser)
-          : 0;
+      const averageImpressionFrequencyPerUser = 0;
+      const uniqueUsers = 0;
       const videoViews = Number(result.metrics?.videoViews || 0);
       const p25Rate = Number(result.metrics?.videoQuartileP25Rate || 0);
       const p50Rate = Number(result.metrics?.videoQuartileP50Rate || 0);
@@ -382,7 +384,7 @@ async function fetchAdPerformanceRows(
         averageImpressionFrequencyPerUser,
         clicks: Number(result.metrics?.clicks || 0),
         averageCpc: Number(result.metrics?.averageCpc || 0) / 1_000_000,
-        trueviewAverageCpv: Number(result.metrics?.trueviewAverageCpv || 0),
+        trueviewAverageCpv: Number(result.metrics?.averageCpv || 0) / 1_000_000,
         trueviewViews: videoViews,
         conversions: Number(result.metrics?.conversions || 0),
         costPerConversion: Number(result.metrics?.costPerConversion || 0),
