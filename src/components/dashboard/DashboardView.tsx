@@ -2002,11 +2002,6 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }, [project?.source_type, sheetAdsetOptionColumnKey, sheetCampaignOptionColumnKey, sheetCampaignOptionRows]);
 
-  const campaignOptions =
-    project?.source_type === 'meta_ads'
-      ? (isGoogleMetaView ? googleCampaignOptions : metaCampaignOptions)
-      : sheetCampaignOptions;
-
   const metaWeeklyMetricOptions = useMemo(() => {
     const allowedKeys = [
       'impressions',
@@ -4252,6 +4247,11 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     }
     return Array.from(campaigns.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }, [googleAdsDetailRows, project?.source_type]);
+
+  const campaignOptions =
+    project?.source_type === 'meta_ads'
+      ? (isGoogleMetaView ? googleCampaignOptions : metaCampaignOptions)
+      : sheetCampaignOptions;
 
   const filteredGoogleRowsByCampaign = useMemo(() => {
     if (project?.source_type !== 'meta_ads') return [] as GoogleAdsCampaignDetailRow[];
