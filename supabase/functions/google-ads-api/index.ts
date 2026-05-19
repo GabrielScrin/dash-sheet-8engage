@@ -111,19 +111,93 @@ async function listAccessibleCustomers(accessToken: string, loginCustomerId: str
     { method: "GET" },
   );
 
-  const customerIds = (accessible.resourceNames || [])
+  const topLevelIds = (accessible.resourceNames || [])
     .map((name) => String(name).split("/").pop() || "")
     .map(normalizeCustomerId)
     .filter(Boolean);
 
-  const customers: Array<{ id: string; name: string; currencyCode: string | null; timeZone: string | null; loginCustomerId: string | null | undefined }> = [];
+  type CustomerEntry = { id: string; name: string; currencyCode: string | null; timeZone: string | null; loginCustomerId: string | null | undefined };
+  const seen = new Set<string>();
+  const customers: CustomerEntry[] = [];
 
-  for (const customerId of customerIds) {
+  const addCustomer = (entry: CustomerEntry) => {
+    if (!seen.has(entry.id)) {
+      seen.add(entry.id);
+      customers.push(entry);
+    }
+  };
+
+  for (const topId of topLevelIds) {
+    // Tenta buscar sub-contas via customer_client (funciona para contas MCC)
+    try {
+      type ClientResult = Array<{
+        results?: Array<{
+          customerClient?: {
+            id?: string;
+            descriptiveName?: string;
+            currencyCode?: string;
+            timeZone?: string;
+            manager?: boolean;
+            level?: number;
+          };
+        }>;
+      }>;
+
+      const clientRes = await googleAdsRequest<ClientResult>(
+        accessToken,
+        topId, // usa a própria conta como login para listar filhas
+        `/customers/${topId}/googleAds:searchStream`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            query: [
+              "SELECT customer_client.id, customer_client.descriptive_name,",
+              "customer_client.currency_code, customer_client.time_zone,",
+              "customer_client.manager, customer_client.level",
+              "FROM customer_client",
+              "WHERE customer_client.status = 'ENABLED'",
+              "AND customer_client.level <= 2",
+            ].join(" "),
+          }),
+        },
+      );
+
+      let foundClients = false;
+      for (const batch of (Array.isArray(clientRes) ? clientRes : [])) {
+        for (const result of batch.results || []) {
+          const c = result.customerClient;
+          if (!c?.id || c.manager) continue; // pula contas gerenciadoras
+          const id = normalizeCustomerId(String(c.id));
+          if (!id) continue;
+          foundClients = true;
+          addCustomer({
+            id,
+            name: String(c.descriptiveName || id),
+            currencyCode: c.currencyCode || null,
+            timeZone: c.timeZone || null,
+            loginCustomerId: topId, // usa a MCC como login
+          });
+        }
+      }
+
+      // Se não encontrou sub-contas, adiciona a própria conta
+      if (!foundClients) {
+        addCustomer({ id: topId, name: topId, currencyCode: null, timeZone: null, loginCustomerId });
+      }
+    } catch {
+      // Não é MCC ou sem acesso — adiciona como conta direta
+      addCustomer({ id: topId, name: topId, currencyCode: null, timeZone: null, loginCustomerId });
+    }
+  }
+
+  // Busca nomes das contas diretas que ficaram sem nome
+  const unnamed = customers.filter((c) => c.name === c.id);
+  for (const c of unnamed) {
     try {
       const details = await googleAdsRequest<Array<{ results?: Array<{ customer?: { id?: string; descriptiveName?: string; currencyCode?: string; timeZone?: string } }> }>>(
         accessToken,
-        loginCustomerId,
-        `/customers/${customerId}/googleAds:searchStream`,
+        c.loginCustomerId,
+        `/customers/${c.id}/googleAds:searchStream`,
         {
           method: "POST",
           body: JSON.stringify({
@@ -131,27 +205,16 @@ async function listAccessibleCustomers(accessToken: string, loginCustomerId: str
           }),
         },
       );
-
       const customer = details?.[0]?.results?.[0]?.customer;
-      customers.push({
-        id: customerId,
-        name: String(customer?.descriptiveName || customerId),
-        currencyCode: customer?.currencyCode || null,
-        timeZone: customer?.timeZone || null,
-        loginCustomerId,
-      });
-    } catch {
-      customers.push({
-        id: customerId,
-        name: customerId,
-        currencyCode: null,
-        timeZone: null,
-        loginCustomerId,
-      });
-    }
+      if (customer?.descriptiveName) {
+        c.name = String(customer.descriptiveName);
+        c.currencyCode = customer.currencyCode || null;
+        c.timeZone = customer.timeZone || null;
+      }
+    } catch { /* mantém o id como nome */ }
   }
 
-  return customers;
+  return customers.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 }
 
 async function validateCustomer(
