@@ -352,16 +352,15 @@ async function fetchAdPerformanceRows(
 ) {
   const customerId = normalizeCustomerId(customerIdValue);
   if (!customerId) {
-    throw new Error("customer_id nÃ£o configurado. Configure o Google Ads no painel do projeto.");
+    throw new Error("customer_id não configurado. Configure o Google Ads no painel do projeto.");
   }
 
-  // Usa apenas métricas garantidamente disponíveis no recurso ad_group_ad v20.
-  // average_cpc, cpv e cost_per_conversion são calculados client-side.
   const query = [
     "SELECT",
     "segments.date,",
     "campaign.name,",
     "campaign.advertising_channel_type,",
+    "campaign.advertising_channel_sub_type,",
     "ad_group_ad.ad.name,",
     "ad_group_ad.ad.final_urls,",
     "metrics.cost_micros,",
@@ -372,7 +371,9 @@ async function fetchAdPerformanceRows(
     "metrics.video_quartile_p25_rate,",
     "metrics.video_quartile_p50_rate,",
     "metrics.video_quartile_p75_rate,",
-    "metrics.video_quartile_p100_rate",
+    "metrics.video_quartile_p100_rate,",
+    "metrics.unique_users,",
+    "metrics.average_impression_frequency_per_user",
     "FROM ad_group_ad",
     `WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'`,
     "AND campaign.status != 'REMOVED'",
@@ -386,6 +387,7 @@ async function fetchAdPerformanceRows(
       campaign?: {
         name?: string;
         advertisingChannelType?: string;
+        advertisingChannelSubType?: string;
       };
       adGroupAd?: {
         ad?: {
@@ -404,6 +406,8 @@ async function fetchAdPerformanceRows(
         videoQuartileP50Rate?: number;
         videoQuartileP75Rate?: number;
         videoQuartileP100Rate?: number;
+        uniqueUsers?: string | number;
+        averageImpressionFrequencyPerUser?: number;
       };
     }>;
   }>;
@@ -436,15 +440,18 @@ async function fetchAdPerformanceRows(
       const costPerConversion = conversions > 0 ? cost / conversions : 0;
       const estimatedVideoBase = videoViews > 0 ? videoViews : impressions;
       const rawChannelType = String(result.campaign?.advertisingChannelType || "");
+      const rawChannelSubType = String(result.campaign?.advertisingChannelSubType || "");
+      const uniqueUsers = Number(result.metrics?.uniqueUsers || 0);
+      const frequency = Number(result.metrics?.averageImpressionFrequencyPerUser || 0);
 
       rows.push({
         date: String(result.segments?.date || ""),
         campaignName: String(result.campaign?.name || "Campanha sem nome"),
         adName,
         cost,
-        uniqueUsers: 0,
+        uniqueUsers,
         impressions,
-        averageImpressionFrequencyPerUser: 0,
+        averageImpressionFrequencyPerUser: frequency,
         clicks,
         averageCpc,
         trueviewAverageCpv: trueviewCpv,
@@ -456,7 +463,7 @@ async function fetchAdPerformanceRows(
         videoViews75: Math.round(estimatedVideoBase * p75Rate),
         videoViews100: Math.round(estimatedVideoBase * p100Rate),
         videoLink: result.adGroupAd?.ad?.finalUrls?.[0] || null,
-        channelType: normalizeChannelType(rawChannelType, ""),
+        channelType: normalizeChannelType(rawChannelType, rawChannelSubType),
         rawChannelType,
       });
     }
@@ -670,7 +677,7 @@ Deno.serve(async (req) => {
     if (action === "ad-performance") {
       const startDate = String(body?.startDate || "").trim();
       const endDate = String(body?.endDate || "").trim();
-      if (!startDate || !endDate) throw new Error("startDate e endDate sÃ£o obrigatÃ³rios");
+      if (!startDate || !endDate) throw new Error("startDate e endDate são obrigatórios");
 
       const rows = await fetchAdPerformanceRows(accessToken, selectedCustomerId, loginCustomerId, startDate, endDate);
       return new Response(JSON.stringify({ rows }), {

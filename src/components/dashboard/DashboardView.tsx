@@ -38,6 +38,8 @@ interface MetaSourceConfig {
   sheet_criativos?: string | null;
   sheet_google_descoberta?: string | null;
   sheet_google_consideracao?: string | null;
+  google_ads_customer_id?: string | null;
+  google_ads_login_customer_id?: string | null;
   [key: string]: unknown;
 }
 
@@ -462,6 +464,38 @@ const formatGoogleAdsTableDecimal = (value: number) =>
 
 const formatGoogleAdsTableCurrency = (value: number) =>
   Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// Converte uma linha tipada da API do Google Ads para o formato de planilha
+// que o dashboard já sabe processar via findColumnKey
+function googleAdsRowToSheetRecord(row: {
+  date: string; campaignName: string; adName: string; cost: number;
+  impressions: number; clicks: number; averageCpc: number;
+  trueviewAverageCpv: number; trueviewViews: number; conversions: number;
+  costPerConversion: number; videoViews25: number; videoViews50: number;
+  videoViews75: number; videoViews100: number; videoLink: string | null;
+  uniqueUsers: number; averageImpressionFrequencyPerUser: number;
+}): Record<string, string> {
+  return {
+    'date': row.date,
+    'campaign name': row.campaignName,
+    'ad name': row.adName,
+    'cost': String(row.cost),
+    'impressions': String(row.impressions),
+    'clicks': String(row.clicks),
+    'average cpc': String(row.averageCpc),
+    'trueview average cpv': String(row.trueviewAverageCpv),
+    'video trueview views': String(row.trueviewViews),
+    'conversions': String(row.conversions),
+    'cost per conversion': String(row.costPerConversion),
+    'video url': row.videoLink || '',
+    'reach': String(row.uniqueUsers),
+    'frequency': String(row.averageImpressionFrequencyPerUser),
+    'video 25': String(row.videoViews25),
+    'video 50': String(row.videoViews50),
+    'video 75': String(row.videoViews75),
+    'video 100': String(row.videoViews100),
+  };
+}
 
 export function DashboardView({ projectId, isPreview = false, shareToken, initialProject, initialMappings }: DashboardViewProps) {
   const { signInWithGoogle } = useAuth();
@@ -999,19 +1033,63 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     enabled: !!project?.spreadsheet_id && sheetNames.length > 0,
   });
 
+  // Busca dados direto da API do Google Ads para Descoberta (YouTube) e Consideração (Search)
+  // Ativo quando o projeto tem google_ads_customer_id configurado e está na view Google
+  const googleAdsDataQuery = useQuery({
+    queryKey: [
+      'google-ads-sheet-data',
+      project?.id,
+      sourceConfig?.google_ads_customer_id,
+      dateRange?.from?.toISOString(),
+      dateRange?.to?.toISOString(),
+    ],
+    enabled: isGoogleSheetView && !!sourceConfig?.google_ads_customer_id && !!project?.id,
+    queryFn: async () => {
+      const startDate = dateRange?.from
+        ? format(dateRange.from, 'yyyy-MM-dd')
+        : format(subDays(new Date(), 30), 'yyyy-MM-dd');
+      const endDate = format(dateRange?.to || new Date(), 'yyyy-MM-dd');
+      const data = await invokeEdge('google-ads-api?action=ad-performance', {
+        projectId: project!.id,
+        startDate,
+        endDate,
+      });
+      return (data?.rows || []) as any[];
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  // YouTube/video → aba Descoberta | Search → aba Consideração
+  const googleApiYoutubeRows = useMemo(
+    () => !googleAdsDataQuery.data ? null
+      : googleAdsDataQuery.data
+          .filter((r: any) => r.channelType !== 'search')
+          .map(googleAdsRowToSheetRecord),
+    [googleAdsDataQuery.data],
+  );
+  const googleApiSearchRows = useMemo(
+    () => !googleAdsDataQuery.data ? null
+      : googleAdsDataQuery.data
+          .filter((r: any) => r.channelType === 'search')
+          .map(googleAdsRowToSheetRecord),
+    [googleAdsDataQuery.data],
+  );
+
   const sheetRowsByName = (allSheetsQuery.data as any)?.bySheet || {};
   const sourceRows =
     (project?.source_type === 'meta_ads'
       ? (metaInsightsQuery.data || [])
       : (sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
+  // API direta tem prioridade sobre a planilha; fallback para planilha se API não configurada
   const googleDiscoverySourceRows =
     (project?.source_type === 'meta_ads'
       ? []
-      : (sheetRowsByName[sheetGoogleDescobertaName] || [])) as any[];
+      : (googleApiYoutubeRows ?? sheetRowsByName[sheetGoogleDescobertaName] ?? [])) as any[];
   const googleConsiderationSourceRows =
     (project?.source_type === 'meta_ads'
       ? []
-      : (sheetRowsByName[sheetGoogleConsideracaoName] || [])) as any[];
+      : (googleApiSearchRows ?? sheetRowsByName[sheetGoogleConsideracaoName] ?? [])) as any[];
   const discoverySourceRows =
     (project?.source_type === 'meta_ads'
       ? []
@@ -4756,6 +4834,7 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     loadingProject ||
     (loadingMappings && !(shareToken && initialMappings)) ||
     allSheetsQuery.isLoading ||
+    googleAdsDataQuery.isLoading ||
     metaInsightsQuery.isLoading ||
     metaAccountInsightsQuery.isLoading ||
     metaAccountTotalsQuery.isLoading ||
