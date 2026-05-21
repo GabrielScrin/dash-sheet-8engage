@@ -371,9 +371,7 @@ async function fetchAdPerformanceRows(
     "metrics.video_quartile_p25_rate,",
     "metrics.video_quartile_p50_rate,",
     "metrics.video_quartile_p75_rate,",
-    "metrics.video_quartile_p100_rate,",
-    "metrics.unique_users,",
-    "metrics.average_impression_frequency_per_user",
+    "metrics.video_quartile_p100_rate",
     "FROM ad_group_ad",
     `WHERE segments.date BETWEEN '${startDate}' AND '${endDate}'`,
     "AND campaign.status != 'REMOVED'",
@@ -406,8 +404,6 @@ async function fetchAdPerformanceRows(
         videoQuartileP50Rate?: number;
         videoQuartileP75Rate?: number;
         videoQuartileP100Rate?: number;
-        uniqueUsers?: string | number;
-        averageImpressionFrequencyPerUser?: number;
       };
     }>;
   }>;
@@ -441,17 +437,15 @@ async function fetchAdPerformanceRows(
       const estimatedVideoBase = videoViews > 0 ? videoViews : impressions;
       const rawChannelType = String(result.campaign?.advertisingChannelType || "");
       const rawChannelSubType = String(result.campaign?.advertisingChannelSubType || "");
-      const uniqueUsers = Number(result.metrics?.uniqueUsers || 0);
-      const frequency = Number(result.metrics?.averageImpressionFrequencyPerUser || 0);
 
       rows.push({
         date: String(result.segments?.date || ""),
         campaignName: String(result.campaign?.name || "Campanha sem nome"),
         adName,
         cost,
-        uniqueUsers,
+        uniqueUsers: 0,
         impressions,
-        averageImpressionFrequencyPerUser: frequency,
+        averageImpressionFrequencyPerUser: 0,
         clicks,
         averageCpc,
         trueviewAverageCpv: trueviewCpv,
