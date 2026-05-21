@@ -879,7 +879,7 @@ export default function ProjectConfig() {
                   onBack={() => setCurrentStep(1)}
                 />
 
-                {/* Google Ads connection — minimal */}
+                {/* Google Ads — conexão */}
                 <div className="border-t pt-4 space-y-3">
                   {googleAdsChecking ? (
                     <div className="h-9 w-36 animate-pulse rounded-md bg-muted" />
@@ -891,54 +891,76 @@ export default function ProjectConfig() {
                     >
                       Conectar Google Ads
                     </Button>
-                  ) : googleAdsValidation ? (
-                    /* Conta já selecionada */
-                    <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-green-500" />
-                        <span className="text-sm font-medium">{googleAdsValidation.name}</span>
-                      </div>
-                      <div className="flex gap-1">
+                  ) : (
+                    <div className="space-y-2">
+                      {/* Conta selecionada */}
+                      {googleAdsValidation && googleAdsCustomers.length === 0 && (
+                        <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-green-500" />
+                            <span className="text-sm font-medium">{googleAdsValidation.name}</span>
+                            <span className="text-xs text-muted-foreground">{googleAdsValidation.id}</span>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => void listGoogleAdsCustomers()}
+                              disabled={googleAdsListing}
+                            >
+                              {googleAdsListing ? 'Carregando...' : 'Trocar conta'}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => void connectGoogleAds()}
+                            >
+                              Reconectar
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Botão para carregar lista quando não há conta selecionada */}
+                      {!googleAdsValidation && googleAdsCustomers.length === 0 && (
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           onClick={() => void listGoogleAdsCustomers()}
                           disabled={googleAdsListing}
                         >
-                          {googleAdsListing ? 'Carregando...' : 'Trocar conta'}
+                          {googleAdsListing ? 'Carregando...' : 'Selecionar conta Google Ads'}
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void connectGoogleAds()}
-                        >
-                          Reconectar
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Conectado mas sem conta selecionada */
-                    <div className="space-y-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void listGoogleAdsCustomers()}
-                        disabled={googleAdsListing}
-                      >
-                        {googleAdsListing ? 'Carregando...' : 'Selecionar conta Google Ads'}
-                      </Button>
+                      )}
+
+                      {/* Lista de contas — aparece ao clicar "Trocar conta" ou "Selecionar" */}
                       {googleAdsCustomers.length > 0 && (
-                        <div className="rounded-md border divide-y max-h-48 overflow-y-auto">
-                          {googleAdsCustomers.map((c) => (
-                            <button
-                              key={c.id}
-                              className="w-full px-3 py-2 text-left text-sm hover:bg-muted/50 flex items-center justify-between"
-                              onClick={() => void saveGoogleAdsCustomerSelection(c)}
-                            >
-                              <span>{c.name}</span>
-                              <span className="text-xs text-muted-foreground">{c.id}</span>
-                            </button>
-                          ))}
+                        <div className="space-y-1">
+                          {googleAdsValidation && (
+                            <p className="text-xs text-muted-foreground px-1">
+                              Conta atual: <strong>{googleAdsValidation.name}</strong> — selecione outra abaixo
+                            </p>
+                          )}
+                          <div className="rounded-md border divide-y max-h-56 overflow-y-auto">
+                            {googleAdsCustomers.map((c) => (
+                              <button
+                                key={c.id}
+                                className={`w-full px-3 py-2 text-left text-sm hover:bg-muted/50 flex items-center justify-between transition-colors ${googleAdsValidation?.id === c.id ? 'bg-primary/5 font-medium' : ''}`}
+                                onClick={() => void saveGoogleAdsCustomerSelection(c)}
+                              >
+                                <span>{c.name}</span>
+                                <span className="text-xs text-muted-foreground">{c.id}</span>
+                              </button>
+                            ))}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs text-muted-foreground"
+                            onClick={() => setGoogleAdsCustomers([])}
+                          >
+                            Fechar lista
+                          </Button>
                         </div>
                       )}
                     </div>
