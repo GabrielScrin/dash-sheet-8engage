@@ -1081,15 +1081,14 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
     (project?.source_type === 'meta_ads'
       ? (metaInsightsQuery.data || [])
       : (sheetRowsByName[sheetPerpetuaName] || (allSheetsQuery.data as any)?.all || [])) as any[];
-  // API direta tem prioridade sobre a planilha; fallback para planilha se API não configurada
   const googleDiscoverySourceRows =
     (project?.source_type === 'meta_ads'
       ? []
-      : (googleApiYoutubeRows ?? sheetRowsByName[sheetGoogleDescobertaName] ?? [])) as any[];
+      : (sheetRowsByName[sheetGoogleDescobertaName] || [])) as any[];
   const googleConsiderationSourceRows =
     (project?.source_type === 'meta_ads'
       ? []
-      : (googleApiSearchRows ?? sheetRowsByName[sheetGoogleConsideracaoName] ?? [])) as any[];
+      : (sheetRowsByName[sheetGoogleConsideracaoName] || [])) as any[];
   const discoverySourceRows =
     (project?.source_type === 'meta_ads'
       ? []
@@ -5807,6 +5806,92 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               )}
 
               {!isGoogleMetaView && renderGoogleAdsDetailTable('descoberta')}
+
+              {/* ── Google Ads API direto — Descoberta (YouTube / Demand Gen) ── */}
+              {isGoogleSheetView && !!sourceConfig?.google_ads_customer_id && (
+                <section className="space-y-4">
+                  <div className="flex items-center gap-2 border-t pt-4">
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    <h3 className="text-base font-semibold">Google Ads — Descoberta (API direta)</h3>
+                    {googleAdsDataQuery.isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    {googleAdsDataQuery.isError && (
+                      <span className="text-xs text-destructive">Erro ao carregar dados da API</span>
+                    )}
+                  </div>
+
+                  {googleAdsDataQuery.isSuccess && googleApiYoutubeRows !== null && googleApiYoutubeRows.length === 0 && (
+                    <p className="text-sm text-muted-foreground px-1">Nenhuma campanha YouTube/Video encontrada no período.</p>
+                  )}
+
+                  {googleApiYoutubeRows && googleApiYoutubeRows.length > 0 && (() => {
+                    const totals = googleApiYoutubeRows.reduce((acc, r) => ({
+                      cost: acc.cost + Number(r['cost'] || 0),
+                      impressions: acc.impressions + Number(r['impressions'] || 0),
+                      clicks: acc.clicks + Number(r['clicks'] || 0),
+                      trueviewViews: acc.trueviewViews + Number(r['video trueview views'] || 0),
+                      conversions: acc.conversions + Number(r['conversions'] || 0),
+                      video25: acc.video25 + Number(r['video 25'] || 0),
+                      video100: acc.video100 + Number(r['video 100'] || 0),
+                    }), { cost: 0, impressions: 0, clicks: 0, trueviewViews: 0, conversions: 0, video25: 0, video100: 0 });
+                    const cpv = totals.trueviewViews > 0 ? totals.cost / totals.trueviewViews : 0;
+                    const cpc = totals.clicks > 0 ? totals.cost / totals.clicks : 0;
+                    return (
+                      <>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+                          <BigNumberCard label="Investimento" value={totals.cost} format="currency" />
+                          <BigNumberCard label="Impressões" value={totals.impressions} format="number" />
+                          <BigNumberCard label="Cliques" value={totals.clicks} format="number" />
+                          <BigNumberCard label="CPC Médio" value={cpc} format="currency" />
+                          <BigNumberCard label="TrueView Views" value={totals.trueviewViews} format="number" />
+                          <BigNumberCard label="CPV Médio" value={cpv} format="currency" />
+                          <BigNumberCard label="Conversões" value={totals.conversions} format="number" />
+                          <BigNumberCard label="Vídeo 25%" value={totals.video25} format="number" />
+                          <BigNumberCard label="Vídeo 100%" value={totals.video100} format="number" />
+                        </div>
+                        <div className="rounded-md border bg-card shadow-sm overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/50 border-b">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-medium">Campanha</th>
+                                <th className="px-3 py-2 text-left font-medium">Anúncio</th>
+                                <th className="px-3 py-2 text-right font-medium">Invest.</th>
+                                <th className="px-3 py-2 text-right font-medium">Impressões</th>
+                                <th className="px-3 py-2 text-right font-medium">Cliques</th>
+                                <th className="px-3 py-2 text-right font-medium">Views</th>
+                                <th className="px-3 py-2 text-right font-medium">CPV</th>
+                                <th className="px-3 py-2 text-right font-medium">Conv.</th>
+                                <th className="px-3 py-2 text-right font-medium">V.25%</th>
+                                <th className="px-3 py-2 text-right font-medium">V.100%</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {googleApiYoutubeRows.map((r, i) => {
+                                const cost = Number(r['cost'] || 0);
+                                const views = Number(r['video trueview views'] || 0);
+                                const rowCpv = views > 0 ? cost / views : 0;
+                                return (
+                                  <tr key={i} className="hover:bg-muted/30">
+                                    <td className="px-3 py-2 max-w-[160px] truncate">{r['campaign name']}</td>
+                                    <td className="px-3 py-2 max-w-[160px] truncate">{r['ad name']}</td>
+                                    <td className="px-3 py-2 text-right">{formatGoogleAdsTableCurrency(cost)}</td>
+                                    <td className="px-3 py-2 text-right">{Number(r['impressions'] || 0).toLocaleString('pt-BR')}</td>
+                                    <td className="px-3 py-2 text-right">{Number(r['clicks'] || 0).toLocaleString('pt-BR')}</td>
+                                    <td className="px-3 py-2 text-right">{views.toLocaleString('pt-BR')}</td>
+                                    <td className="px-3 py-2 text-right">{formatGoogleAdsTableCurrency(rowCpv)}</td>
+                                    <td className="px-3 py-2 text-right">{Number(r['conversions'] || 0).toLocaleString('pt-BR')}</td>
+                                    <td className="px-3 py-2 text-right">{Number(r['video 25'] || 0).toLocaleString('pt-BR')}</td>
+                                    <td className="px-3 py-2 text-right">{Number(r['video 100'] || 0).toLocaleString('pt-BR')}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </section>
+              )}
             </motion.div>
           </TabsContent>
 
@@ -6097,6 +6182,90 @@ export function DashboardView({ projectId, isPreview = false, shareToken, initia
               )}
 
               {!isGoogleMetaView && renderGoogleAdsDetailTable('consideracao')}
+
+              {/* ── Google Ads API direto — Consideração (Search) ── */}
+              {isGoogleSheetView && !!sourceConfig?.google_ads_customer_id && (
+                <section className="space-y-4">
+                  <div className="flex items-center gap-2 border-t pt-4">
+                    <span className="h-2 w-2 rounded-full bg-green-500" />
+                    <h3 className="text-base font-semibold">Google Ads — Consideração (API direta)</h3>
+                    {googleAdsDataQuery.isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    {googleAdsDataQuery.isError && (
+                      <span className="text-xs text-destructive">Erro ao carregar dados da API</span>
+                    )}
+                  </div>
+
+                  {googleAdsDataQuery.isSuccess && googleApiSearchRows !== null && googleApiSearchRows.length === 0 && (
+                    <p className="text-sm text-muted-foreground px-1">Nenhuma campanha Search encontrada no período.</p>
+                  )}
+
+                  {googleApiSearchRows && googleApiSearchRows.length > 0 && (() => {
+                    const totals = googleApiSearchRows.reduce((acc, r) => ({
+                      cost: acc.cost + Number(r['cost'] || 0),
+                      impressions: acc.impressions + Number(r['impressions'] || 0),
+                      clicks: acc.clicks + Number(r['clicks'] || 0),
+                      conversions: acc.conversions + Number(r['conversions'] || 0),
+                    }), { cost: 0, impressions: 0, clicks: 0, conversions: 0 });
+                    const cpc = totals.clicks > 0 ? totals.cost / totals.clicks : 0;
+                    const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+                    const cpa = totals.conversions > 0 ? totals.cost / totals.conversions : 0;
+                    return (
+                      <>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+                          <BigNumberCard label="Investimento" value={totals.cost} format="currency" />
+                          <BigNumberCard label="Impressões" value={totals.impressions} format="number" />
+                          <BigNumberCard label="Cliques" value={totals.clicks} format="number" />
+                          <BigNumberCard label="CTR" value={ctr} format="percentage" />
+                          <BigNumberCard label="CPC Médio" value={cpc} format="currency" />
+                          <BigNumberCard label="Conversões" value={totals.conversions} format="number" />
+                          <BigNumberCard label="CPA" value={cpa} format="currency" />
+                        </div>
+                        <div className="rounded-md border bg-card shadow-sm overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-muted/50 border-b">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-medium">Campanha</th>
+                                <th className="px-3 py-2 text-left font-medium">Anúncio</th>
+                                <th className="px-3 py-2 text-right font-medium">Invest.</th>
+                                <th className="px-3 py-2 text-right font-medium">Impressões</th>
+                                <th className="px-3 py-2 text-right font-medium">Cliques</th>
+                                <th className="px-3 py-2 text-right font-medium">CTR</th>
+                                <th className="px-3 py-2 text-right font-medium">CPC</th>
+                                <th className="px-3 py-2 text-right font-medium">Conv.</th>
+                                <th className="px-3 py-2 text-right font-medium">CPA</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {googleApiSearchRows.map((r, i) => {
+                                const cost = Number(r['cost'] || 0);
+                                const clicks = Number(r['clicks'] || 0);
+                                const impr = Number(r['impressions'] || 0);
+                                const conv = Number(r['conversions'] || 0);
+                                const rowCpc = clicks > 0 ? cost / clicks : 0;
+                                const rowCtr = impr > 0 ? (clicks / impr) * 100 : 0;
+                                const rowCpa = conv > 0 ? cost / conv : 0;
+                                return (
+                                  <tr key={i} className="hover:bg-muted/30">
+                                    <td className="px-3 py-2 max-w-[160px] truncate">{r['campaign name']}</td>
+                                    <td className="px-3 py-2 max-w-[160px] truncate">{r['ad name']}</td>
+                                    <td className="px-3 py-2 text-right">{formatGoogleAdsTableCurrency(cost)}</td>
+                                    <td className="px-3 py-2 text-right">{impr.toLocaleString('pt-BR')}</td>
+                                    <td className="px-3 py-2 text-right">{clicks.toLocaleString('pt-BR')}</td>
+                                    <td className="px-3 py-2 text-right">{formatGoogleAdsTableDecimal(rowCtr)}%</td>
+                                    <td className="px-3 py-2 text-right">{formatGoogleAdsTableCurrency(rowCpc)}</td>
+                                    <td className="px-3 py-2 text-right">{conv.toLocaleString('pt-BR')}</td>
+                                    <td className="px-3 py-2 text-right">{formatGoogleAdsTableCurrency(rowCpa)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </section>
+              )}
             </motion.div>
           </TabsContent>
         </AnimatePresence>
